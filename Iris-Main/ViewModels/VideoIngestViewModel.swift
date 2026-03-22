@@ -10,6 +10,8 @@ final class VideoIngestViewModel: ObservableObject {
     @Published private(set) var serverResponse = ""
     @Published private(set) var parsedResponse: IngestResponse?
     @Published private(set) var processingDuration: TimeInterval?
+    @Published private(set) var audioExtractionDuration: TimeInterval?
+    @Published private(set) var serverProcessingDuration: TimeInterval?
     @Published private(set) var lastUploadedCount = 0
 
     let endpoint: URL
@@ -73,24 +75,32 @@ final class VideoIngestViewModel: ObservableObject {
         serverResponse = ""
         parsedResponse = nil
         processingDuration = nil
+        audioExtractionDuration = nil
+        serverProcessingDuration = nil
         statusMessage = "Extracting audio and preparing upload..."
         let requestStart = ContinuousClock.now
 
         var processedAssets: [ProcessedAudioAsset] = []
 
         do {
+            let extractionStart = ContinuousClock.now
             for video in selectedVideos {
                 statusMessage = "Compressing audio from \(video.displayName)..."
                 let processed = try await audioExtractionService.extractCompressedAudio(from: video)
                 processedAssets.append(processed)
             }
+            let extractionElapsed = extractionStart.duration(to: ContinuousClock.now)
+            audioExtractionDuration = extractionElapsed.timeInterval
 
             statusMessage = "Uploading \(processedAssets.count) compressed audio file\(processedAssets.count == 1 ? "" : "s")..."
+            let uploadStart = ContinuousClock.now
             let uploadResponse = try await uploadService.upload(processedAssets, to: endpoint)
+            let uploadElapsed = uploadStart.duration(to: ContinuousClock.now)
             let elapsed = requestStart.duration(to: ContinuousClock.now)
             let responseBody = uploadResponse.rawBody
             lastUploadedCount = processedAssets.count
             processingDuration = elapsed.timeInterval
+            serverProcessingDuration = uploadElapsed.timeInterval
             parsedResponse = decodeResponse(from: responseBody)
             statusMessage = "Upload complete. Sent \(processedAssets.count) compressed audio file\(processedAssets.count == 1 ? "" : "s") to \(endpoint.absoluteString) in \(formattedDuration(elapsed.timeInterval))."
             serverResponse = responseBody.isEmpty ? "(empty response body)" : responseBody

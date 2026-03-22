@@ -205,7 +205,15 @@ struct VideoIngestView: View {
 
                 if let response = viewModel.parsedResponse {
                     if let duration = viewModel.processingDuration {
-                        metricRow(title: "Processing time", value: String(format: "%.2f seconds", duration))
+                        metricRow(title: "Total time", value: String(format: "%.2f seconds", duration))
+                    }
+
+                    if let extraction = viewModel.audioExtractionDuration {
+                        metricRow(title: "Audio extraction", value: String(format: "%.2f seconds", extraction))
+                    }
+
+                    if let server = viewModel.serverProcessingDuration {
+                        metricRow(title: "Server processing", value: String(format: "%.2f seconds", server))
                     }
 
                     metricRow(title: "Project", value: response.projectName)
