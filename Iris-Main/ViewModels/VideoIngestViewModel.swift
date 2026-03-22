@@ -31,8 +31,8 @@ final class VideoIngestViewModel: ObservableObject {
         isLoadingSelection = true
     }
 
-    func importSelection(from sourceURLs: [URL]) {
-        guard !sourceURLs.isEmpty else {
+    func importSelection(from importedVideos: [ImportedVideo]) {
+        guard !importedVideos.isEmpty else {
             selectedVideos = []
             isLoadingSelection = false
             statusMessage = "No videos selected yet."
@@ -40,14 +40,14 @@ final class VideoIngestViewModel: ObservableObject {
         }
 
         do {
-            var importedVideos: [SelectedVideoAsset] = []
+            var selectedAssets: [SelectedVideoAsset] = []
 
-            for sourceURL in sourceURLs {
-                importedVideos.append(try copyVideo(from: sourceURL))
+            for importedVideo in importedVideos {
+                selectedAssets.append(makeSelectedVideo(from: importedVideo))
             }
 
-            selectedVideos = importedVideos
-            statusMessage = "\(importedVideos.count) video\(importedVideos.count == 1 ? "" : "s") ready. Upload sends compressed audio only."
+            selectedVideos = selectedAssets
+            statusMessage = "\(selectedAssets.count) video\(selectedAssets.count == 1 ? "" : "s") ready. Upload sends compressed audio only."
         } catch {
             selectedVideos = []
             statusMessage = error.localizedDescription
@@ -110,23 +110,13 @@ final class VideoIngestViewModel: ObservableObject {
             : "\(selectedVideos.count) video\(selectedVideos.count == 1 ? "" : "s") ready. Upload sends compressed audio only."
     }
 
-    private func copyVideo(from sourceURL: URL) throws -> SelectedVideoAsset {
-        let destinationURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension)
-
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-
-        let fileValues = try? destinationURL.resourceValues(forKeys: [.fileSizeKey])
+    private func makeSelectedVideo(from importedVideo: ImportedVideo) -> SelectedVideoAsset {
+        let fileValues = try? importedVideo.localURL.resourceValues(forKeys: [.fileSizeKey])
         let size = Int64(fileValues?.fileSize ?? 0)
 
         return SelectedVideoAsset(
-            originalURL: destinationURL,
-            displayName: sourceURL.lastPathComponent,
+            originalURL: importedVideo.localURL,
+            displayName: importedVideo.displayName,
             fileSize: size > 0 ? size : nil
         )
     }
@@ -151,4 +141,9 @@ private extension Duration {
     var timeInterval: TimeInterval {
         TimeInterval(components.seconds) + (TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000)
     }
+}
+
+struct ImportedVideo {
+    let localURL: URL
+    let displayName: String
 }

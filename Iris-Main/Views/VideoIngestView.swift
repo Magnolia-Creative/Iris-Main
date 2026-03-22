@@ -379,17 +379,22 @@ struct VideoIngestView: View {
         }
 
         do {
-            var urls: [URL] = []
+            var importedVideos: [ImportedVideo] = []
 
             for item in items {
                 let transferable = try await item.loadTransferable(type: VideoPickerTransferable.self)
                 if let transferable {
-                    urls.append(transferable.url)
+                    importedVideos.append(
+                        ImportedVideo(
+                            localURL: transferable.localURL,
+                            displayName: transferable.originalFilename
+                        )
+                    )
                 }
             }
 
             await MainActor.run {
-                viewModel.importSelection(from: urls)
+                viewModel.importSelection(from: importedVideos)
             }
         } catch {
             await MainActor.run {
@@ -407,11 +412,28 @@ struct VideoIngestView: View {
 }
 
 private struct VideoPickerTransferable: Transferable {
-    let url: URL
+    let localURL: URL
+    let originalFilename: String
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(importedContentType: .movie) { received in
-            Self(url: received.file)
+            let fileManager = FileManager.default
+            let sourceURL = received.file
+            let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+            let destinationURL = fileManager.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(fileExtension)
+
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+
+            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+
+            return Self(
+                localURL: destinationURL,
+                originalFilename: sourceURL.lastPathComponent
+            )
         }
     }
 }
