@@ -11,21 +11,33 @@ struct ContentView: View {
     private let spacingTokens: [Spacing] = [.sp0, .sp1, .sp2, .sp3, .sp4, .sp5, .sp6, .sp7, .sp8, .sp9, .sp10]
 
     var body: some View {
-        ZStack {
-            Color.ds.bg
-                .ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                Color.ds.bg
+                    .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: .spacing(.sp8)) {
-                    heroSection
-                    typographySection
-                    colorSection
-                    spacingSection
-                    buttonSection
-                    demoSection
+                ScrollView {
+                    VStack(alignment: .leading, spacing: .spacing(.sp8)) {
+                        heroSection
+                        typographySection
+                        colorSection
+                        spacingSection
+                        buttonSection
+                        demoSection
+                    }
+                    .padding(.horizontal, .sp6)
+                    .padding(.vertical, .sp8)
                 }
-                .padding(.horizontal, .sp6)
-                .padding(.vertical, .sp8)
+            }
+            .navigationTitle("Iris")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        VideoIngestView()
+                    } label: {
+                        Label("Ingest", systemImage: "waveform.badge.mic")
+                    }
+                }
             }
         }
     }
@@ -45,6 +57,13 @@ struct ContentView: View {
                 pill(text: "6 core colors", foreground: .white, background: Color.ds.accentBg)
                 pill(text: "3 button variants", foreground: Color.ds.accentFg, background: Color.clear, border: Color.ds.accentFg)
             }
+
+            NavigationLink {
+                VideoIngestView()
+            } label: {
+                Label("Open Video Ingest", systemImage: "arrow.up.doc")
+            }
+            .buttonStyle(.primary)
         }
     }
 
@@ -227,38 +246,35 @@ struct ContentView: View {
         }
     }
 
-    private func colorSwatch(name: String, color: Color, border: Color? = nil) -> some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            RoundedRectangle(cornerRadius: .spacing(.sp3))
+    private func colorSwatch(name: String, color: Color, border: Color = .clear) -> some View {
+        HStack(spacing: .spacing(.sp3)) {
+            RoundedRectangle(cornerRadius: .spacing(.sp2))
                 .fill(color)
-                .frame(height: 72)
+                .frame(width: 48, height: 48)
                 .overlay {
-                    if let border {
-                        RoundedRectangle(cornerRadius: .spacing(.sp3))
-                            .stroke(border, lineWidth: 1)
-                    }
+                    RoundedRectangle(cornerRadius: .spacing(.sp2))
+                        .stroke(border, lineWidth: border == .clear ? 0 : 1)
                 }
 
-            Text(name)
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.text)
-        }
-    }
+            VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+                Text(name)
+                    .typography(.body)
+                    .foregroundStyle(Color.ds.text)
 
-    private func pill(text: String, foreground: Color, background: Color, border: Color? = nil) -> some View {
-        Text(text)
-            .typography(.bodySmall)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, .sp3)
-            .padding(.vertical, .sp2)
-            .background(background)
-            .overlay {
-                if let border {
-                    Capsule()
-                        .stroke(border, lineWidth: 1)
-                }
+                Text("Semantic token")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
             }
-            .clipShape(Capsule())
+
+            Spacer()
+        }
+        .padding(.sp4)
+        .background(Color.ds.bg)
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                .stroke(Color.ds.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
     }
 
     private func statCard(value: String, label: String, tint: Color = Color.ds.accentFg) -> some View {
@@ -271,8 +287,8 @@ struct ContentView: View {
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
         }
-        .padding(.sp4)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.sp4)
         .background(Color.ds.bg)
         .overlay(
             RoundedRectangle(cornerRadius: .spacing(.sp3))
@@ -281,25 +297,38 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
     }
 
+    private func pill(
+        text: String,
+        foreground: Color,
+        background: Color,
+        border: Color = .clear
+    ) -> some View {
+        Text(text)
+            .typography(.bodySmall)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, .sp3)
+            .padding(.vertical, .sp2)
+            .background(background)
+            .overlay(
+                Capsule()
+                    .stroke(border, lineWidth: border == .clear ? 0 : 1)
+            )
+            .clipShape(Capsule())
+    }
+
     private func label(for spacing: Spacing) -> String {
         switch spacing {
-        case .sp0: return "sp0"
-        case .sp1: return "sp1"
-        case .sp2: return "sp2"
-        case .sp3: return "sp3"
-        case .sp4: return "sp4"
-        case .sp5: return "sp5"
-        case .sp6: return "sp6"
-        case .sp7: return "sp7"
-        case .sp8: return "sp8"
-        case .sp9: return "sp9"
-        case .sp10: return "sp10"
+        case .sp0: "sp0"
+        case .sp1: "sp1"
+        case .sp2: "sp2"
+        case .sp3: "sp3"
+        case .sp4: "sp4"
+        case .sp5: "sp5"
+        case .sp6: "sp6"
+        case .sp7: "sp7"
+        case .sp8: "sp8"
+        case .sp9: "sp9"
+        case .sp10: "sp10"
         }
-    }
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
     }
 }
