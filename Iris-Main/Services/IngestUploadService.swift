@@ -21,7 +21,7 @@ struct IngestUploadService {
         self.session = session
     }
 
-    func upload(_ assets: [ProcessedAudioAsset], to endpoint: URL) async throws -> String {
+    func upload(_ assets: [ProcessedAudioAsset], to endpoint: URL) async throws -> UploadResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -39,7 +39,10 @@ struct IngestUploadService {
             throw IngestUploadError.requestFailed(statusCode: httpResponse.statusCode, body: bodyText)
         }
 
-        return String(data: data, encoding: .utf8) ?? ""
+        return UploadResponse(
+            rawBody: String(data: data, encoding: .utf8) ?? "",
+            statusCode: httpResponse.statusCode
+        )
     }
 
     private func makeMultipartBody(assets: [ProcessedAudioAsset], boundary: String) throws -> Data {
@@ -56,6 +59,11 @@ struct IngestUploadService {
         body.append("--\(boundary)--\r\n")
         return body
     }
+}
+
+struct UploadResponse {
+    let rawBody: String
+    let statusCode: Int
 }
 
 private extension Data {

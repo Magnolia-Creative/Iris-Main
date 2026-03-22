@@ -8,6 +8,8 @@ final class VideoIngestViewModel: ObservableObject {
     @Published private(set) var isUploading = false
     @Published private(set) var statusMessage = "Choose videos from the camera roll. The app will extract speech-friendly compressed audio and upload that audio under the `videos` form field."
     @Published private(set) var serverResponse = ""
+    @Published private(set) var parsedResponse: IngestResponse?
+    @Published private(set) var processingDuration: TimeInterval?
     @Published private(set) var lastUploadedCount = 0
 
     let endpoint: URL
@@ -69,7 +71,10 @@ final class VideoIngestViewModel: ObservableObject {
         isUploading = true
         lastUploadedCount = 0
         serverResponse = ""
+        parsedResponse = nil
+        processingDuration = nil
         statusMessage = "Extracting audio and preparing upload..."
+        let requestStart = ContinuousClock.now
 
         var processedAssets: [ProcessedAudioAsset] = []
 
@@ -81,9 +86,13 @@ final class VideoIngestViewModel: ObservableObject {
             }
 
             statusMessage = "Uploading \(processedAssets.count) compressed audio file\(processedAssets.count == 1 ? "" : "s")..."
-            let responseBody = try await uploadService.upload(processedAssets, to: endpoint)
+            let uploadResponse = try await uploadService.upload(processedAssets, to: endpoint)
+            let elapsed = requestStart.duration(to: ContinuousClock.now)
+            let responseBody = uploadResponse.rawBody
             lastUploadedCount = processedAssets.count
-            statusMessage = "Upload complete. Sent \(processedAssets.count) compressed audio file\(processedAssets.count == 1 ? "" : "s") to \(endpoint.absoluteString)."
+            processingDuration = elapsed.timeInterval
+            parsedResponse = decodeResponse(from: responseBody)
+            statusMessage = "Upload complete. Sent \(processedAssets.count) compressed audio file\(processedAssets.count == 1 ? "" : "s") to \(endpoint.absoluteString) in \(formattedDuration(elapsed.timeInterval))."
             serverResponse = responseBody.isEmpty ? "(empty response body)" : responseBody
             print("Ingest response:\n\(serverResponse)")
         } catch {
@@ -126,5 +135,20 @@ final class VideoIngestViewModel: ObservableObject {
         for asset in assets {
             try? FileManager.default.removeItem(at: asset.audioURL)
         }
+    }
+
+    private func decodeResponse(from rawBody: String) -> IngestResponse? {
+        guard let data = rawBody.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(IngestResponse.self, from: data)
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        String(format: "%.2fs", duration)
+    }
+}
+
+private extension Duration {
+    var timeInterval: TimeInterval {
+        TimeInterval(components.seconds) + (TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000)
     }
 }
