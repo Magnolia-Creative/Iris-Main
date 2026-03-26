@@ -225,6 +225,10 @@ struct VideoIngestView: View {
                                 .typography(.body)
                                 .foregroundStyle(Color.ds.text)
 
+                            if let report = video.videoReport {
+                                videoReportSection(report, for: video)
+                            }
+
                             if showTranscript {
                                 VStack(alignment: .leading, spacing: .spacing(.sp3)) {
                                     ForEach(video.transcriptSegments) { segment in
@@ -308,6 +312,84 @@ struct VideoIngestView: View {
             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp4)))
     }
 
+    @ViewBuilder
+    private func videoReportSection(_ report: VideoReport, for video: IngestVideoResponse) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            Text("Video Report")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+
+            if let clipType = report.candidateClipType {
+                metricRow(
+                    title: "Clip type",
+                    value: clipTypeLabel(clipType, confidence: report.clipTypeConfidence)
+                )
+            }
+
+            if let stats = report.transcriptStats {
+                metricRow(title: "Duration", value: String(format: "%.2f seconds", stats.durationSec))
+                metricRow(title: "Words", value: "\(stats.wordCount)")
+                metricRow(title: "Segments", value: "\(stats.segmentCount)")
+                metricRow(title: "Speakers", value: "\(stats.speakerCount)")
+                metricRow(title: "Pace", value: String(format: "%.2f wpm", stats.wordsPerMinute))
+            } else if let duration = video.clipMeta?.durationSeconds {
+                metricRow(title: "Duration", value: String(format: "%.2f seconds", duration))
+            }
+
+            if !report.keywords.isEmpty {
+                tokenSection(title: "Keywords", values: report.keywords)
+            }
+
+            if !report.namedEntities.isEmpty {
+                tokenSection(
+                    title: "Named entities",
+                    values: report.namedEntities.map { "\($0.text) (\($0.label), \($0.count))" }
+                )
+            }
+
+            if !report.representativeSegments.isEmpty {
+                transcriptExcerptSection(
+                    title: "Representative segments",
+                    segments: report.representativeSegments.map {
+                        TranscriptExcerpt(
+                            id: $0.id,
+                            start: $0.start,
+                            end: $0.end,
+                            text: $0.text,
+                            score: nil
+                        )
+                    }
+                )
+            }
+
+            if !report.salientSpans.isEmpty {
+                transcriptExcerptSection(
+                    title: "Salient spans",
+                    segments: report.salientSpans.map {
+                        TranscriptExcerpt(
+                            id: $0.id,
+                            start: $0.start,
+                            end: $0.end,
+                            text: $0.text,
+                            score: $0.score
+                        )
+                    }
+                )
+            }
+
+            if !report.ambiguityIndicators.isEmpty {
+                tokenSection(title: "Ambiguity indicators", values: report.ambiguityIndicators)
+            }
+        }
+        .padding(.sp4)
+        .background(Color.ds.bg)
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                .stroke(Color.ds.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+
     private func metricRow(title: String, value: String) -> some View {
         HStack {
             Text(title)
@@ -319,6 +401,60 @@ struct VideoIngestView: View {
             Text(value)
                 .typography(.body)
                 .foregroundStyle(Color.ds.text)
+        }
+    }
+
+    private func tokenSection(title: String, values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            Text(title)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: .spacing(.sp2))], alignment: .leading, spacing: .spacing(.sp2)) {
+                ForEach(values, id: \.self) { value in
+                    Text(value)
+                        .typography(.bodySmall)
+                        .foregroundStyle(Color.ds.text)
+                        .padding(.horizontal, .sp3)
+                        .padding(.vertical, .sp2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.ds.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+                }
+            }
+        }
+    }
+
+    private func transcriptExcerptSection(title: String, segments: [TranscriptExcerpt]) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            Text(title)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+
+            ForEach(segments) { segment in
+                VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+                    HStack {
+                        Text(timeRangeText(start: segment.start, end: segment.end))
+                            .typography(.bodySmall)
+                            .foregroundStyle(Color.ds.accentFg)
+
+                        Spacer()
+
+                        if let score = segment.score {
+                            Text(String(format: "%.2f", score))
+                                .typography(.bodySmall)
+                                .foregroundStyle(Color.ds.textMuted)
+                        }
+                    }
+
+                    Text(segment.text.trimmingCharacters(in: .whitespacesAndNewlines))
+                        .typography(.body)
+                        .foregroundStyle(Color.ds.text)
+                }
+                .padding(.sp3)
+                .background(Color.ds.surface)
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+            }
         }
     }
 
@@ -357,11 +493,24 @@ struct VideoIngestView: View {
     }
 
     private func summaryText(for response: IngestResponse) -> String {
-        let segmentCount = response.videos.flatMap(\.transcriptSegments).count
-        let wordCount = response.videos
-            .flatMap(\.transcriptSegments)
-            .reduce(0) { $0 + $1.words.count }
+        let stats = response.videos.compactMap(\.videoReport?.transcriptStats)
+        let segmentCount = stats.isEmpty
+            ? response.videos.flatMap(\.transcriptSegments).count
+            : stats.reduce(0) { $0 + $1.segmentCount }
+        let wordCount = stats.isEmpty
+            ? response.videos
+                .flatMap(\.transcriptSegments)
+                .reduce(0) { $0 + $1.words.count }
+            : stats.reduce(0) { $0 + $1.wordCount }
         return "\(segmentCount) transcript segments and \(wordCount) words parsed from \(response.uploadedCount) uploaded audio file\(response.uploadedCount == 1 ? "" : "s")."
+    }
+
+    private func clipTypeLabel(_ clipType: String, confidence: Double?) -> String {
+        let title = clipType
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+        guard let confidence else { return title }
+        return "\(title) (\(String(format: "%.0f", confidence * 100))%)"
     }
 
     private func timeRangeText(start: Double, end: Double) -> String {
@@ -417,6 +566,14 @@ struct VideoIngestView: View {
         formatter.countStyle = .file
         return formatter
     }()
+}
+
+private struct TranscriptExcerpt: Identifiable {
+    let id: String
+    let start: Double
+    let end: Double
+    let text: String
+    let score: Double?
 }
 
 private struct VideoPickerTransferable: Transferable {
