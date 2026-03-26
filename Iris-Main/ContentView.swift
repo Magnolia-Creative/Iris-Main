@@ -38,6 +38,13 @@ struct ContentView: View {
                         Label("Ingest", systemImage: "waveform.badge.mic")
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        ImportView()
+                    } label: {
+                        Label("Import", systemImage: "square.and.arrow.down.on.square")
+                    }
+                }
             }
         }
     }
@@ -64,6 +71,13 @@ struct ContentView: View {
                 Label("Open Video Ingest", systemImage: "arrow.up.doc")
             }
             .buttonStyle(.primary)
+
+            NavigationLink {
+                ImportView()
+            } label: {
+                Label("Open Import", systemImage: "square.and.arrow.down.on.square")
+            }
+            .buttonStyle(.secondary)
         }
     }
 
