@@ -1,27 +1,30 @@
+import AVFoundation
+import CoreTransferable
 import PhotosUI
 import SwiftUI
 
 struct ImportView: View {
     @StateObject private var viewModel = ImportViewModel()
     @State private var selectedItems: [PhotosPickerItem] = []
-    @State private var promptText = ""
     @FocusState private var isPromptFocused: Bool
+    private let ctaButtonHeight: CGFloat = 64
+    private let ctaFadeExtension: CGFloat = .spacing(.sp4)
 
-    private let promptHint = """
-    Turn these clips into a tight 20-second event recap with quick cuts, one hero moment up front, subtle captions, and an energetic finish.
-    """
-
-    private let promptSuggestions = [
-        "Event recap",
-        "Interview clean-up",
-        "Travel montage",
-        "Product teaser",
-    ]
-
-    private let gridColumns = Array(repeating: GridItem(.flexible(), spacing: .spacing(.sp2)), count: 3)
+    private let gridColumns = Array(
+        repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: .spacing(.sp2)),
+        count: 3
+    )
 
     private var importedVideoCount: Int {
-        selectedItems.count
+        viewModel.model.importedVideoCount
+    }
+
+    private var ctaContainerHeight: CGFloat {
+        ctaButtonHeight + (ctaFadeExtension * 2)
+    }
+
+    private var ctaFadeStop: Double {
+        Double(ctaFadeExtension / ctaContainerHeight)
     }
 
     var body: some View {
@@ -37,7 +40,6 @@ struct ImportView: View {
                 }
                 .padding(.horizontal, .sp4)
                 .padding(.top, .sp3)
-                .padding(.bottom, 180)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -45,6 +47,12 @@ struct ImportView: View {
             bottomCTA
         }
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: selectedItems) { _, newValue in
+            Task {
+                await importSelection(from: newValue)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var heroSection: some View {
@@ -69,14 +77,24 @@ struct ImportView: View {
                 .typography(.heading)
                 .foregroundStyle(Color.ds.text)
 
+            if let importErrorMessage = viewModel.model.importErrorMessage {
+                Text(importErrorMessage)
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.danger)
+            } else if viewModel.model.isImportingVideos {
+                ProgressView("Importing videos...")
+                    .tint(Color.ds.accentFg)
+                    .typographyStyle(.bodySmall)
+            }
+
             LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {
-                ForEach(0..<importedVideoCount, id: \.self) { _ in
-                    ImportedVideoTile()
+                ForEach(viewModel.model.videos) { video in
+                    ImportedVideoTile(videoURL: video.originalURL)
                 }
 
                 PhotosPicker(
                     selection: $selectedItems,
-                    maxSelectionCount: 30,
+                    maxSelectionCount: 20,
                     matching: .videos,
                     photoLibrary: .shared()
                 ) {
@@ -93,7 +111,12 @@ struct ImportView: View {
                 .foregroundStyle(Color.ds.text)
 
             ZStack(alignment: .topLeading) {
-                TextEditor(text: $promptText)
+                TextEditor(
+                    text: Binding(
+                        get: { viewModel.model.prompt.text },
+                        set: { viewModel.updatePromptMessage($0) }
+                    )
+                )
                     .typographyStyle(.body)
                     .foregroundStyle(Color.ds.text)
                     .scrollContentBackground(.hidden)
@@ -101,8 +124,8 @@ struct ImportView: View {
                     .tint(Color.ds.accentFg)
                     .focused($isPromptFocused)
 
-                if promptText.isEmpty {
-                    Text(promptHint)
+                if case .empty(let hint) = viewModel.model.prompt.status {
+                    Text(hint)
                         .typography(.body)
                         .foregroundStyle(Color.ds.textMuted)
                         .padding(.top, 8)
@@ -119,56 +142,97 @@ struct ImportView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
 
+            if case .invalid(let message) = viewModel.model.prompt.status {
+                Text(message)
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.danger)
+            }
+
             FlowLayout(spacing: .spacing(.sp2), lineSpacing: .spacing(.sp2)) {
-                ForEach(promptSuggestions, id: \.self) { suggestion in
-                    SuggestionChip(title: suggestion)
+                ForEach(viewModel.model.prompt.suggestions, id: \.self) { suggestion in
+                    SuggestionChip(title: suggestion) {
+                        viewModel.applyPromptSuggestion(suggestion)
+                    }
                 }
             }
         }
     }
 
     private var bottomCTA: some View {
-        VStack(spacing: .spacing(.sp2)) {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.32),
-                        Color.black.opacity(0)
-                    ],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(height: 96)
-                .padding(.horizontal, .sp4)
-
-                Button(action: {}) {
-                    HStack(spacing: .spacing(.sp2)) {
-                        Text("Start editing")
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 16, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(AnimatedPrimaryButtonStyle())
-                .padding(.horizontal, .sp4)
-            }
-
-            Color.clear
-                .frame(height: 8)
-        }
-        .padding(.top, .sp3)
-        .background(
+        ZStack {
             LinearGradient(
-                colors: [
-                    Color.ds.bg.opacity(0),
-                    Color.ds.bg.opacity(0.88),
-                    Color.ds.bg
+                stops: [
+                    .init(color: Color.black.opacity(0), location: 0),
+                    .init(color: Color.black.opacity(0.44), location: ctaFadeStop),
+                    .init(color: Color.black.opacity(0.44), location: 1 - ctaFadeStop),
+                    .init(color: Color.black.opacity(0), location: 1)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-        )
-        .fixedSize(horizontal: false, vertical: true)
+            .frame(height: ctaContainerHeight)
+            .padding(.horizontal, .sp4)
+            .allowsHitTesting(false)
+
+            Button(action: startEditing) {
+                HStack(spacing: .spacing(.sp2)) {
+                    Text("Start editing")
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp4)))
+            .buttonStyle(AnimatedPrimaryButtonStyle(isEnabled: viewModel.model.canStartEditing))
+            .padding(.horizontal, .sp4)
+            .zIndex(1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: ctaContainerHeight)
+    }
+
+    private func importSelection(from items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else {
+            await MainActor.run {
+                viewModel.importSelection(from: [])
+            }
+            return
+        }
+
+        await MainActor.run {
+            viewModel.beginVideoImport()
+        }
+
+        do {
+            var importedVideos: [ImportedVideo] = []
+
+            for item in items.prefix(20) {
+                let transferable = try await item.loadTransferable(type: VideoPickerTransferable.self)
+                guard let transferable else { continue }
+
+                importedVideos.append(
+                    ImportedVideo(
+                        localURL: transferable.localURL,
+                        displayName: transferable.originalFilename
+                    )
+                )
+            }
+
+            await MainActor.run {
+                viewModel.importSelection(from: importedVideos)
+            }
+        } catch {
+            await MainActor.run {
+                viewModel.completeVideoImport(with: error)
+            }
+        }
+    }
+
+    private func startEditing() {
+        print("Start editing button pressed")
+
+        guard viewModel.model.canStartEditing else { return }
+        isPromptFocused = false
     }
 }
 
@@ -187,16 +251,48 @@ private struct QueueBadge: View {
 }
 
 private struct ImportedVideoTile: View {
+    let videoURL: URL
+    @State private var thumbnail: CGImage?
+
     var body: some View {
-        RoundedRectangle(cornerRadius: .spacing(.sp3))
-            .fill(Color.ds.surface.opacity(0.45))
+        ZStack {
+            Group {
+                if let thumbnail {
+                    Image(decorative: thumbnail, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    RoundedRectangle(cornerRadius: .spacing(.sp3))
+                        .fill(Color.ds.surface.opacity(0.45))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                                .stroke(Color.ds.border, lineWidth: 1.5)
+                        )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(
                 RoundedRectangle(cornerRadius: .spacing(.sp3))
                     .stroke(Color.ds.border, lineWidth: 1.5)
             )
-            .frame(maxWidth: .infinity)
-            .frame(height: 136)
-            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+        }
+        .frame(minWidth: 0, maxWidth: .infinity)
+        .frame(height: 136)
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+        .task(id: videoURL) {
+            thumbnail = await Self.generateThumbnail(for: videoURL)
+        }
+    }
+
+    private static func generateThumbnail(for videoURL: URL) async -> CGImage? {
+        await Task.detached(priority: .userInitiated) {
+            let asset = AVURLAsset(url: videoURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 600, height: 600)
+
+            return try? generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600), actualTime: nil)
+        }.value
     }
 }
 
@@ -212,7 +308,7 @@ private struct AddVideoTile: View {
                 .foregroundStyle(Color.ds.accentFg)
         }
         .padding(.sp3)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(height: 136)
         .background(Color.ds.surface.opacity(0.45))
         .overlay(
@@ -225,21 +321,27 @@ private struct AddVideoTile: View {
 
 private struct SuggestionChip: View {
     let title: String
+    let action: () -> Void
 
     var body: some View {
-        Text(title)
-            .typography(.bodySmall)
-            .foregroundStyle(Color.ds.textMuted)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .overlay(
-                Capsule()
-                    .stroke(Color.ds.border, lineWidth: 1)
-            )
+        Button(action: action) {
+            Text(title)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .overlay(
+                    Capsule()
+                        .stroke(Color.ds.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
 private struct AnimatedPrimaryButtonStyle: ButtonStyle {
+    let isEnabled: Bool
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .typographyStyle(.action)
@@ -276,11 +378,42 @@ private struct AnimatedPrimaryButtonBackground: View {
                     ButtonBorderTrail(phase: phase)
                 }
         }
+        .allowsHitTesting(false)
     }
 
     private func cycleProgress(at date: Date) -> Double {
         let loop = date.timeIntervalSince(startedAt) / cycleDuration
         return loop.truncatingRemainder(dividingBy: 1)
+    }
+}
+
+private struct VideoPickerTransferable: Transferable {
+    let localURL: URL
+    let originalFilename: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .mpeg4Movie, importing: importReceivedVideo)
+        FileRepresentation(importedContentType: .movie, importing: importReceivedVideo)
+    }
+
+    private static func importReceivedVideo(_ received: ReceivedTransferredFile) throws -> Self {
+        let fileManager = FileManager.default
+        let sourceURL = received.file
+        let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+        let destinationURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+
+        return Self(
+            localURL: destinationURL,
+            originalFilename: sourceURL.lastPathComponent
+        )
     }
 }
 

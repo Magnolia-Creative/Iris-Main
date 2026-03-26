@@ -581,24 +581,27 @@ private struct VideoPickerTransferable: Transferable {
     let originalFilename: String
 
     static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let fileManager = FileManager.default
-            let sourceURL = received.file
-            let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
-            let destinationURL = fileManager.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(fileExtension)
+        FileRepresentation(importedContentType: .mpeg4Movie, importing: importReceivedVideo)
+        FileRepresentation(importedContentType: .movie, importing: importReceivedVideo)
+    }
 
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try fileManager.removeItem(at: destinationURL)
-            }
+    private static func importReceivedVideo(_ received: ReceivedTransferredFile) throws -> Self {
+        let fileManager = FileManager.default
+        let sourceURL = received.file
+        let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+        let destinationURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
 
-            try fileManager.copyItem(at: sourceURL, to: destinationURL)
-
-            return Self(
-                localURL: destinationURL,
-                originalFilename: sourceURL.lastPathComponent
-            )
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
         }
+
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+
+        return Self(
+            localURL: destinationURL,
+            originalFilename: sourceURL.lastPathComponent
+        )
     }
 }

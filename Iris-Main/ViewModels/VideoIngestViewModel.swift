@@ -41,20 +41,14 @@ final class VideoIngestViewModel: ObservableObject {
             return
         }
 
-        do {
-            var selectedAssets: [SelectedVideoAsset] = []
+        var selectedAssets: [SelectedVideoAsset] = []
 
-            for importedVideo in importedVideos {
-                selectedAssets.append(makeSelectedVideo(from: importedVideo))
-            }
-
-            selectedVideos = selectedAssets
-            statusMessage = "\(selectedAssets.count) video\(selectedAssets.count == 1 ? "" : "s") ready. Upload sends compressed audio only."
-        } catch {
-            selectedVideos = []
-            statusMessage = error.localizedDescription
+        for importedVideo in importedVideos {
+            selectedAssets.append(makeSelectedVideo(from: importedVideo))
         }
 
+        selectedVideos = selectedAssets
+        statusMessage = "\(selectedAssets.count) video\(selectedAssets.count == 1 ? "" : "s") ready. Upload sends compressed audio only."
         isLoadingSelection = false
     }
 
@@ -151,9 +145,4 @@ private extension Duration {
     var timeInterval: TimeInterval {
         TimeInterval(components.seconds) + (TimeInterval(components.attoseconds) / 1_000_000_000_000_000_000)
     }
-}
-
-struct ImportedVideo {
-    let localURL: URL
-    let displayName: String
 }
