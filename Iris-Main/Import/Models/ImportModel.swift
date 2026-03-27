@@ -1,10 +1,21 @@
 import Foundation
 
 struct ImportModel {
+    var screen: ImportScreen = .editing
     var videos: [SelectedVideoAsset] = []
     var isImportingVideos = false
     var importErrorMessage: String?
     var prompt = PromptMessageState()
+    var isUploading = false
+    var hasStartedUpload = false
+    var uploadDidComplete = false
+    var uploadStatusMessage = "Import videos, add a prompt, then start editing to compress the audio and upload it."
+    var serverResponse = ""
+    var parsedResponse: IngestResponse?
+    var processingDuration: TimeInterval?
+    var audioExtractionDuration: TimeInterval?
+    var serverProcessingDuration: TimeInterval?
+    var lastUploadedCount = 0
 
     var importedVideoCount: Int {
         videos.count
@@ -15,8 +26,13 @@ struct ImportModel {
     }
 
     var canStartEditing: Bool {
-        hasImportedVideos && prompt.isReady
+        hasImportedVideos && prompt.isReady && !isImportingVideos && !isUploading
     }
+}
+
+enum ImportScreen: Equatable {
+    case editing
+    case processing
 }
 
 struct PromptMessageState: Equatable {

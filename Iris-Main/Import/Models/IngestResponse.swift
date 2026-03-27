@@ -1,14 +1,16 @@
 import Foundation
 
 struct IngestResponse: Decodable {
-    let projectID: Int
-    let projectName: String
+    let sessionID: Int
+    let sessionName: String
+    let sessionStatus: String
     let uploadedCount: Int
     let videos: [IngestVideoResponse]
 
     enum CodingKeys: String, CodingKey {
-        case projectID = "project_id"
-        case projectName = "project_name"
+        case sessionID = "session_id"
+        case sessionName = "session_name"
+        case sessionStatus = "session_status"
         case uploadedCount = "uploaded_count"
         case videos
     }
@@ -16,14 +18,15 @@ struct IngestResponse: Decodable {
 
 struct IngestVideoResponse: Decodable, Identifiable {
     let index: Int
-    let projectID: Int
+    let sessionID: Int
+    let projectID: Int?
     let clipID: Int
-    let transcriptID: Int
+    let transcriptID: Int?
     let fileName: String
     let mimeType: String
     let fileExtension: String
-    let fileSizeBytes: Int
-    let transcriptSegments: [TranscriptSegment]
+    let fileSizeBytes: Int?
+    let transcriptSegments: [TranscriptSegment]?
     let transcriptFullText: String?
     let videoReport: VideoReport?
     let clipMeta: ClipMeta?
@@ -32,6 +35,7 @@ struct IngestVideoResponse: Decodable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case index
+        case sessionID = "session_id"
         case projectID = "project_id"
         case clipID = "clip_id"
         case transcriptID = "transcript_id"

@@ -7,6 +7,7 @@ struct ImportView: View {
     @StateObject private var viewModel = ImportViewModel()
     @State private var selectedItems: [PhotosPickerItem] = []
     @FocusState private var isPromptFocused: Bool
+    @Namespace private var transitionNamespace
     private let ctaButtonHeight: CGFloat = 64
     private let ctaFadeExtension: CGFloat = .spacing(.sp4)
 
@@ -32,19 +33,19 @@ struct ImportView: View {
             Color.ds.bg
                 .ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: .spacing(.sp9)) {
-                    heroSection
-                    importSection
-                    promptSection
+            Group {
+                switch viewModel.model.screen {
+                case .editing:
+                    editingContent
+                case .processing:
+                    processingContent
                 }
-                .padding(.horizontal, .sp4)
-                .padding(.top, .sp3)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomCTA
+            if viewModel.model.screen == .editing {
+                bottomCTA
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedItems) { _, newValue in
@@ -53,6 +54,36 @@ struct ImportView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.spring(response: 0.55, dampingFraction: 0.9), value: viewModel.model.screen)
+    }
+
+    private var editingContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: .spacing(.sp9)) {
+                heroSection
+                importSection
+                promptSection
+            }
+            .padding(.horizontal, .sp4)
+            .padding(.top, .sp3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var processingContent: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp6)) {
+            processingVideoSection
+            processingPromptSection
+            Spacer(minLength: .spacing(.sp6))
+            processingStatusSection
+        }
+        .padding(.horizontal, .sp4)
+        .padding(.top, .sp5)
+        .padding(.bottom, .sp6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task {
+            await viewModel.startProcessingIfNeeded()
+        }
     }
 
     private var heroSection: some View {
@@ -64,7 +95,7 @@ struct ImportView: View {
                 .typography(.title)
                 .foregroundStyle(Color.ds.text)
 
-            Text("Import multiple videos, then give Iris a prompt before you start editing.")
+            Text("Import multiple videos, add a prompt, then let Iris compress the audio and upload the batch for editing.")
                 .typography(.body)
                 .foregroundStyle(Color.ds.textMuted)
                 .frame(maxWidth: 320, alignment: .leading)
@@ -85,6 +116,10 @@ struct ImportView: View {
                 ProgressView("Importing videos...")
                     .tint(Color.ds.accentFg)
                     .typographyStyle(.bodySmall)
+            } else {
+                Text(viewModel.model.uploadStatusMessage)
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
             }
 
             LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {
@@ -102,6 +137,7 @@ struct ImportView: View {
                 }
             }
         }
+        .matchedGeometryEffect(id: "videos-section", in: transitionNamespace)
     }
 
     private var promptSection: some View {
@@ -156,6 +192,7 @@ struct ImportView: View {
                 }
             }
         }
+        .matchedGeometryEffect(id: "prompt-section", in: transitionNamespace)
     }
 
     private var bottomCTA: some View {
@@ -176,8 +213,8 @@ struct ImportView: View {
 
             Button(action: startEditing) {
                 HStack(spacing: .spacing(.sp2)) {
-                    Text("Start editing")
-                    Image(systemName: "sparkles")
+                    Text(viewModel.model.isUploading ? "Processing..." : "Start editing")
+                    Image(systemName: viewModel.model.isUploading ? "arrow.up.circle" : "sparkles")
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
@@ -189,6 +226,53 @@ struct ImportView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: ctaContainerHeight)
+    }
+
+    private var processingVideoSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            Text("Imported clips")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+
+            LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {
+                ForEach(viewModel.model.videos) { video in
+                    ImportedVideoTile(videoURL: video.originalURL)
+                }
+            }
+        }
+        .matchedGeometryEffect(id: "videos-section", in: transitionNamespace)
+    }
+
+    private var processingPromptSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            Text("Prompt")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+
+            Text(viewModel.model.prompt.trimmedText)
+                .typography(.body)
+                .foregroundStyle(Color.ds.text)
+                .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
+                .padding(.sp3)
+                .background(Color.ds.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: .spacing(.sp3))
+                        .stroke(Color.ds.border, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+        }
+        .matchedGeometryEffect(id: "prompt-section", in: transitionNamespace)
+    }
+
+    private var processingStatusSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            Text(viewModel.model.isUploading ? "Processing clips, please wait." : viewModel.model.uploadStatusMessage)
+                .typography(.body)
+                .foregroundStyle(viewModel.model.uploadDidComplete ? Color.ds.text : Color.ds.textMuted)
+
+            ProcessingStatusBar(isComplete: viewModel.model.uploadDidComplete)
+                .frame(height: 14)
+        }
     }
 
     private func importSelection(from items: [PhotosPickerItem]) async {
@@ -229,24 +313,63 @@ struct ImportView: View {
     }
 
     private func startEditing() {
-        print("Start editing button pressed")
-
         guard viewModel.model.canStartEditing else { return }
         isPromptFocused = false
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) {
+            viewModel.beginProcessing()
+        }
     }
 }
 
-private struct QueueBadge: View {
-    let count: Int
+private struct ProcessingStatusBar: View {
+    let isComplete: Bool
+    @State private var shimmer = false
 
     var body: some View {
-        Text("\(count) queued")
-            .typography(.bodySmall)
-            .foregroundStyle(Color.ds.accentFg)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.ds.surface)
-            .clipShape(Capsule())
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.ds.surface)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.ds.border, lineWidth: 1)
+                    )
+
+                if isComplete {
+                    Capsule()
+                        .fill(Color.ds.accentBg)
+                        .frame(width: geometry.size.width)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
+                } else {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.ds.accentBg.opacity(0.18),
+                                    Color.ds.accentBg,
+                                    Color.ds.accentBg.opacity(0.18)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(geometry.size.width * 0.34, 72))
+                        .offset(x: shimmer ? geometry.size.width * 0.66 : 0)
+                        .animation(
+                            .linear(duration: 1.15).repeatForever(autoreverses: true),
+                            value: shimmer
+                        )
+                }
+            }
+        }
+        .clipShape(Capsule())
+        .onAppear {
+            guard !isComplete else { return }
+            shimmer = true
+        }
+        .onChange(of: isComplete) { _, newValue in
+            shimmer = !newValue
+        }
     }
 }
 

@@ -33,13 +33,6 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
-                        VideoIngestView()
-                    } label: {
-                        Label("Ingest", systemImage: "waveform.badge.mic")
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
                         ImportView()
                     } label: {
                         Label("Import", systemImage: "square.and.arrow.down.on.square")
@@ -64,13 +57,6 @@ struct ContentView: View {
                 pill(text: "6 core colors", foreground: .white, background: Color.ds.accentBg)
                 pill(text: "3 button variants", foreground: Color.ds.accentFg, background: Color.clear, border: Color.ds.accentFg)
             }
-
-            NavigationLink {
-                VideoIngestView()
-            } label: {
-                Label("Open Video Ingest", systemImage: "arrow.up.doc")
-            }
-            .buttonStyle(.primary)
 
             NavigationLink {
                 ImportView()
