@@ -35,6 +35,7 @@ struct AgentView: View {
     private var secondaryContent: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp6)) {
             statusSection
+            extractionSection
             timelineSection
         }
         .opacity(secondaryContentOpacity)
@@ -67,6 +68,27 @@ struct AgentView: View {
             }
         }
         .animation(.spring(response: 0.55, dampingFraction: 0.9), value: viewModel.model.statusMessage)
+    }
+
+    @ViewBuilder
+    private var extractionSection: some View {
+        if !viewModel.model.extractionClips.isEmpty {
+            VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+                Text("Clip cleanup")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+
+                AgentSurfaceCard(minHeight: 0) {
+                    LazyVStack(alignment: .leading, spacing: .spacing(.sp4)) {
+                        ForEach(viewModel.model.extractionClips) { clip in
+                            AgentExtractionClipView(clip: clip)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
+                    }
+                }
+            }
+            .animation(.spring(response: 0.52, dampingFraction: 0.88), value: viewModel.model.extractionClips)
+        }
     }
 
     private var timelineSection: some View {
@@ -107,69 +129,29 @@ private struct AgentExtractionClipView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            HStack(alignment: .top, spacing: .spacing(.sp2)) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(clip.displayName)
-                        .typography(.body)
-                        .foregroundStyle(Color.ds.text)
-                        .lineLimit(1)
-
-                    if let summary = clip.summary, !summary.trimmedForTransport.isEmpty {
-                        Text(summary)
-                            .typography(.bodySmall)
-                            .foregroundStyle(Color.ds.textMuted)
-                            .lineLimit(2)
-                    }
-                }
+            HStack(alignment: .firstTextBaseline, spacing: .spacing(.sp2)) {
+                Text("Clip \(clip.order + 1)")
+                    .typography(.body)
+                    .foregroundStyle(Color.ds.text)
 
                 Spacer(minLength: 0)
 
-                AgentExtractionStatusPill(clip: clip)
+                AgentExtractionStatusLabel(clip: clip)
             }
 
             AgentClipRangePreview(clip: clip)
-
-            if !clip.ranges.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: .spacing(.sp2)) {
-                        ForEach(clip.ranges) { range in
-                            Text(range.reason)
-                                .typography(.bodySmall)
-                                .foregroundStyle(Color.ds.text)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(Color.ds.bg.opacity(0.55))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.ds.border.opacity(0.8), lineWidth: 1)
-                                )
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
-            }
         }
-        .padding(.sp2)
-        .background(Color.ds.bg.opacity(0.16))
-        .overlay(
-            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                .stroke(Color.ds.border.opacity(0.72), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct AgentExtractionStatusPill: View {
+private struct AgentExtractionStatusLabel: View {
     let clip: AgentExtractionClip
 
     var body: some View {
         Text(label)
             .typography(.bodySmall)
-            .foregroundStyle(foregroundColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .clipShape(Capsule())
+            .foregroundStyle(Color.ds.textMuted)
     }
 
     private var label: String {
@@ -181,23 +163,7 @@ private struct AgentExtractionStatusPill: View {
             return "Analyzing"
         }
 
-        return "\(clip.ranges.count) cut\(clip.ranges.count == 1 ? "" : "s")"
-    }
-
-    private var foregroundColor: Color {
-        if clip.isDropped {
-            return Color.ds.textMuted
-        }
-
-        return clip.isAnalyzing ? Color.ds.text : Color.ds.accentFg
-    }
-
-    private var backgroundColor: Color {
-        if clip.isDropped {
-            return Color.ds.surface.opacity(0.72)
-        }
-
-        return clip.isAnalyzing ? Color.ds.surface.opacity(0.82) : Color.ds.accentBg.opacity(0.18)
+        return "\(clip.ranges.count) range\(clip.ranges.count == 1 ? "" : "s")"
     }
 }
 
@@ -223,29 +189,30 @@ private struct AgentClipRangePreview: View {
                             )
                             .offset(x: offsetX(for: interval, totalWidth: geometry.size.width))
                     }
-
-                    ForEach(clip.ranges) { range in
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.52), lineWidth: 1)
-                            .frame(
-                                width: max(width(for: range.asInterval, totalWidth: geometry.size.width) - 2, 8),
-                                height: max(geometry.size.height - 10, 20)
-                            )
-                            .offset(
-                                x: offsetX(for: range.asInterval, totalWidth: geometry.size.width) + 1,
-                                y: 5
-                            )
-                    }
                 }
 
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.08),
-                        Color.black.opacity(0.46)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                ForEach(clip.ranges) { range in
+                    let interval = range.asInterval
+                    let intervalWidth = width(for: interval, totalWidth: geometry.size.width)
+
+                    if intervalWidth >= 42 {
+                        Text(range.formattedTimeRange)
+                            .typography(.bodySmall)
+                            .foregroundStyle(Color.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Capsule())
+                            .frame(
+                                width: intervalWidth,
+                                height: geometry.size.height,
+                                alignment: .center
+                            )
+                            .offset(x: offsetX(for: interval, totalWidth: geometry.size.width))
+                    }
+                }
             }
         }
         .frame(height: 78)
@@ -417,5 +384,25 @@ private struct ClosedRangeInterval: Identifiable {
 private extension AgentClipRange {
     var asInterval: ClosedRangeInterval {
         ClosedRangeInterval(start: inSec, end: outSec)
+    }
+
+    var formattedTimeRange: String {
+        "\(inSec.formattedClipTimestamp) - \(outSec.formattedClipTimestamp)"
+    }
+}
+
+private extension Double {
+    var formattedClipTimestamp: String {
+        let roundedValue = (max(self, 0) * 10).rounded() / 10
+        let wholeSeconds = Int(roundedValue)
+        let fractionalTenth = Int((roundedValue - Double(wholeSeconds)) * 10)
+        let minutes = wholeSeconds / 60
+        let seconds = wholeSeconds % 60
+
+        if fractionalTenth == 0 {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+
+        return String(format: "%d:%02d.%d", minutes, seconds, fractionalTenth)
     }
 }

@@ -445,12 +445,10 @@ final class AgentViewModel: ObservableObject {
 
         case .statusUpdate(let payload):
             model.sessionID = payload.sessionID.rawValue
-            model.statusMessage = payload.statusMessage
             model.errorMessage = nil
+            model.statusMessage = payload.statusMessage
 
-            if payload.node == "clip_cleanup" {
-                model.stage = .extractingClips
-            } else if model.isAwaitingUserInput {
+            if !handleClipCleanupStatusUpdate(payload), model.isAwaitingUserInput {
                 model.stage = .waitingForFeedback
             }
 
@@ -477,88 +475,166 @@ final class AgentViewModel: ObservableObject {
 
     private func handleNodeStart(_ event: AgentNodeLifecycleEvent) {
         guard event.node == "clip_cleanup", let payload = event.payload else { return }
-        let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
+        applyClipCleanupStart(payload, fallbackStatusMessage: payload.statusMessage)
+    }
 
-        for inputClip in payload.inputClips ?? [] {
-            guard let sourceClip = sourceClipsByRemoteID[inputClip.clipID.rawValue] else {
+    private func handleClipCleanupStatusUpdate(_ event: AgentStatusUpdateEvent) -> Bool {
+        let nodeName = event.statusDetails?.node ?? event.node
+        guard nodeName == "clip_cleanup" else { return false }
+
+        guard let details = event.statusDetails else {
+            model.stage = .extractingClips
+
+            if !event.statusMessage.trimmedForTransport.isEmpty {
+                model.statusMessage = event.statusMessage
+            }
+
+            return true
+        }
+
+        if details.containsCompletionDetails {
+            applyClipCleanupCompletion(details, fallbackStatusMessage: event.statusMessage)
+        } else if details.containsInputClipReferences {
+            applyClipCleanupStart(details, fallbackStatusMessage: event.statusMessage)
+        } else {
+            model.stage = .extractingClips
+
+            if !event.statusMessage.trimmedForTransport.isEmpty {
+                model.statusMessage = event.statusMessage
+            }
+        }
+
+        return true
+    }
+
+    private func applyClipCleanupStart(
+        _ payload: AgentClipCleanupPayload,
+        fallbackStatusMessage: String?
+    ) {
+        let inputClipIDs = orderedUniqueClipIDs(
+            from: [
+                (payload.inputClips ?? []).map(\.clipID),
+                payload.inputClipIDs ?? []
+            ]
+        )
+        let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
+        let existingClips = Dictionary(uniqueKeysWithValues: model.extractionClips.map { ($0.remoteClipID, $0) })
+        let summariesByClipID = (payload.inputClips ?? []).reduce(into: [String: String]()) { result, inputClip in
+            guard let summary = inputClip.summary?.trimmedForTransport, !summary.isEmpty else { return }
+            result[inputClip.clipID.rawValue] = summary
+        }
+
+        var nextClips: [AgentExtractionClip] = []
+
+        for (index, clipID) in inputClipIDs.enumerated() {
+            guard let sourceClip = sourceClipsByRemoteID[clipID] else {
                 logger.error(
-                    "clip_cleanup start could not map remote clip id \(inputClip.clipID.rawValue, privacy: .public). knownKeys=\(knownKeys, privacy: .public)"
+                    "clip_cleanup start could not map remote clip id \(clipID, privacy: .public). knownKeys=\(knownKeys, privacy: .public)"
                 )
                 continue
             }
 
-            upsertExtractionClip(for: sourceClip, remoteClipID: inputClip.clipID.rawValue) { clip in
-                clip.summary = inputClip.summary?.trimmedForTransport
-                clip.isAnalyzing = true
-                clip.isDropped = false
-            }
+            let existingClip = existingClips[clipID]
+            nextClips.append(
+                makeExtractionClip(
+                    for: sourceClip,
+                    remoteClipID: clipID,
+                    order: index,
+                    summary: summariesByClipID[clipID] ?? existingClip?.summary,
+                    ranges: [],
+                    isAnalyzing: true,
+                    isDropped: false
+                )
+            )
         }
 
-        model.extractionClips.sort(by: { $0.order < $1.order })
+        model.extractionClips = nextClips
         model.stage = .extractingClips
 
-        if let statusMessage = payload.statusMessage, !statusMessage.trimmedForTransport.isEmpty {
+        if let statusMessage = (payload.statusMessage ?? fallbackStatusMessage),
+           !statusMessage.trimmedForTransport.isEmpty {
             model.statusMessage = statusMessage
         }
     }
 
     private func handleNodeComplete(_ event: AgentNodeLifecycleEvent) {
         guard event.node == "clip_cleanup", let payload = event.payload else { return }
+        applyClipCleanupCompletion(payload, fallbackStatusMessage: payload.statusMessage)
+    }
 
+    private func applyClipCleanupCompletion(
+        _ payload: AgentClipCleanupPayload,
+        fallbackStatusMessage: String?
+    ) {
         let selectedClipIDs = Set((payload.selectedClipIDs ?? []).map(\.rawValue))
         let droppedClipIDs = Set((payload.droppedClipIDs ?? []).map(\.rawValue))
+        let hasExplicitSelectionState = payload.selectedClipIDs != nil || payload.droppedClipIDs != nil
         let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
+        let existingClips = Dictionary(uniqueKeysWithValues: model.extractionClips.map { ($0.remoteClipID, $0) })
+        let orderedClipIDs = {
+            let clipIDs = orderedUniqueClipIDs(
+                from: [
+                    payload.clipIDs ?? [],
+                    payload.selectedClipIDs ?? [],
+                    payload.droppedClipIDs ?? [],
+                    (payload.clipRanges ?? []).map(\.clipID)
+                ]
+            )
 
-        for clipRange in payload.clipRanges ?? [] {
-            guard let sourceClip = sourceClipsByRemoteID[clipRange.clipID.rawValue] else {
-                logger.error(
-                    "clip_cleanup complete could not map remote clip id \(clipRange.clipID.rawValue, privacy: .public). knownKeys=\(knownKeys, privacy: .public)"
-                )
-                continue
+            if !clipIDs.isEmpty {
+                return clipIDs
             }
 
-            upsertExtractionClip(for: sourceClip, remoteClipID: clipRange.clipID.rawValue) { clip in
-                clip.ranges = clipRange.ranges
-                    .map { AgentClipRange(inSec: $0.inSec, outSec: $0.outSec, reason: $0.reason) }
-                    .sorted(by: { $0.inSec < $1.inSec })
-                clip.isDropped = droppedClipIDs.contains(clipRange.clipID.rawValue)
-                clip.isAnalyzing = false
-            }
+            return model.extractionClips.map(\.remoteClipID)
+        }()
+
+        let rangeLookup = (payload.clipRanges ?? []).reduce(into: [String: [AgentClipRange]]()) { result, clipRange in
+            result[clipRange.clipID.rawValue] = clipRange.ranges
+                .map { AgentClipRange(inSec: $0.inSec, outSec: $0.outSec, reason: $0.reason) }
+                .sorted(by: { $0.inSec < $1.inSec })
         }
 
-        for clipID in selectedClipIDs {
+        var nextClips: [AgentExtractionClip] = []
+
+        for (index, clipID) in orderedClipIDs.enumerated() {
             guard let sourceClip = sourceClipsByRemoteID[clipID] else {
                 logger.error(
-                    "Selected clip id \(clipID, privacy: .public) was not found in the local clip lookup. knownKeys=\(knownKeys, privacy: .public)"
+                    "clip_cleanup complete could not map remote clip id \(clipID, privacy: .public). knownKeys=\(knownKeys, privacy: .public)"
                 )
                 continue
             }
 
-            upsertExtractionClip(for: sourceClip, remoteClipID: clipID) { clip in
-                clip.isDropped = false
-                clip.isAnalyzing = false
-            }
-        }
+            let ranges = rangeLookup[clipID] ?? []
+            let isDropped: Bool
 
-        for clipID in droppedClipIDs {
-            guard let sourceClip = sourceClipsByRemoteID[clipID] else {
-                logger.error(
-                    "Dropped clip id \(clipID, privacy: .public) was not found in the local clip lookup. knownKeys=\(knownKeys, privacy: .public)"
+            if droppedClipIDs.contains(clipID) {
+                isDropped = true
+            } else if selectedClipIDs.contains(clipID) {
+                isDropped = false
+            } else if hasExplicitSelectionState || payload.clipIDs != nil || payload.clipRanges != nil {
+                isDropped = ranges.isEmpty
+            } else {
+                isDropped = existingClips[clipID]?.isDropped ?? ranges.isEmpty
+            }
+
+            nextClips.append(
+                makeExtractionClip(
+                    for: sourceClip,
+                    remoteClipID: clipID,
+                    order: index,
+                    summary: existingClips[clipID]?.summary,
+                    ranges: ranges,
+                    isAnalyzing: false,
+                    isDropped: isDropped
                 )
-                continue
-            }
-
-            upsertExtractionClip(for: sourceClip, remoteClipID: clipID) { clip in
-                clip.ranges = []
-                clip.isDropped = true
-                clip.isAnalyzing = false
-            }
+            )
         }
 
-        model.extractionClips.sort(by: { $0.order < $1.order })
+        model.extractionClips = nextClips
         model.stage = .assemblingTimeline
 
-        if let statusMessage = payload.statusMessage, !statusMessage.trimmedForTransport.isEmpty {
+        if let statusMessage = (payload.statusMessage ?? fallbackStatusMessage),
+           !statusMessage.trimmedForTransport.isEmpty {
             model.statusMessage = statusMessage
         }
     }
@@ -602,31 +678,42 @@ final class AgentViewModel: ObservableObject {
         }
     }
 
-    private func upsertExtractionClip(
+    private func makeExtractionClip(
         for sourceClip: AgentSourceClip,
         remoteClipID: String,
-        update: (inout AgentExtractionClip) -> Void
-    ) {
-        if let existingIndex = model.extractionClips.firstIndex(where: { $0.id == sourceClip.id }) {
-            update(&model.extractionClips[existingIndex])
-            return
-        }
-
-        var clip = AgentExtractionClip(
+        order: Int,
+        summary: String?,
+        ranges: [AgentClipRange],
+        isAnalyzing: Bool,
+        isDropped: Bool
+    ) -> AgentExtractionClip {
+        AgentExtractionClip(
             id: sourceClip.id,
             displayName: sourceClip.displayName,
             videoURL: sourceClip.videoURL,
             durationSeconds: sourceClip.durationSeconds,
-            order: sourceClip.order,
+            order: order,
             remoteClipID: remoteClipID,
-            summary: nil,
-            ranges: [],
-            isAnalyzing: false,
-            isDropped: false
+            summary: summary,
+            ranges: ranges,
+            isAnalyzing: isAnalyzing,
+            isDropped: isDropped
         )
+    }
 
-        update(&clip)
-        model.extractionClips.append(clip)
+    private func orderedUniqueClipIDs(from groups: [[FlexibleIdentifier]]) -> [String] {
+        var orderedClipIDs: [String] = []
+        var seenClipIDs: Set<String> = []
+
+        for group in groups {
+            for identifier in group {
+                if seenClipIDs.insert(identifier.rawValue).inserted {
+                    orderedClipIDs.append(identifier.rawValue)
+                }
+            }
+        }
+
+        return orderedClipIDs
     }
 
     private func applyError(_ error: Error) {
@@ -806,15 +893,21 @@ private struct AgentNodeLifecycleEvent: Decodable {
 }
 
 private struct AgentClipCleanupPayload: Decodable {
+    let node: String?
     let statusMessage: String?
     let inputClips: [AgentInputClip]?
+    let inputClipIDs: [FlexibleIdentifier]?
+    let clipIDs: [FlexibleIdentifier]?
     let selectedClipIDs: [FlexibleIdentifier]?
     let droppedClipIDs: [FlexibleIdentifier]?
     let clipRanges: [AgentClipRangePayload]?
 
     enum CodingKeys: String, CodingKey {
+        case node
         case statusMessage = "status_message"
         case inputClips = "input_clips"
+        case inputClipIDs = "input_clip_ids"
+        case clipIDs = "clip_ids"
         case selectedClipIDs = "selected_clip_ids"
         case droppedClipIDs = "dropped_clip_ids"
         case clipRanges = "clip_ranges"
@@ -871,11 +964,13 @@ private struct AgentStatusUpdateEvent: Decodable {
     let sessionID: FlexibleIdentifier
     let node: String?
     let statusMessage: String
+    let statusDetails: AgentClipCleanupPayload?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
         case node
         case statusMessage = "status_message"
+        case statusDetails = "status_details"
     }
 }
 
@@ -959,6 +1054,16 @@ private extension AgentSocketEvent {
         case .unknown(let type):
             return "unknown(type=\(type))"
         }
+    }
+}
+
+private extension AgentClipCleanupPayload {
+    var containsInputClipReferences: Bool {
+        inputClips != nil || inputClipIDs != nil
+    }
+
+    var containsCompletionDetails: Bool {
+        clipIDs != nil || selectedClipIDs != nil || droppedClipIDs != nil || clipRanges != nil
     }
 }
 
