@@ -298,7 +298,8 @@ struct ImportView: View {
                 importedVideos.append(
                     ImportedVideo(
                         localURL: transferable.localURL,
-                        displayName: transferable.originalFilename
+                        displayName: transferable.originalFilename,
+                        localKey: UUID().uuidString
                     )
                 )
             }

@@ -85,6 +85,7 @@ struct AudioExtractionService {
 
         return ProcessedAudioAsset(
             source: video,
+            localKey: video.localKey,
             audioURL: outputURL,
             mimeType: "audio/mp4",
             fileName: "\(video.originalURL.deletingPathExtension().lastPathComponent).m4a"

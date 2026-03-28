@@ -3,6 +3,7 @@ import Foundation
 enum AppConfiguration {
     static let ingestEndpoint = URL(string: "http://127.0.0.1:8000/sessions/upload")!
     static let uploadFieldName = "videos"
+    static let uploadLocalKeyFieldName = "local_key"
     static let simulateImportProcessing = false
 
     static func agentWebSocketEndpoint(sessionID: String, basedOn baseURL: URL = ingestEndpoint) -> URL? {

@@ -67,6 +67,7 @@ struct IngestVideoResponse: Decodable, Identifiable {
     let projectID: FlexibleIdentifier?
     let clipID: FlexibleIdentifier
     let transcriptID: FlexibleIdentifier?
+    let localKey: String?
     let fileName: String
     let mimeType: String
     let fileExtension: String
@@ -84,6 +85,7 @@ struct IngestVideoResponse: Decodable, Identifiable {
         case projectID = "project_id"
         case clipID = "clip_id"
         case transcriptID = "transcript_id"
+        case localKey = "local_key"
         case fileName = "file_name"
         case mimeType = "mime_type"
         case fileExtension = "extension"

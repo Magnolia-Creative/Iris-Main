@@ -106,6 +106,9 @@ final class ImportViewModel: ObservableObject {
         model.processingDuration = nil
         model.audioExtractionDuration = nil
         model.serverProcessingDuration = nil
+        for index in model.videos.indices {
+            model.videos[index].remoteClipID = nil
+        }
         model.uploadStatusMessage = "Processing clips, please wait."
         let requestStart = ContinuousClock.now
 
@@ -137,6 +140,9 @@ final class ImportViewModel: ObservableObject {
             let responseBody = uploadResponse.rawBody
             print("[IngestUpload] Raw response body:\n\(responseBody.isEmpty ? "(empty response body)" : responseBody)")
             let parsedResponse = decodeResponse(from: responseBody)
+            if let parsedResponse {
+                storeUploadedClipReferences(from: parsedResponse)
+            }
 
             model.lastUploadedCount = processedAssets.count
             model.processingDuration = elapsed.timeInterval
@@ -176,9 +182,11 @@ final class ImportViewModel: ObservableObject {
         let size = Int64(fileValues.fileSize ?? 0)
 
         return SelectedVideoAsset(
+            localKey: importedVideo.localKey,
             originalURL: importedVideo.localURL,
             displayName: importedVideo.displayName,
-            fileSize: size > 0 ? size : nil
+            fileSize: size > 0 ? size : nil,
+            remoteClipID: nil
         )
     }
 
@@ -205,6 +213,17 @@ final class ImportViewModel: ObservableObject {
     private func decodeResponse(from rawBody: String) -> IngestResponse? {
         guard let data = rawBody.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(IngestResponse.self, from: data)
+    }
+
+    private func storeUploadedClipReferences(from response: IngestResponse) {
+        let clipIDsByLocalKey = response.videos.reduce(into: [String: String]()) { result, video in
+            guard let localKey = video.localKey, !localKey.isEmpty else { return }
+            result[localKey] = video.clipID.rawValue
+        }
+
+        for index in model.videos.indices {
+            model.videos[index].remoteClipID = clipIDsByLocalKey[model.videos[index].localKey]
+        }
     }
 
     private func uploadCompletionMessage(uploadedCount: Int, response: IngestResponse?) -> String {

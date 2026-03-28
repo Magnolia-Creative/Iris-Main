@@ -228,6 +228,7 @@ final class AgentViewModel: ObservableObject {
                 LocalVideoDescriptor(
                     video: video,
                     order: order,
+                    localKey: video.localKey,
                     normalizedStem: normalizedStem(for: video.displayName),
                     durationSeconds: durationSeconds
                 )
@@ -243,6 +244,14 @@ final class AgentViewModel: ObservableObject {
         descriptors: [LocalVideoDescriptor],
         usedOrders: inout Set<Int>
     ) -> LocalVideoMatch? {
+        if let responseLocalKey = responseVideo.localKey,
+           let localKeyMatch = descriptors.first(where: {
+               $0.localKey == responseLocalKey && !usedOrders.contains($0.order)
+           }) {
+            usedOrders.insert(localKeyMatch.order)
+            return LocalVideoMatch(descriptor: localKeyMatch, strategy: .localKey)
+        }
+
         let responseStem = normalizedStem(for: responseVideo.fileName)
 
         if let exactIndexMatch = descriptors.first(where: {
@@ -289,11 +298,11 @@ final class AgentViewModel: ObservableObject {
 
     private func describeResponseVideo(_ responseVideo: IngestVideoResponse) -> String {
         let identifiers = makeRemoteIdentifiers(for: responseVideo, fallbackOrder: responseVideo.index)
-        return "file=\(responseVideo.fileName) index=\(responseVideo.index) ids=[\(identifiers.joined(separator: ", "))]"
+        return "file=\(responseVideo.fileName) index=\(responseVideo.index) localKey=\(responseVideo.localKey ?? "nil") ids=[\(identifiers.joined(separator: ", "))]"
     }
 
     private func describeLocalDescriptor(_ descriptor: LocalVideoDescriptor) -> String {
-        "file=\(descriptor.video.displayName) order=\(descriptor.order) stem=\(descriptor.normalizedStem)"
+        "file=\(descriptor.video.displayName) order=\(descriptor.order) localKey=\(descriptor.localKey) remoteClipID=\(descriptor.video.remoteClipID ?? "nil") stem=\(descriptor.normalizedStem)"
     }
 
     private func openSocket(at url: URL) async throws {
@@ -905,6 +914,7 @@ private struct AgentClientMessage: Encodable {
 private struct LocalVideoDescriptor {
     let video: SelectedVideoAsset
     let order: Int
+    let localKey: String
     let normalizedStem: String
     let durationSeconds: Double
 }
@@ -915,6 +925,7 @@ private struct LocalVideoMatch {
 }
 
 private enum LocalVideoMatchStrategy: String {
+    case localKey
     case exactIndex
     case oneBasedIndex
     case fileNameStem

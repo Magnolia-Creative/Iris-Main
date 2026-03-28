@@ -95,4 +95,5 @@ enum PromptMessageStatus: Equatable {
 struct ImportedVideo: Equatable {
     let localURL: URL
     let displayName: String
+    let localKey: String
 }
