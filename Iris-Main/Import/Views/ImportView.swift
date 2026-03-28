@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreTransferable
 import PhotosUI
 import SwiftUI
@@ -101,7 +100,10 @@ struct ImportView: View {
             }
 
             if viewModel.model.screen == .processing || isTransitioningToAgent {
-                processingLayer(
+                ImportProcessingView(
+                    viewModel: viewModel,
+                    gridColumns: gridColumns,
+                    transitionNamespace: transitionNamespace,
                     promptIsSource: isProcessingPromptTransitionSource,
                     showsPrompt: !isTransitioningToAgent,
                     isTransitioningOut: isTransitioningToAgent
@@ -122,60 +124,6 @@ struct ImportView: View {
             .padding(.top, .sp3)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var processingContent: some View {
-        processingLayer(
-            promptIsSource: false,
-            showsPrompt: true,
-            isTransitioningOut: false
-        )
-    }
-
-    private func processingLayer(
-        promptIsSource: Bool,
-        showsPrompt: Bool,
-        isTransitioningOut: Bool
-    ) -> some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp6)) {
-            processingVideoSection
-                .offset(y: isTransitioningOut ? -20 : 0)
-                .opacity(isTransitioningOut ? 0 : 1)
-
-            Group {
-                if showsPrompt {
-                    processingPromptSection(promptIsSource: promptIsSource)
-                } else {
-                    processingPromptPlaceholder
-                }
-            }
-
-            Spacer(minLength: .spacing(.sp6))
-
-            processingStatusSection
-                .offset(y: isTransitioningOut ? 16 : 0)
-                .opacity(isTransitioningOut ? 0 : 1)
-        }
-        .padding(.horizontal, .sp4)
-        .padding(.top, .sp5)
-        .padding(.bottom, .sp6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task {
-            await viewModel.startProcessingIfNeeded()
-        }
-        .transition(.identity)
-    }
-
-    private var processingPromptPlaceholder: some View {
-        PromptCardContainer {
-            Color.clear
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ImportPromptCardMetrics.minHeight,
-                    alignment: .topLeading
-                )
-        }
-        .hidden()
     }
 
     private var agentLayer: some View {
@@ -326,48 +274,6 @@ struct ImportView: View {
         .frame(height: ctaContainerHeight)
     }
 
-    private var processingVideoSection: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-            Text("Imported clips")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-
-            LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {
-                ForEach(viewModel.model.videos) { video in
-                    ImportedVideoTile(videoURL: video.originalURL)
-                }
-            }
-        }
-        .matchedGeometryEffect(id: "videos-section", in: transitionNamespace)
-    }
-
-    private func processingPromptSection(promptIsSource: Bool = true) -> some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-            PromptCardContainer {
-                Text(viewModel.model.prompt.trimmedText)
-                    .typography(.body)
-                    .foregroundStyle(Color.ds.text)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: ImportPromptCardMetrics.minHeight,
-                        alignment: .topLeading
-                    )
-            }
-            .importPromptCardTransition(in: transitionNamespace, isSource: promptIsSource)
-        }
-    }
-
-    private var processingStatusSection: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-            Text(viewModel.model.isUploading ? "Processing clips, please wait." : viewModel.model.uploadStatusMessage)
-                .typography(.body)
-                .foregroundStyle(viewModel.model.uploadDidComplete ? Color.ds.text : Color.ds.textMuted)
-
-            ProcessingStatusBar(isComplete: viewModel.model.uploadDidComplete)
-                .frame(height: 14)
-        }
-    }
-
     private func importSelection(from items: [PhotosPickerItem]) async {
         guard !items.isEmpty else {
             await MainActor.run {
@@ -411,183 +317,6 @@ struct ImportView: View {
         withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) {
             viewModel.beginProcessing()
         }
-    }
-}
-
-private struct ProcessingStatusBar: View {
-    let isComplete: Bool
-    @State private var animationStartDate = Date()
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.ds.surface)
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.ds.border, lineWidth: 1)
-                    )
-
-                if isComplete {
-                    Capsule()
-                        .fill(Color.ds.accentBg)
-                        .frame(width: geometry.size.width)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
-                } else {
-                    TimelineView(.animation) { context in
-                        let phase = ProcessingIndicatorPhase(
-                            elapsedTime: context.date.timeIntervalSince(animationStartDate),
-                            containerWidth: geometry.size.width,
-                            containerHeight: geometry.size.height
-                        )
-
-                        ProcessingStatusIndicator(phase: phase)
-                            .frame(width: phase.width, height: geometry.size.height)
-                            .offset(x: phase.offsetX)
-                    }
-                }
-            }
-        }
-        .clipShape(Capsule())
-        .onAppear {
-            guard !isComplete else { return }
-            animationStartDate = .now
-        }
-        .onChange(of: isComplete) { _, newValue in
-            guard !newValue else { return }
-            animationStartDate = .now
-        }
-    }
-}
-
-private struct ProcessingIndicatorPhase {
-    let width: CGFloat
-    let offsetX: CGFloat
-    let opacity: Double
-    let glowOpacity: Double
-
-    init(elapsedTime: TimeInterval, containerWidth: CGFloat, containerHeight: CGFloat) {
-        let cycleDuration = 2.8
-        let edgeHoldDuration = 0.18
-        let travelDuration = (cycleDuration - (edgeHoldDuration * 2)) / 2
-
-        let indicatorDiameter = max(containerHeight, 8)
-        let maxIndicatorWidth = min(
-            max(containerWidth * 0.32, indicatorDiameter * 3.4),
-            max(containerWidth, indicatorDiameter)
-        )
-
-        let cycleTime = elapsedTime.truncatingRemainder(dividingBy: cycleDuration)
-        let positionProgress: CGFloat
-        let stretchProgress: CGFloat
-
-        switch cycleTime {
-        case 0..<edgeHoldDuration:
-            positionProgress = 0
-            stretchProgress = 0
-        case edgeHoldDuration..<(edgeHoldDuration + travelDuration):
-            let progress = (cycleTime - edgeHoldDuration) / travelDuration
-            positionProgress = Self.easeInOut(progress)
-            stretchProgress = Self.stretch(for: progress)
-        case (edgeHoldDuration + travelDuration)..<(edgeHoldDuration * 2 + travelDuration):
-            positionProgress = 1
-            stretchProgress = 0
-        default:
-            let progress = (cycleTime - ((edgeHoldDuration * 2) + travelDuration)) / travelDuration
-            positionProgress = 1 - Self.easeInOut(progress)
-            stretchProgress = Self.stretch(for: progress)
-        }
-
-        width = indicatorDiameter + ((maxIndicatorWidth - indicatorDiameter) * stretchProgress)
-
-        let leftCenter = indicatorDiameter / 2
-        let rightCenter = max(containerWidth - leftCenter, leftCenter)
-        let centerX = leftCenter + ((rightCenter - leftCenter) * positionProgress)
-        offsetX = min(max(centerX - (width / 2), 0), max(containerWidth - width, 0))
-
-        opacity = 0.88 + (Double(stretchProgress) * 0.12)
-        glowOpacity = 0.24 + (Double(stretchProgress) * 0.18)
-    }
-
-    private static func easeInOut(_ progress: Double) -> CGFloat {
-        let clamped = min(max(progress, 0), 1)
-        return CGFloat(0.5 - (cos(clamped * .pi) * 0.5))
-    }
-
-    private static func stretch(for progress: Double) -> CGFloat {
-        let clamped = min(max(progress, 0), 1)
-        return CGFloat(sin(clamped * .pi))
-    }
-}
-
-private struct ProcessingStatusIndicator: View {
-    let phase: ProcessingIndicatorPhase
-
-    var body: some View {
-        ZStack {
-            Capsule()
-                .fill(Color.ds.accentBg.opacity(phase.glowOpacity))
-                .blur(radius: 8)
-                .padding(.vertical, 1)
-
-            Capsule()
-                .fill(Color.ds.accentBg)
-
-            Capsule()
-                .stroke(Color.white.opacity(0.28), lineWidth: 0.9)
-        }
-        .opacity(phase.opacity)
-    }
-}
-
-private struct ImportedVideoTile: View {
-    let videoURL: URL
-    @State private var thumbnail: CGImage?
-
-    var body: some View {
-        ZStack {
-            Group {
-                if let thumbnail {
-                    Image(decorative: thumbnail, scale: 1, orientation: .up)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    RoundedRectangle(cornerRadius: .spacing(.sp3))
-                        .fill(Color.ds.surface.opacity(0.45))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                                .stroke(Color.ds.border, lineWidth: 1.5)
-                        )
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(
-                RoundedRectangle(cornerRadius: .spacing(.sp3))
-                    .stroke(Color.ds.border, lineWidth: 1.5)
-            )
-        }
-        .frame(minWidth: 0, maxWidth: .infinity)
-        .frame(height: 136)
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
-        .task(id: videoURL) {
-            thumbnail = await Self.generateThumbnail(for: videoURL)
-        }
-    }
-
-    private static func generateThumbnail(for videoURL: URL) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) {
-            let asset = AVURLAsset(url: videoURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 600, height: 600)
-            let requestTime = CMTime(seconds: 0.1, preferredTimescale: 600)
-
-            return await withCheckedContinuation { continuation in
-                generator.generateCGImageAsynchronously(for: requestTime) { image, _, error in
-                    continuation.resume(returning: error == nil ? image : nil)
-                }
-            }
-        }.value
     }
 }
 

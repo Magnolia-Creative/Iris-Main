@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 enum ImportTransitionKey {
@@ -6,6 +7,7 @@ enum ImportTransitionKey {
 
 enum ImportPromptCardMetrics {
     static let minHeight: CGFloat = 144
+    static let compactMaxWidth: CGFloat = 360
 }
 
 extension View {
@@ -21,9 +23,14 @@ extension View {
 }
 
 struct PromptCardContainer<Content: View>: View {
+    let fillsWidth: Bool
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(
+        fillsWidth: Bool = true,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.fillsWidth = fillsWidth
         self.content = content()
     }
 
@@ -32,13 +39,29 @@ struct PromptCardContainer<Content: View>: View {
             content
         }
         .padding(.sp3)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: fillsWidth ? .infinity : ImportPromptCardMetrics.compactMaxWidth,
+            alignment: .leading
+        )
         .background(Color.ds.surface)
         .overlay(
             RoundedRectangle(cornerRadius: .spacing(.sp3))
                 .stroke(Color.ds.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+}
+
+struct ImportPromptDisplayCard: View {
+    let text: String
+
+    var body: some View {
+        PromptCardContainer(fillsWidth: false) {
+            Text(text)
+                .typography(.body)
+                .foregroundStyle(Color.ds.text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -74,5 +97,56 @@ struct AgentSurfaceCard<Content: View>: View {
                 .padding(.sp3)
         }
         .frame(minHeight: minHeight)
+    }
+}
+
+struct ImportedVideoTile: View {
+    let videoURL: URL
+    @State private var thumbnail: CGImage?
+
+    var body: some View {
+        ZStack {
+            Group {
+                if let thumbnail {
+                    Image(decorative: thumbnail, scale: 1, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    RoundedRectangle(cornerRadius: .spacing(.sp3))
+                        .fill(Color.ds.surface.opacity(0.45))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                                .stroke(Color.ds.border, lineWidth: 1.5)
+                        )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(
+                RoundedRectangle(cornerRadius: .spacing(.sp3))
+                    .stroke(Color.ds.border, lineWidth: 1.5)
+            )
+        }
+        .frame(minWidth: 0, maxWidth: .infinity)
+        .frame(height: 136)
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+        .task(id: videoURL) {
+            thumbnail = await Self.generateThumbnail(for: videoURL)
+        }
+    }
+
+    private static func generateThumbnail(for videoURL: URL) async -> CGImage? {
+        await Task.detached(priority: .userInitiated) {
+            let asset = AVURLAsset(url: videoURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 600, height: 600)
+            let requestTime = CMTime(seconds: 0.1, preferredTimescale: 600)
+
+            return await withCheckedContinuation { continuation in
+                generator.generateCGImageAsynchronously(for: requestTime) { image, _, error in
+                    continuation.resume(returning: error == nil ? image : nil)
+                }
+            }
+        }.value
     }
 }

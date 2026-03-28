@@ -37,24 +37,13 @@ struct AgentView: View {
     }
 
     private var promptSection: some View {
-        PromptCardContainer {
-            Text(viewModel.model.promptText)
-                .typography(.body)
-                .foregroundStyle(Color.ds.text)
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ImportPromptCardMetrics.minHeight,
-                    alignment: .topLeading
-                )
-        }
+        ImportPromptDisplayCard(text: viewModel.model.promptText)
         .importPromptCardTransition(in: transitionNamespace, isSource: promptIsSource)
     }
 
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp2)) {
             HStack(spacing: .spacing(.sp2)) {
-                AgentStatusPulse(stage: viewModel.model.stage)
-
                 Text("Current status")
                     .typography(.bodySmall)
                     .foregroundStyle(Color.ds.textMuted)
