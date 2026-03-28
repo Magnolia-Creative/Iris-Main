@@ -26,6 +26,7 @@ struct IngestUploadService {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120
 
         let body = try makeMultipartBody(assets: assets, boundary: boundary)
         let (data, response) = try await session.upload(for: request, from: body)

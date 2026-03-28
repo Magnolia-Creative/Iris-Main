@@ -17,6 +17,7 @@ struct AgentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .navigationBarBackButtonHidden(true)
         .padding(.horizontal, .sp4)
         .padding(.top, .sp2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

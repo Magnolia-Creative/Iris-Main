@@ -28,6 +28,7 @@ struct ImportProcessingView: View {
                 .offset(y: isTransitioningOut ? 16 : 0)
                 .opacity(isTransitioningOut ? 0 : 1)
         }
+        .navigationBarBackButtonHidden(true)
         .padding(.horizontal, .sp4)
         .padding(.top, .sp5)
         .padding(.bottom, .sp6)
