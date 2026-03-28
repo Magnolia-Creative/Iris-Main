@@ -1,7 +1,52 @@
 import Foundation
 
+struct FlexibleIdentifier: Codable, Hashable, CustomStringConvertible {
+    let rawValue: String
+
+    init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if let stringValue = try? container.decode(String.self) {
+            rawValue = stringValue
+            return
+        }
+
+        if let intValue = try? container.decode(Int.self) {
+            rawValue = String(intValue)
+            return
+        }
+
+        if let doubleValue = try? container.decode(Double.self) {
+            rawValue = String(doubleValue)
+            return
+        }
+
+        throw DecodingError.typeMismatch(
+            String.self,
+            .init(codingPath: decoder.codingPath, debugDescription: "Expected a string or number identifier.")
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    var description: String {
+        rawValue
+    }
+
+    var intValue: Int? {
+        Int(rawValue)
+    }
+}
+
 struct IngestResponse: Decodable {
-    let sessionID: Int
+    let sessionID: FlexibleIdentifier
     let sessionName: String
     let sessionStatus: String
     let uploadedCount: Int
@@ -18,10 +63,10 @@ struct IngestResponse: Decodable {
 
 struct IngestVideoResponse: Decodable, Identifiable {
     let index: Int
-    let sessionID: Int
-    let projectID: Int?
-    let clipID: Int
-    let transcriptID: Int?
+    let sessionID: FlexibleIdentifier
+    let projectID: FlexibleIdentifier?
+    let clipID: FlexibleIdentifier
+    let transcriptID: FlexibleIdentifier?
     let fileName: String
     let mimeType: String
     let fileExtension: String
@@ -31,7 +76,7 @@ struct IngestVideoResponse: Decodable, Identifiable {
     let videoReport: VideoReport?
     let clipMeta: ClipMeta?
 
-    var id: Int { clipID }
+    var id: String { clipID.rawValue }
 
     enum CodingKeys: String, CodingKey {
         case index
@@ -148,7 +193,7 @@ struct TranscriptStats: Decodable {
 }
 
 struct ClipMeta: Decodable {
-    let clipID: String?
+    let clipID: FlexibleIdentifier?
     let isSplit: Bool?
     let durationSeconds: Double?
     let windowCount: Int?

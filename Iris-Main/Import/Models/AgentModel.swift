@@ -3,34 +3,98 @@ import Foundation
 struct AgentModel {
     var promptText = ""
     var stage: AgentStage = .idle
-    var statusMessage = "Reviewing the prompt and planning the first sequence."
-    var extractionLanes: [AgentExtractionLane] = []
+    var statusMessage = "Connecting to the editing session."
+    var extractionClips: [AgentExtractionClip] = []
     var timelineClips: [AgentTimelineClip] = []
+    var timelineNotes: [String] = []
+    var feedbackDraft = ""
+    var sessionID: String?
+    var projectID: String?
+    var errorMessage: String?
+    var isAwaitingUserInput = false
+    var isConnected = false
+    var isSendingFeedback = false
     var hasStarted = false
+
+    var canApproveTimeline: Bool {
+        isAwaitingUserInput && isConnected && !isSendingFeedback
+    }
+
+    var canSubmitFeedback: Bool {
+        isAwaitingUserInput && isConnected && !isSendingFeedback && !feedbackDraft.trimmedForTransport.isEmpty
+    }
 }
 
 enum AgentStage: Equatable {
     case idle
-    case reviewingPrompt
+    case connecting
     case extractingClips
     case assemblingTimeline
-    case refiningSequence
+    case waitingForFeedback
+    case completed
+    case error
+    case closed
 }
 
-struct AgentExtractionLane: Identifiable, Equatable {
-    let id = UUID()
-    var segments: [AgentExtractionSegment]
-    let highlightIndices: Set<Int>
+struct AgentSourceClip: Identifiable, Equatable {
+    let id: UUID
+    let displayName: String
+    let videoURL: URL
+    let durationSeconds: Double
+    let order: Int
+    let remoteIdentifiers: [String]
 }
 
-struct AgentExtractionSegment: Identifiable, Equatable {
-    let id = UUID()
-    let widthRatio: Double
-    var isHighlighted: Bool
+struct AgentExtractionClip: Identifiable, Equatable {
+    let id: UUID
+    let displayName: String
+    let videoURL: URL
+    let durationSeconds: Double
+    let order: Int
+    let remoteClipID: String
+    var summary: String?
+    var ranges: [AgentClipRange]
+    var isAnalyzing = false
+    var isDropped = false
+
+    var selectedDurationSeconds: Double {
+        ranges.reduce(0) { partialResult, range in
+            partialResult + max(range.outSec - range.inSec, 0)
+        }
+    }
+
+    var hasExtractedRanges: Bool {
+        !ranges.isEmpty
+    }
+}
+
+struct AgentClipRange: Identifiable, Equatable {
+    let id: String
+    let inSec: Double
+    let outSec: Double
+    let reason: String
+
+    init(inSec: Double, outSec: Double, reason: String) {
+        self.inSec = inSec
+        self.outSec = outSec
+        self.reason = reason
+        id = "\(inSec)-\(outSec)-\(reason)"
+    }
 }
 
 struct AgentTimelineClip: Identifiable, Equatable {
-    let id = UUID()
-    let widthRatio: Double
-    let emphasis: Double
+    let id: String
+    let displayName: String
+    let videoURL: URL
+    let remoteClipID: String
+    let inSec: Double
+    let outSec: Double
+    let rationale: String
+    let segmentDurationSeconds: Double
+}
+
+extension String {
+    var trimmedForTransport: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

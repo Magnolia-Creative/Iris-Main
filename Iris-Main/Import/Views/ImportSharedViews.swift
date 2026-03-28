@@ -1,4 +1,3 @@
-import AVFoundation
 import SwiftUI
 
 enum ImportTransitionKey {
@@ -130,23 +129,7 @@ struct ImportedVideoTile: View {
         .frame(height: 136)
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
         .task(id: videoURL) {
-            thumbnail = await Self.generateThumbnail(for: videoURL)
+            thumbnail = await VideoAssetPreviewLoader.generateThumbnail(for: videoURL)
         }
-    }
-
-    private static func generateThumbnail(for videoURL: URL) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) {
-            let asset = AVURLAsset(url: videoURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 600, height: 600)
-            let requestTime = CMTime(seconds: 0.1, preferredTimescale: 600)
-
-            return await withCheckedContinuation { continuation in
-                generator.generateCGImageAsynchronously(for: requestTime) { image, _, error in
-                    continuation.resume(returning: error == nil ? image : nil)
-                }
-            }
-        }.value
     }
 }

@@ -61,7 +61,9 @@ struct ImportView: View {
 
             agentViewModel.configure(
                 promptText: viewModel.model.prompt.trimmedText,
-                videos: viewModel.model.videos
+                videos: viewModel.model.videos,
+                ingestResponse: viewModel.model.parsedResponse,
+                ingestEndpoint: viewModel.endpoint
             )
 
             Task { @MainActor in

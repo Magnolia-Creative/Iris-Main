@@ -1,21 +1,52 @@
-import Foundation
-import SwiftUI
 import Combine
+import Foundation
 
 @MainActor
 final class AgentViewModel: ObservableObject {
     @Published private(set) var model = AgentModel()
 
-    private var sourceVideos: [SelectedVideoAsset] = []
+    private let urlSession: URLSession
+    private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
 
-    func configure(promptText: String, videos: [SelectedVideoAsset]) {
+    private var sourceVideos: [SelectedVideoAsset] = []
+    private var ingestResponse: IngestResponse?
+    private var ingestEndpoint: URL?
+    private var sourceClipsByRemoteID: [String: AgentSourceClip] = [:]
+    private var webSocketTask: URLSessionWebSocketTask?
+    private var receiveTask: Task<Void, Never>?
+
+    init(urlSession: URLSession = .shared) {
+        self.urlSession = urlSession
+    }
+
+    func configure(
+        promptText: String,
+        videos: [SelectedVideoAsset],
+        ingestResponse: IngestResponse?,
+        ingestEndpoint: URL
+    ) {
+        closeSocket(sendDoneMessage: false)
+
         sourceVideos = videos
+        self.ingestResponse = ingestResponse
+        self.ingestEndpoint = ingestEndpoint
+        sourceClipsByRemoteID = [:]
+
         model = AgentModel(
             promptText: promptText,
             stage: .idle,
-            statusMessage: "Reviewing the prompt and planning the first sequence.",
-            extractionLanes: [],
+            statusMessage: "Connecting to the editing session.",
+            extractionClips: [],
             timelineClips: [],
+            timelineNotes: [],
+            feedbackDraft: "",
+            sessionID: ingestResponse?.sessionID.rawValue,
+            projectID: nil,
+            errorMessage: nil,
+            isAwaitingUserInput: false,
+            isConnected: false,
+            isSendingFeedback: false,
             hasStarted: false
         )
     }
@@ -24,113 +55,665 @@ final class AgentViewModel: ObservableObject {
         guard !model.hasStarted else { return }
 
         model.hasStarted = true
+        model.stage = .connecting
+        model.errorMessage = nil
+        model.statusMessage = "Preparing clips and opening the live session."
 
-        await transition(
-            to: .reviewingPrompt,
-            statusMessage: "Reading the prompt and deciding how the edit should open."
-        )
-        await pause(milliseconds: 800)
+        do {
+            let response = try requireIngestResponse()
+            sourceClipsByRemoteID = await buildSourceClipLookup(from: sourceVideos, response: response)
 
-        await revealExtractionLanes()
-        await pause(milliseconds: 300)
-
-        await transition(
-            to: .assemblingTimeline,
-            statusMessage: "Pulling the strongest moments into a rough sequence."
-        )
-        await revealTimeline()
-        await pause(milliseconds: 420)
-
-        await transition(
-            to: .refiningSequence,
-            statusMessage: "Balancing pacing, transitions, and the overall rhythm of the cut."
-        )
-    }
-
-    private func revealExtractionLanes() async {
-        let baseLanes = makeExtractionLanes(from: sourceVideos)
-
-        withAnimation(.spring(response: 0.7, dampingFraction: 0.9)) {
-            model.stage = .extractingClips
-            model.extractionLanes = baseLanes.map { lane in
-                AgentExtractionLane(
-                    segments: lane.segments.map {
-                        AgentExtractionSegment(widthRatio: $0.widthRatio, isHighlighted: false)
-                    },
-                    highlightIndices: lane.highlightIndices
-                )
+            guard let ingestEndpoint,
+                  let socketURL = AppConfiguration.agentWebSocketEndpoint(
+                      sessionID: response.sessionID.rawValue,
+                      basedOn: ingestEndpoint
+                  ) else {
+                throw AgentSessionError.invalidSessionEndpoint
             }
-        }
 
-        for index in model.extractionLanes.indices {
-            await pause(milliseconds: 220)
-
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) {
-                highlightLane(at: index)
-            }
+            try await openSocket(at: socketURL)
+            try await sendMessage(.startSession(prompt: model.promptText))
+        } catch {
+            applyError(error)
         }
     }
 
-    private func revealTimeline() async {
-        let clips = makeTimelineClips(from: sourceVideos)
+    func submitFeedback() async {
+        guard model.canSubmitFeedback else { return }
 
-        for clip in clips {
-            await pause(milliseconds: 180)
+        let prompt = model.feedbackDraft.trimmedForTransport
+        model.feedbackDraft = ""
+        model.isAwaitingUserInput = false
+        model.isSendingFeedback = true
+        model.errorMessage = nil
+        model.stage = .assemblingTimeline
+        model.statusMessage = "Sending your timeline changes back to Iris."
 
-            withAnimation(.spring(response: 0.52, dampingFraction: 0.88)) {
-                model.timelineClips.append(clip)
-            }
+        do {
+            try await sendMessage(.reprompt(prompt: prompt))
+        } catch {
+            applyError(error)
         }
     }
 
-    private func transition(to stage: AgentStage, statusMessage: String) async {
-        withAnimation(.spring(response: 0.65, dampingFraction: 0.9)) {
-            model.stage = stage
+    func approveTimeline() async {
+        guard model.canApproveTimeline else { return }
+
+        model.isAwaitingUserInput = false
+        model.isSendingFeedback = true
+        model.errorMessage = nil
+        model.stage = .assemblingTimeline
+        model.statusMessage = "Submitting approval and finalizing the session."
+
+        do {
+            try await sendMessage(.reprompt(prompt: "approve"))
+        } catch {
+            applyError(error)
+        }
+    }
+
+    func updateFeedbackDraft(_ text: String) {
+        model.feedbackDraft = text
+    }
+
+    func closeIfNeeded() async {
+        closeSocket(sendDoneMessage: true)
+    }
+
+    private func requireIngestResponse() throws -> IngestResponse {
+        guard let ingestResponse else {
+            throw AgentSessionError.missingSessionData
+        }
+
+        return ingestResponse
+    }
+
+    private func buildSourceClipLookup(
+        from videos: [SelectedVideoAsset],
+        response: IngestResponse
+    ) async -> [String: AgentSourceClip] {
+        var lookup: [String: AgentSourceClip] = [:]
+
+        for (order, video) in videos.enumerated() {
+            let responseVideo = response.videos.first(where: { $0.index == order }) ?? response.videos[safe: order]
+            let durationSeconds = await VideoAssetPreviewLoader.loadDuration(for: video.originalURL)
+            let identifiers = makeRemoteIdentifiers(for: responseVideo, fallbackOrder: order)
+
+            let sourceClip = AgentSourceClip(
+                id: video.id,
+                displayName: video.displayName,
+                videoURL: video.originalURL,
+                durationSeconds: durationSeconds,
+                order: order,
+                remoteIdentifiers: identifiers
+            )
+
+            for identifier in identifiers {
+                lookup[identifier] = sourceClip
+            }
+        }
+
+        return lookup
+    }
+
+    private func makeRemoteIdentifiers(
+        for responseVideo: IngestVideoResponse?,
+        fallbackOrder: Int
+    ) -> [String] {
+        var identifiers: [String] = []
+
+        func appendUnique(_ value: String?) {
+            guard let value, !value.isEmpty, !identifiers.contains(value) else { return }
+            identifiers.append(value)
+        }
+
+        appendUnique(responseVideo?.clipMeta?.clipID?.rawValue)
+        appendUnique(responseVideo?.clipID.rawValue)
+
+        if identifiers.isEmpty {
+            identifiers.append("local-\(fallbackOrder)")
+        }
+
+        return identifiers
+    }
+
+    private func openSocket(at url: URL) async throws {
+        closeSocket(sendDoneMessage: false)
+
+        let task = urlSession.webSocketTask(with: url)
+        webSocketTask = task
+        task.resume()
+
+        model.isConnected = true
+        receiveTask = Task { [weak self] in
+            await self?.receiveMessages()
+        }
+    }
+
+    private func closeSocket(sendDoneMessage: Bool) {
+        let task = webSocketTask
+        let shouldSendDone = sendDoneMessage && model.isConnected
+
+        receiveTask?.cancel()
+        receiveTask = nil
+        webSocketTask = nil
+
+        if shouldSendDone, let task {
+            Task {
+                let payload = try? encoder.encode(AgentClientMessage.done)
+                if let payload, let text = String(data: payload, encoding: .utf8) {
+                    try? await task.send(.string(text))
+                }
+                task.cancel(with: .normalClosure, reason: nil)
+            }
+        } else {
+            task?.cancel(with: .goingAway, reason: nil)
+        }
+
+        model.isConnected = false
+        model.isSendingFeedback = false
+        model.isAwaitingUserInput = false
+    }
+
+    private func sendMessage(_ message: AgentClientMessage) async throws {
+        guard let webSocketTask else {
+            throw AgentSessionError.disconnected
+        }
+
+        let data = try encoder.encode(message)
+        guard let stringPayload = String(data: data, encoding: .utf8) else {
+            throw AgentSessionError.encodingFailed
+        }
+
+        try await webSocketTask.send(.string(stringPayload))
+    }
+
+    private func receiveMessages() async {
+        guard let webSocketTask else { return }
+
+        do {
+            while !Task.isCancelled {
+                let message = try await webSocketTask.receive()
+
+                switch message {
+                case .string(let text):
+                    try handleMessageData(Data(text.utf8))
+                case .data(let data):
+                    try handleMessageData(data)
+                @unknown default:
+                    break
+                }
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            applyError(error)
+        }
+    }
+
+    private func handleMessageData(_ data: Data) throws {
+        let event = try AgentSocketEvent.decode(from: data, using: decoder)
+
+        switch event {
+        case .sessionStarted(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.projectID = payload.projectID?.rawValue
+            model.stage = .connecting
+            model.errorMessage = nil
+            model.statusMessage = "Session started. Reviewing uploaded clips."
+
+        case .sessionResumed(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.stage = .assemblingTimeline
+            model.errorMessage = nil
+            model.isSendingFeedback = false
+            model.statusMessage = "Timeline refinement resumed for iteration \(payload.iterationCount)."
+
+        case .timelineUpdate(let payload):
+            model.timelineClips = makeTimelineClips(from: payload.timeline)
+            model.timelineNotes = payload.timelineNotes
+            model.stage = .assemblingTimeline
+            model.errorMessage = nil
+            model.isSendingFeedback = false
+
+            if model.statusMessage.trimmedForTransport.isEmpty {
+                model.statusMessage = "Draft timeline ready for review."
+            }
+
+        case .waitingForUser(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.projectID = payload.projectID?.rawValue ?? model.projectID
+            model.stage = .waitingForFeedback
+            model.errorMessage = nil
+            model.isAwaitingUserInput = true
+            model.isSendingFeedback = false
+            model.statusMessage = "Draft timeline ready. Approve it or request changes."
+
+        case .sessionComplete(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.projectID = payload.projectID?.rawValue ?? model.projectID
+            model.timelineClips = makeTimelineClips(from: payload.timeline)
+            model.stage = .completed
+            model.errorMessage = nil
+            model.isAwaitingUserInput = false
+            model.isSendingFeedback = false
+            model.statusMessage = "Timeline approved. Session complete."
+
+        case .nodeStart(let payload):
+            handleNodeStart(payload)
+
+        case .nodeComplete(let payload):
+            handleNodeComplete(payload)
+
+        case .statusUpdate(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.statusMessage = payload.statusMessage
+            model.errorMessage = nil
+
+            if payload.node == "clip_cleanup" {
+                model.stage = .extractingClips
+            } else if model.isAwaitingUserInput {
+                model.stage = .waitingForFeedback
+            }
+
+        case .sessionClosed(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.isConnected = false
+            model.isAwaitingUserInput = false
+            model.isSendingFeedback = false
+
+            if model.stage != .completed {
+                model.stage = .closed
+                model.statusMessage = "Session closed."
+            }
+
+        case .error(let payload):
+            applyErrorMessage(payload.detail)
+
+        case .unknown(let type):
+            print("Ignoring unknown websocket event type: \(type)")
+        }
+    }
+
+    private func handleNodeStart(_ event: AgentNodeLifecycleEvent) {
+        guard event.node == "clip_cleanup", let payload = event.payload else { return }
+
+        for inputClip in payload.inputClips ?? [] {
+            guard let sourceClip = sourceClipsByRemoteID[inputClip.clipID.rawValue] else { continue }
+
+            upsertExtractionClip(for: sourceClip, remoteClipID: inputClip.clipID.rawValue) { clip in
+                clip.summary = inputClip.summary?.trimmedForTransport
+                clip.isAnalyzing = true
+                clip.isDropped = false
+            }
+        }
+
+        model.extractionClips.sort(by: { $0.order < $1.order })
+        model.stage = .extractingClips
+
+        if let statusMessage = payload.statusMessage, !statusMessage.trimmedForTransport.isEmpty {
             model.statusMessage = statusMessage
         }
     }
 
-    private func pause(milliseconds: UInt64) async {
-        try? await Task.sleep(nanoseconds: milliseconds * 1_000_000)
-    }
+    private func handleNodeComplete(_ event: AgentNodeLifecycleEvent) {
+        guard event.node == "clip_cleanup", let payload = event.payload else { return }
 
-    private func highlightLane(at index: Int) {
-        guard model.extractionLanes.indices.contains(index) else { return }
+        let selectedClipIDs = Set((payload.selectedClipIDs ?? []).map(\.rawValue))
+        let droppedClipIDs = Set((payload.droppedClipIDs ?? []).map(\.rawValue))
 
-        for segmentIndex in model.extractionLanes[index].segments.indices {
-            model.extractionLanes[index].segments[segmentIndex].isHighlighted =
-                model.extractionLanes[index].highlightIndices.contains(segmentIndex)
+        for clipRange in payload.clipRanges ?? [] {
+            guard let sourceClip = sourceClipsByRemoteID[clipRange.clipID.rawValue] else { continue }
+
+            upsertExtractionClip(for: sourceClip, remoteClipID: clipRange.clipID.rawValue) { clip in
+                clip.ranges = clipRange.ranges
+                    .map { AgentClipRange(inSec: $0.inSec, outSec: $0.outSec, reason: $0.reason) }
+                    .sorted(by: { $0.inSec < $1.inSec })
+                clip.isDropped = droppedClipIDs.contains(clipRange.clipID.rawValue)
+                clip.isAnalyzing = false
+            }
+        }
+
+        for clipID in selectedClipIDs {
+            guard let sourceClip = sourceClipsByRemoteID[clipID] else { continue }
+
+            upsertExtractionClip(for: sourceClip, remoteClipID: clipID) { clip in
+                clip.isDropped = false
+                clip.isAnalyzing = false
+            }
+        }
+
+        for clipID in droppedClipIDs {
+            guard let sourceClip = sourceClipsByRemoteID[clipID] else { continue }
+
+            upsertExtractionClip(for: sourceClip, remoteClipID: clipID) { clip in
+                clip.ranges = []
+                clip.isDropped = true
+                clip.isAnalyzing = false
+            }
+        }
+
+        model.extractionClips.sort(by: { $0.order < $1.order })
+        model.stage = .assemblingTimeline
+
+        if let statusMessage = payload.statusMessage, !statusMessage.trimmedForTransport.isEmpty {
+            model.statusMessage = statusMessage
         }
     }
 
-    private func makeExtractionLanes(from videos: [SelectedVideoAsset]) -> [AgentExtractionLane] {
-        let defaultPatterns: [([Double], Set<Int>)] = [
-            ([0.16, 0.10, 0.18, 0.12, 0.17, 0.09, 0.18], [0, 2, 4, 6]),
-            ([0.14, 0.11, 0.16, 0.15, 0.12, 0.14, 0.18], [1, 3, 5]),
-            ([0.18, 0.09, 0.15, 0.10, 0.18, 0.13, 0.17], [0, 3, 4, 6]),
-            ([0.12, 0.16, 0.10, 0.17, 0.13, 0.12, 0.20], [1, 2, 4, 6]),
-        ]
+    private func makeTimelineClips(from payload: [AgentTimelineEntry]) -> [AgentTimelineClip] {
+        payload.enumerated().compactMap { index, entry in
+            guard let sourceClip = sourceClipsByRemoteID[entry.clipID.rawValue] else {
+                print("Unable to match remote clip id \(entry.clipID.rawValue) to a local asset.")
+                return nil
+            }
 
-        let sourceCount = max(videos.count, 3)
+            let segmentDurationSeconds = max(entry.outSec - entry.inSec, 0.1)
+            let id = "\(sourceClip.id.uuidString)-\(index)-\(entry.inSec)-\(entry.outSec)"
 
-        return (0 ..< sourceCount).map { index in
-            let pattern = defaultPatterns[index % defaultPatterns.count]
-            return AgentExtractionLane(
-                segments: pattern.0.map { AgentExtractionSegment(widthRatio: $0, isHighlighted: false) },
-                highlightIndices: pattern.1
+            return AgentTimelineClip(
+                id: id,
+                displayName: sourceClip.displayName,
+                videoURL: sourceClip.videoURL,
+                remoteClipID: entry.clipID.rawValue,
+                inSec: entry.inSec,
+                outSec: entry.outSec,
+                rationale: entry.rationale,
+                segmentDurationSeconds: segmentDurationSeconds
             )
         }
     }
 
-    private func makeTimelineClips(from videos: [SelectedVideoAsset]) -> [AgentTimelineClip] {
-        let basePattern: [(Double, Double)] = [
-            (0.24, 0.55),
-            (0.34, 0.92),
-            (0.18, 0.7),
-            (0.12, 0.46),
-        ]
+    private func upsertExtractionClip(
+        for sourceClip: AgentSourceClip,
+        remoteClipID: String,
+        update: (inout AgentExtractionClip) -> Void
+    ) {
+        if let existingIndex = model.extractionClips.firstIndex(where: { $0.id == sourceClip.id }) {
+            update(&model.extractionClips[existingIndex])
+            return
+        }
 
-        let clipCount = min(max(videos.count + 1, 3), basePattern.count)
-        return basePattern.prefix(clipCount).map { AgentTimelineClip(widthRatio: $0.0, emphasis: $0.1) }
+        var clip = AgentExtractionClip(
+            id: sourceClip.id,
+            displayName: sourceClip.displayName,
+            videoURL: sourceClip.videoURL,
+            durationSeconds: sourceClip.durationSeconds,
+            order: sourceClip.order,
+            remoteClipID: remoteClipID,
+            summary: nil,
+            ranges: [],
+            isAnalyzing: false,
+            isDropped: false
+        )
+
+        update(&clip)
+        model.extractionClips.append(clip)
+    }
+
+    private func applyError(_ error: Error) {
+        applyErrorMessage(error.localizedDescription)
+    }
+
+    private func applyErrorMessage(_ message: String) {
+        receiveTask?.cancel()
+        receiveTask = nil
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+
+        model.stage = .error
+        model.errorMessage = message
+        model.statusMessage = message
+        model.isConnected = false
+        model.isAwaitingUserInput = false
+        model.isSendingFeedback = false
+    }
+}
+
+private enum AgentSessionError: LocalizedError {
+    case missingSessionData
+    case invalidSessionEndpoint
+    case disconnected
+    case encodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .missingSessionData:
+            return "The upload response did not include the session data required to open the agent view."
+        case .invalidSessionEndpoint:
+            return "The websocket session URL could not be created from the current app configuration."
+        case .disconnected:
+            return "The live agent session is not connected."
+        case .encodingFailed:
+            return "The websocket message could not be encoded."
+        }
+    }
+}
+
+private struct AgentSocketEnvelope: Decodable {
+    let type: String
+}
+
+private enum AgentSocketEvent {
+    case sessionStarted(AgentSessionStartedEvent)
+    case sessionResumed(AgentSessionResumedEvent)
+    case sessionComplete(AgentSessionCompleteEvent)
+    case sessionClosed(AgentSessionClosedEvent)
+    case timelineUpdate(AgentTimelineUpdateEvent)
+    case waitingForUser(AgentWaitingForUserEvent)
+    case nodeStart(AgentNodeLifecycleEvent)
+    case nodeComplete(AgentNodeLifecycleEvent)
+    case statusUpdate(AgentStatusUpdateEvent)
+    case error(AgentErrorEvent)
+    case unknown(String)
+
+    static func decode(from data: Data, using decoder: JSONDecoder) throws -> AgentSocketEvent {
+        let envelope = try decoder.decode(AgentSocketEnvelope.self, from: data)
+
+        switch envelope.type {
+        case "session_started":
+            return .sessionStarted(try decoder.decode(AgentSessionStartedEvent.self, from: data))
+        case "session_resumed":
+            return .sessionResumed(try decoder.decode(AgentSessionResumedEvent.self, from: data))
+        case "session_complete":
+            return .sessionComplete(try decoder.decode(AgentSessionCompleteEvent.self, from: data))
+        case "session_closed":
+            return .sessionClosed(try decoder.decode(AgentSessionClosedEvent.self, from: data))
+        case "timeline_update":
+            return .timelineUpdate(try decoder.decode(AgentTimelineUpdateEvent.self, from: data))
+        case "waiting_for_user":
+            return .waitingForUser(try decoder.decode(AgentWaitingForUserEvent.self, from: data))
+        case "node_start":
+            return .nodeStart(try decoder.decode(AgentNodeLifecycleEvent.self, from: data))
+        case "node_complete":
+            return .nodeComplete(try decoder.decode(AgentNodeLifecycleEvent.self, from: data))
+        case "status_update":
+            return .statusUpdate(try decoder.decode(AgentStatusUpdateEvent.self, from: data))
+        case "error":
+            return .error(try decoder.decode(AgentErrorEvent.self, from: data))
+        default:
+            return .unknown(envelope.type)
+        }
+    }
+}
+
+private struct AgentSessionStartedEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let projectID: FlexibleIdentifier?
+    let uploadedCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case projectID = "project_id"
+        case uploadedCount = "uploaded_count"
+    }
+}
+
+private struct AgentSessionResumedEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let iterationCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case iterationCount = "iteration_count"
+    }
+}
+
+private struct AgentSessionCompleteEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let projectID: FlexibleIdentifier?
+    let timeline: [AgentTimelineEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case projectID = "project_id"
+        case timeline
+    }
+}
+
+private struct AgentSessionClosedEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+    }
+}
+
+private struct AgentTimelineUpdateEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let timeline: [AgentTimelineEntry]
+    let timelineNotes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case timeline
+        case timelineNotes = "timeline_notes"
+    }
+}
+
+private struct AgentWaitingForUserEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let projectID: FlexibleIdentifier?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case projectID = "project_id"
+    }
+}
+
+private struct AgentNodeLifecycleEvent: Decodable {
+    let node: String
+    let payload: AgentClipCleanupPayload?
+}
+
+private struct AgentClipCleanupPayload: Decodable {
+    let statusMessage: String?
+    let inputClips: [AgentInputClip]?
+    let selectedClipIDs: [FlexibleIdentifier]?
+    let droppedClipIDs: [FlexibleIdentifier]?
+    let clipRanges: [AgentClipRangePayload]?
+
+    enum CodingKeys: String, CodingKey {
+        case statusMessage = "status_message"
+        case inputClips = "input_clips"
+        case selectedClipIDs = "selected_clip_ids"
+        case droppedClipIDs = "dropped_clip_ids"
+        case clipRanges = "clip_ranges"
+    }
+}
+
+private struct AgentInputClip: Decodable {
+    let clipID: FlexibleIdentifier
+    let summary: String?
+
+    enum CodingKeys: String, CodingKey {
+        case clipID = "clip_id"
+        case summary
+    }
+}
+
+private struct AgentClipRangePayload: Decodable {
+    let clipID: FlexibleIdentifier
+    let ranges: [AgentClipRangeEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case clipID = "clip_id"
+        case ranges
+    }
+}
+
+private struct AgentClipRangeEntry: Decodable {
+    let inSec: Double
+    let outSec: Double
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case inSec = "in_sec"
+        case outSec = "out_sec"
+        case reason
+    }
+}
+
+private struct AgentTimelineEntry: Decodable {
+    let clipID: FlexibleIdentifier
+    let inSec: Double
+    let outSec: Double
+    let rationale: String
+
+    enum CodingKeys: String, CodingKey {
+        case clipID = "clip_id"
+        case inSec = "in_sec"
+        case outSec = "out_sec"
+        case rationale
+    }
+}
+
+private struct AgentStatusUpdateEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let node: String?
+    let statusMessage: String
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case node
+        case statusMessage = "status_message"
+    }
+}
+
+private struct AgentErrorEvent: Decodable {
+    let sessionID: FlexibleIdentifier?
+    let detail: String
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case detail
+    }
+}
+
+private struct AgentClientMessage: Encodable {
+    let type: String
+    let userPrompt: String?
+    let prompt: String?
+
+    static func startSession(prompt: String) -> AgentClientMessage {
+        AgentClientMessage(type: "start_session", userPrompt: prompt, prompt: nil)
+    }
+
+    static func reprompt(prompt: String) -> AgentClientMessage {
+        AgentClientMessage(type: "reprompt", userPrompt: nil, prompt: prompt)
+    }
+
+    static let done = AgentClientMessage(type: "done", userPrompt: nil, prompt: nil)
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case userPrompt = "user_prompt"
+        case prompt
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard indices.contains(index) else { return nil }
+        return self[index]
     }
 }

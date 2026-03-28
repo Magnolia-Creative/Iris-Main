@@ -135,16 +135,17 @@ final class ImportViewModel: ObservableObject {
             let uploadElapsed = uploadStart.duration(to: ContinuousClock.now)
             let elapsed = requestStart.duration(to: ContinuousClock.now)
             let responseBody = uploadResponse.rawBody
+            let parsedResponse = decodeResponse(from: responseBody)
 
             model.lastUploadedCount = processedAssets.count
             model.processingDuration = elapsed.timeInterval
             model.serverProcessingDuration = uploadElapsed.timeInterval
-            model.parsedResponse = decodeResponse(from: responseBody)
+            model.parsedResponse = parsedResponse
             model.serverResponse = responseBody.isEmpty ? "(empty response body)" : responseBody
-            model.uploadDidComplete = true
+            model.uploadDidComplete = parsedResponse != nil
             model.uploadStatusMessage = uploadCompletionMessage(
                 uploadedCount: processedAssets.count,
-                response: model.parsedResponse
+                response: parsedResponse
             )
         } catch {
             model.uploadStatusMessage = error.localizedDescription
@@ -206,9 +207,13 @@ final class ImportViewModel: ObservableObject {
     }
 
     private func uploadCompletionMessage(uploadedCount: Int, response: IngestResponse?) -> String {
-        _ = uploadedCount
-        _ = response
-        return "Processing complete"
+        if response != nil {
+            return "Processing complete"
+        }
+
+        return uploadedCount == 1
+            ? "Upload finished, but the server response did not include the session data needed to open the agent view."
+            : "Uploads finished, but the server response did not include the session data needed to open the agent view."
     }
 }
 
