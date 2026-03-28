@@ -163,6 +163,10 @@ private struct AgentExtractionStatusLabel: View {
             return "Analyzing"
         }
 
+        if clip.usesFullClip {
+            return "Full clip"
+        }
+
         return "\(clip.ranges.count) range\(clip.ranges.count == 1 ? "" : "s")"
     }
 }
@@ -176,9 +180,12 @@ private struct AgentClipRangePreview: View {
             ZStack(alignment: .topLeading) {
                 thumbnailBackground
 
-                if clip.ranges.isEmpty {
+                if clip.isDropped {
                     Rectangle()
-                        .fill(Color.black.opacity(clip.isDropped ? 0.72 : 0.48))
+                        .fill(Color.black.opacity(0.72))
+                } else if selectedIntervals.isEmpty {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.48))
                 } else {
                     ForEach(excludedIntervals, id: \.id) { interval in
                         Rectangle()
@@ -191,12 +198,11 @@ private struct AgentClipRangePreview: View {
                     }
                 }
 
-                ForEach(clip.ranges) { range in
-                    let interval = range.asInterval
+                ForEach(selectedIntervals) { interval in
                     let intervalWidth = width(for: interval, totalWidth: geometry.size.width)
 
                     if intervalWidth >= 42 {
-                        Text(range.formattedTimeRange)
+                        Text(interval.formattedTimeRange)
                             .typography(.bodySmall)
                             .foregroundStyle(Color.white)
                             .lineLimit(1)
@@ -246,11 +252,9 @@ private struct AgentClipRangePreview: View {
     }
 
     private var excludedIntervals: [ClosedRangeInterval] {
-        guard effectiveDuration > 0, !clip.ranges.isEmpty else { return [] }
+        guard effectiveDuration > 0, !selectedIntervals.isEmpty else { return [] }
 
-        let sortedRanges = clip.ranges
-            .map(\.asInterval)
-            .sorted(by: { $0.start < $1.start })
+        let sortedRanges = selectedIntervals.sorted(by: { $0.start < $1.start })
         var intervals: [ClosedRangeInterval] = []
         var cursor = 0.0
 
@@ -279,7 +283,18 @@ private struct AgentClipRangePreview: View {
     }
 
     private var effectiveDuration: Double {
-        max(clip.durationSeconds, clip.ranges.map(\.outSec).max() ?? 0)
+        max(clip.durationSeconds, selectedIntervals.map(\.end).max() ?? 0)
+    }
+
+    private var selectedIntervals: [ClosedRangeInterval] {
+        if clip.usesFullClip {
+            guard clip.durationSeconds > 0 else { return [] }
+            return [ClosedRangeInterval(start: 0, end: clip.durationSeconds)]
+        }
+
+        return clip.ranges
+            .map(\.asInterval)
+            .sorted(by: { $0.start < $1.start })
     }
 }
 
@@ -378,6 +393,10 @@ private struct ClosedRangeInterval: Identifiable {
 
     var duration: Double {
         max(end - start, 0)
+    }
+
+    var formattedTimeRange: String {
+        "\(start.formattedClipTimestamp) - \(end.formattedClipTimestamp)"
     }
 }
 

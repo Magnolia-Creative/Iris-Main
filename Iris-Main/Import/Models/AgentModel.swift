@@ -54,17 +54,22 @@ struct AgentExtractionClip: Identifiable, Equatable {
     let remoteClipID: String
     var summary: String?
     var ranges: [AgentClipRange]
+    var usesFullClip = false
     var isAnalyzing = false
     var isDropped = false
 
     var selectedDurationSeconds: Double {
-        ranges.reduce(0) { partialResult, range in
+        if usesFullClip {
+            return max(durationSeconds, 0)
+        }
+
+        return ranges.reduce(0) { partialResult, range in
             partialResult + max(range.outSec - range.inSec, 0)
         }
     }
 
     var hasExtractedRanges: Bool {
-        !ranges.isEmpty
+        usesFullClip || !ranges.isEmpty
     }
 }
 

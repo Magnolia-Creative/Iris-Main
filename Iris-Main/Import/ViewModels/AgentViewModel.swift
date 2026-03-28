@@ -542,6 +542,7 @@ final class AgentViewModel: ObservableObject {
                     order: index,
                     summary: summariesByClipID[clipID] ?? existingClip?.summary,
                     ranges: [],
+                    usesFullClip: false,
                     isAnalyzing: true,
                     isDropped: false
                 )
@@ -588,10 +589,15 @@ final class AgentViewModel: ObservableObject {
             return model.extractionClips.map(\.remoteClipID)
         }()
 
-        let rangeLookup = (payload.clipRanges ?? []).reduce(into: [String: [AgentClipRange]]()) { result, clipRange in
-            result[clipRange.clipID.rawValue] = clipRange.ranges
-                .map { AgentClipRange(inSec: $0.inSec, outSec: $0.outSec, reason: $0.reason) }
-                .sorted(by: { $0.inSec < $1.inSec })
+        let rangeLookup = (payload.clipRanges ?? []).reduce(
+            into: [String: (changed: Bool?, ranges: [AgentClipRange])]()
+        ) { result, clipRange in
+            result[clipRange.clipID.rawValue] = (
+                changed: clipRange.changed,
+                ranges: clipRange.ranges
+                    .map { AgentClipRange(inSec: $0.inSec, outSec: $0.outSec, reason: $0.reason) }
+                    .sorted(by: { $0.inSec < $1.inSec })
+            )
         }
 
         var nextClips: [AgentExtractionClip] = []
@@ -604,17 +610,34 @@ final class AgentViewModel: ObservableObject {
                 continue
             }
 
-            let ranges = rangeLookup[clipID] ?? []
+            let clipSelection = rangeLookup[clipID]
+            let ranges = clipSelection?.ranges ?? []
             let isDropped: Bool
+            let usesFullClip: Bool
 
             if droppedClipIDs.contains(clipID) {
                 isDropped = true
+                usesFullClip = false
             } else if selectedClipIDs.contains(clipID) {
+                if clipSelection?.changed == true {
+                    isDropped = ranges.isEmpty
+                    usesFullClip = false
+                } else {
+                    isDropped = false
+                    usesFullClip = ranges.isEmpty
+                }
+            } else if clipSelection?.changed == false {
                 isDropped = false
+                usesFullClip = true
+            } else if clipSelection?.changed == true {
+                isDropped = ranges.isEmpty
+                usesFullClip = false
             } else if hasExplicitSelectionState || payload.clipIDs != nil || payload.clipRanges != nil {
                 isDropped = ranges.isEmpty
+                usesFullClip = false
             } else {
                 isDropped = existingClips[clipID]?.isDropped ?? ranges.isEmpty
+                usesFullClip = existingClips[clipID]?.usesFullClip ?? false
             }
 
             nextClips.append(
@@ -624,6 +647,7 @@ final class AgentViewModel: ObservableObject {
                     order: index,
                     summary: existingClips[clipID]?.summary,
                     ranges: ranges,
+                    usesFullClip: usesFullClip,
                     isAnalyzing: false,
                     isDropped: isDropped
                 )
@@ -684,6 +708,7 @@ final class AgentViewModel: ObservableObject {
         order: Int,
         summary: String?,
         ranges: [AgentClipRange],
+        usesFullClip: Bool,
         isAnalyzing: Bool,
         isDropped: Bool
     ) -> AgentExtractionClip {
@@ -696,6 +721,7 @@ final class AgentViewModel: ObservableObject {
             remoteClipID: remoteClipID,
             summary: summary,
             ranges: ranges,
+            usesFullClip: usesFullClip,
             isAnalyzing: isAnalyzing,
             isDropped: isDropped
         )
@@ -926,10 +952,12 @@ private struct AgentInputClip: Decodable {
 
 private struct AgentClipRangePayload: Decodable {
     let clipID: FlexibleIdentifier
+    let changed: Bool?
     let ranges: [AgentClipRangeEntry]
 
     enum CodingKeys: String, CodingKey {
         case clipID = "clip_id"
+        case changed
         case ranges
     }
 }
