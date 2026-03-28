@@ -3,38 +3,51 @@ import SwiftUI
 struct AgentView: View {
     @ObservedObject var viewModel: AgentViewModel
     let transitionNamespace: Namespace.ID
+    let secondaryContentOpacity: Double
+    var promptIsSource = true
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: .spacing(.sp6)) {
-                promptSection
-                statusSection
-                extractionSection
-                timelineSection
+        VStack(alignment: .leading, spacing: .spacing(.sp6)) {
+            promptSection
+
+            ScrollView(showsIndicators: false) {
+                secondaryContent
+                    .padding(.bottom, .sp6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, .sp4)
-            .padding(.top, .sp2)
-            .padding(.bottom, .sp6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .padding(.horizontal, .sp4)
+        .padding(.top, .sp2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task {
             await viewModel.startIfNeeded()
         }
     }
 
+    private var secondaryContent: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp6)) {
+            statusSection
+            extractionSection
+            timelineSection
+        }
+        .opacity(secondaryContentOpacity)
+        .offset(y: CGFloat(1 - secondaryContentOpacity) * 18)
+        .animation(.easeOut(duration: 0.24), value: secondaryContentOpacity)
+    }
+
     private var promptSection: some View {
         PromptCardContainer {
-            Text("Prompt")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-
             Text(viewModel.model.promptText)
                 .typography(.body)
                 .foregroundStyle(Color.ds.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: ImportPromptCardMetrics.minHeight,
+                    alignment: .topLeading
+                )
         }
-        .matchedGeometryEffect(id: ImportTransitionKey.promptCard, in: transitionNamespace)
-        .shadow(color: Color.ds.accentFg.opacity(0.08), radius: 18, x: 0, y: 12)
+        .importPromptCardTransition(in: transitionNamespace, isSource: promptIsSource)
     }
 
     private var statusSection: some View {

@@ -4,6 +4,22 @@ enum ImportTransitionKey {
     static let promptCard = "import-prompt-card"
 }
 
+enum ImportPromptCardMetrics {
+    static let minHeight: CGFloat = 144
+}
+
+extension View {
+    func importPromptCardTransition(in namespace: Namespace.ID, isSource: Bool) -> some View {
+        matchedGeometryEffect(
+            id: ImportTransitionKey.promptCard,
+            in: namespace,
+            properties: .frame,
+            anchor: .topLeading,
+            isSource: isSource
+        )
+    }
+}
+
 struct PromptCardContainer<Content: View>: View {
     let content: Content
 

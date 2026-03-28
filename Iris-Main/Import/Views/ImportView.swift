@@ -7,6 +7,9 @@ struct ImportView: View {
     @StateObject private var viewModel = ImportViewModel()
     @StateObject private var agentViewModel = AgentViewModel()
     @State private var selectedItems: [PhotosPickerItem] = []
+    @State private var isTransitioningToAgent = false
+    @State private var isAgentSecondaryContentVisible = false
+    @State private var isProcessingPromptTransitionSource = false
     @FocusState private var isPromptFocused: Bool
     @Namespace private var transitionNamespace
     private let ctaButtonHeight: CGFloat = 64
@@ -38,10 +41,8 @@ struct ImportView: View {
                 switch viewModel.model.screen {
                 case .editing:
                     editingContent
-                case .processing:
-                    processingContent
-                case .agent:
-                    agentContent
+                case .processing, .agent:
+                    flowContent
                 }
             }
         }
@@ -65,14 +66,49 @@ struct ImportView: View {
             )
 
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 450_000_000)
+                isAgentSecondaryContentVisible = false
+                isProcessingPromptTransitionSource = true
+
+                await Task.yield()
+
                 withAnimation(.spring(response: 0.62, dampingFraction: 0.9)) {
-                    viewModel.showAgentView()
+                    isTransitioningToAgent = true
                 }
+
+                try? await Task.sleep(nanoseconds: 160_000_000)
+
+                withAnimation(.easeOut(duration: 0.24)) {
+                    isAgentSecondaryContentVisible = true
+                }
+
+                try? await Task.sleep(nanoseconds: 520_000_000)
+
+                viewModel.showAgentView()
+                try? await Task.sleep(nanoseconds: 40_000_000)
+                isTransitioningToAgent = false
+                isAgentSecondaryContentVisible = true
+                isProcessingPromptTransitionSource = false
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.spring(response: 0.55, dampingFraction: 0.9), value: viewModel.model.screen)
+    }
+
+    private var flowContent: some View {
+        ZStack(alignment: .topLeading) {
+            if viewModel.model.screen == .agent || isTransitioningToAgent {
+                agentLayer
+                    .zIndex(0)
+            }
+
+            if viewModel.model.screen == .processing || isTransitioningToAgent {
+                processingLayer(
+                    promptIsSource: isProcessingPromptTransitionSource,
+                    showsPrompt: !isTransitioningToAgent,
+                    isTransitioningOut: isTransitioningToAgent
+                )
+                    .zIndex(1)
+            }
+        }
     }
 
     private var editingContent: some View {
@@ -89,11 +125,36 @@ struct ImportView: View {
     }
 
     private var processingContent: some View {
+        processingLayer(
+            promptIsSource: false,
+            showsPrompt: true,
+            isTransitioningOut: false
+        )
+    }
+
+    private func processingLayer(
+        promptIsSource: Bool,
+        showsPrompt: Bool,
+        isTransitioningOut: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: .spacing(.sp6)) {
             processingVideoSection
-            processingPromptSection
+                .offset(y: isTransitioningOut ? -20 : 0)
+                .opacity(isTransitioningOut ? 0 : 1)
+
+            Group {
+                if showsPrompt {
+                    processingPromptSection(promptIsSource: promptIsSource)
+                } else {
+                    processingPromptPlaceholder
+                }
+            }
+
             Spacer(minLength: .spacing(.sp6))
+
             processingStatusSection
+                .offset(y: isTransitioningOut ? 16 : 0)
+                .opacity(isTransitioningOut ? 0 : 1)
         }
         .padding(.horizontal, .sp4)
         .padding(.top, .sp5)
@@ -102,13 +163,31 @@ struct ImportView: View {
         .task {
             await viewModel.startProcessingIfNeeded()
         }
+        .transition(.identity)
     }
 
-    private var agentContent: some View {
+    private var processingPromptPlaceholder: some View {
+        PromptCardContainer {
+            Color.clear
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: ImportPromptCardMetrics.minHeight,
+                    alignment: .topLeading
+                )
+        }
+        .hidden()
+    }
+
+    private var agentLayer: some View {
         AgentView(
             viewModel: agentViewModel,
-            transitionNamespace: transitionNamespace
+            transitionNamespace: transitionNamespace,
+            secondaryContentOpacity: isTransitioningToAgent
+                ? (isAgentSecondaryContentVisible ? 1 : 0)
+                : 1,
+            promptIsSource: false
         )
+        .transition(.identity)
     }
 
     private var heroSection: some View {
@@ -182,7 +261,7 @@ struct ImportView: View {
                     .typographyStyle(.body)
                     .foregroundStyle(Color.ds.text)
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 140)
+                    .frame(minHeight: ImportPromptCardMetrics.minHeight)
                     .tint(Color.ds.accentFg)
                     .focused($isPromptFocused)
 
@@ -196,7 +275,7 @@ struct ImportView: View {
                     }
                 }
             }
-            .matchedGeometryEffect(id: ImportTransitionKey.promptCard, in: transitionNamespace)
+            .importPromptCardTransition(in: transitionNamespace, isSource: true)
 
             if case .invalid(let message) = viewModel.model.prompt.status {
                 Text(message)
@@ -262,19 +341,19 @@ struct ImportView: View {
         .matchedGeometryEffect(id: "videos-section", in: transitionNamespace)
     }
 
-    private var processingPromptSection: some View {
+    private func processingPromptSection(promptIsSource: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-            Text("Prompt")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-
             PromptCardContainer {
                 Text(viewModel.model.prompt.trimmedText)
                     .typography(.body)
                     .foregroundStyle(Color.ds.text)
-                    .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: ImportPromptCardMetrics.minHeight,
+                        alignment: .topLeading
+                    )
             }
-            .matchedGeometryEffect(id: ImportTransitionKey.promptCard, in: transitionNamespace)
+            .importPromptCardTransition(in: transitionNamespace, isSource: promptIsSource)
         }
     }
 
