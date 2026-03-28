@@ -89,6 +89,11 @@ final class ImportViewModel: ObservableObject {
         model.uploadStatusMessage = "Processing clips, please wait."
     }
 
+    func showAgentView() {
+        guard model.uploadDidComplete else { return }
+        model.screen = .agent
+    }
+
     func startProcessingIfNeeded() async {
         guard model.screen == .processing, !model.hasStartedUpload else { return }
 
@@ -103,6 +108,12 @@ final class ImportViewModel: ObservableObject {
         model.serverProcessingDuration = nil
         model.uploadStatusMessage = "Processing clips, please wait."
         let requestStart = ContinuousClock.now
+
+        if AppConfiguration.simulateImportProcessing {
+            await runSimulatedProcessing(startedAt: requestStart)
+            model.isUploading = false
+            return
+        }
 
         var processedAssets: [ProcessedAudioAsset] = []
 
@@ -142,6 +153,20 @@ final class ImportViewModel: ObservableObject {
 
         cleanupProcessedAssets(processedAssets)
         model.isUploading = false
+    }
+
+    private func runSimulatedProcessing(startedAt requestStart: ContinuousClock.Instant) async {
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+        let elapsed = requestStart.duration(to: ContinuousClock.now)
+        model.lastUploadedCount = model.videos.count
+        model.processingDuration = elapsed.timeInterval
+        model.audioExtractionDuration = elapsed.timeInterval
+        model.serverProcessingDuration = elapsed.timeInterval
+        model.serverResponse = "(simulated processing)"
+        model.parsedResponse = nil
+        model.uploadDidComplete = true
+        model.uploadStatusMessage = "Processing complete"
     }
 
     private func makeSelectedVideo(from importedVideo: ImportedVideo) throws -> SelectedVideoAsset {

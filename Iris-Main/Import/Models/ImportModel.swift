@@ -33,6 +33,7 @@ struct ImportModel {
 enum ImportScreen: Equatable {
     case editing
     case processing
+    case agent
 }
 
 struct PromptMessageState: Equatable {

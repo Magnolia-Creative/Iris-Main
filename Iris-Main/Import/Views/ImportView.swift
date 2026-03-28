@@ -5,6 +5,7 @@ import SwiftUI
 
 struct ImportView: View {
     @StateObject private var viewModel = ImportViewModel()
+    @StateObject private var agentViewModel = AgentViewModel()
     @State private var selectedItems: [PhotosPickerItem] = []
     @FocusState private var isPromptFocused: Bool
     @Namespace private var transitionNamespace
@@ -39,6 +40,8 @@ struct ImportView: View {
                     editingContent
                 case .processing:
                     processingContent
+                case .agent:
+                    agentContent
                 }
             }
         }
@@ -51,6 +54,21 @@ struct ImportView: View {
         .onChange(of: selectedItems) { _, newValue in
             Task {
                 await importSelection(from: newValue)
+            }
+        }
+        .onChange(of: viewModel.model.uploadDidComplete) { _, didComplete in
+            guard didComplete, viewModel.model.screen == .processing else { return }
+
+            agentViewModel.configure(
+                promptText: viewModel.model.prompt.trimmedText,
+                videos: viewModel.model.videos
+            )
+
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 450_000_000)
+                withAnimation(.spring(response: 0.62, dampingFraction: 0.9)) {
+                    viewModel.showAgentView()
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -84,6 +102,13 @@ struct ImportView: View {
         .task {
             await viewModel.startProcessingIfNeeded()
         }
+    }
+
+    private var agentContent: some View {
+        AgentView(
+            viewModel: agentViewModel,
+            transitionNamespace: transitionNamespace
+        )
     }
 
     private var heroSection: some View {
@@ -146,13 +171,14 @@ struct ImportView: View {
                 .typography(.heading)
                 .foregroundStyle(Color.ds.text)
 
-            ZStack(alignment: .topLeading) {
-                TextEditor(
-                    text: Binding(
-                        get: { viewModel.model.prompt.text },
-                        set: { viewModel.updatePromptMessage($0) }
+            PromptCardContainer {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(
+                        text: Binding(
+                            get: { viewModel.model.prompt.text },
+                            set: { viewModel.updatePromptMessage($0) }
+                        )
                     )
-                )
                     .typographyStyle(.body)
                     .foregroundStyle(Color.ds.text)
                     .scrollContentBackground(.hidden)
@@ -160,23 +186,17 @@ struct ImportView: View {
                     .tint(Color.ds.accentFg)
                     .focused($isPromptFocused)
 
-                if case .empty(let hint) = viewModel.model.prompt.status {
-                    Text(hint)
-                        .typography(.body)
-                        .foregroundStyle(Color.ds.textMuted)
-                        .padding(.top, 8)
-                        .padding(.horizontal, 5)
-                        .allowsHitTesting(false)
+                    if case .empty(let hint) = viewModel.model.prompt.status {
+                        Text(hint)
+                            .typography(.body)
+                            .foregroundStyle(Color.ds.textMuted)
+                            .padding(.top, 8)
+                            .padding(.horizontal, 5)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
-            .padding(.sp3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.ds.surface)
-            .overlay(
-                RoundedRectangle(cornerRadius: .spacing(.sp3))
-                    .stroke(Color.ds.border, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+            .matchedGeometryEffect(id: ImportTransitionKey.promptCard, in: transitionNamespace)
 
             if case .invalid(let message) = viewModel.model.prompt.status {
                 Text(message)
@@ -192,7 +212,6 @@ struct ImportView: View {
                 }
             }
         }
-        .matchedGeometryEffect(id: "prompt-section", in: transitionNamespace)
     }
 
     private var bottomCTA: some View {
@@ -249,19 +268,14 @@ struct ImportView: View {
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
 
-            Text(viewModel.model.prompt.trimmedText)
-                .typography(.body)
-                .foregroundStyle(Color.ds.text)
-                .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
-                .padding(.sp3)
-                .background(Color.ds.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: .spacing(.sp3))
-                        .stroke(Color.ds.border, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+            PromptCardContainer {
+                Text(viewModel.model.prompt.trimmedText)
+                    .typography(.body)
+                    .foregroundStyle(Color.ds.text)
+                    .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
+            }
+            .matchedGeometryEffect(id: ImportTransitionKey.promptCard, in: transitionNamespace)
         }
-        .matchedGeometryEffect(id: "prompt-section", in: transitionNamespace)
     }
 
     private var processingStatusSection: some View {
@@ -487,8 +501,13 @@ private struct ImportedVideoTile: View {
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 600, height: 600)
+            let requestTime = CMTime(seconds: 0.1, preferredTimescale: 600)
 
-            return try? generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600), actualTime: nil)
+            return await withCheckedContinuation { continuation in
+                generator.generateCGImageAsynchronously(for: requestTime) { image, _, error in
+                    continuation.resume(returning: error == nil ? image : nil)
+                }
+            }
         }.value
     }
 }
@@ -589,11 +608,15 @@ private struct VideoPickerTransferable: Transferable {
     let originalFilename: String
 
     static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .mpeg4Movie, importing: importReceivedVideo)
-        FileRepresentation(importedContentType: .movie, importing: importReceivedVideo)
+        FileRepresentation(importedContentType: .mpeg4Movie) { received in
+            try await importReceivedVideo(received)
+        }
+        FileRepresentation(importedContentType: .movie) { received in
+            try await importReceivedVideo(received)
+        }
     }
 
-    private static func importReceivedVideo(_ received: ReceivedTransferredFile) throws -> Self {
+    private static func importReceivedVideo(_ received: ReceivedTransferredFile) async throws -> Self {
         let fileManager = FileManager.default
         let sourceURL = received.file
         let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
