@@ -135,6 +135,7 @@ final class ImportViewModel: ObservableObject {
             let uploadElapsed = uploadStart.duration(to: ContinuousClock.now)
             let elapsed = requestStart.duration(to: ContinuousClock.now)
             let responseBody = uploadResponse.rawBody
+            print("[IngestUpload] Raw response body:\n\(responseBody.isEmpty ? "(empty response body)" : responseBody)")
             let parsedResponse = decodeResponse(from: responseBody)
 
             model.lastUploadedCount = processedAssets.count

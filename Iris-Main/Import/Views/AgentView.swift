@@ -35,7 +35,6 @@ struct AgentView: View {
     private var secondaryContent: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp6)) {
             statusSection
-            extractionSection
             timelineSection
         }
         .opacity(secondaryContentOpacity)
@@ -50,15 +49,9 @@ struct AgentView: View {
 
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            HStack(spacing: .spacing(.sp2)) {
-                Text("Current status")
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.textMuted)
-
-                if let badgeText = sessionBadgeText {
-                    AgentStatusBadge(text: badgeText)
-                }
-            }
+            Text("Current status")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
 
             Text(viewModel.model.statusMessage)
                 .id(viewModel.model.statusMessage)
@@ -76,38 +69,13 @@ struct AgentView: View {
         .animation(.spring(response: 0.55, dampingFraction: 0.9), value: viewModel.model.statusMessage)
     }
 
-    private var extractionSection: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-            Text("Clip extraction")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-
-            AgentSurfaceCard(minHeight: 176) {
-                if viewModel.model.extractionClips.isEmpty {
-                    AgentPlaceholderStateView(
-                        text: "Clips will appear here as they enter the cleanup step."
-                    )
-                } else {
-                    VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-                        ForEach(viewModel.model.extractionClips) { clip in
-                            AgentExtractionClipView(clip: clip)
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-        .animation(.spring(response: 0.6, dampingFraction: 0.88), value: viewModel.model.extractionClips)
-    }
-
     private var timelineSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp3)) {
             Text("Timeline assembly")
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
 
-            AgentSurfaceCard(minHeight: 148) {
+            AgentSurfaceCard(minHeight: 0) {
                 VStack(alignment: .leading, spacing: .spacing(.sp3)) {
                     if viewModel.model.timelineClips.isEmpty {
                         AgentPlaceholderStateView(
@@ -116,113 +84,10 @@ struct AgentView: View {
                     } else {
                         AgentTimelineStripView(clips: viewModel.model.timelineClips)
                     }
-
-                    if !viewModel.model.timelineNotes.isEmpty {
-                        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-                            ForEach(viewModel.model.timelineNotes, id: \.self) { note in
-                                HStack(alignment: .top, spacing: .spacing(.sp2)) {
-                                    Circle()
-                                        .fill(Color.ds.accentFg.opacity(0.72))
-                                        .frame(width: 5, height: 5)
-                                        .padding(.top, 6)
-
-                                    Text(note)
-                                        .typography(.bodySmall)
-                                        .foregroundStyle(Color.ds.textMuted)
-                                }
-                            }
-                        }
-                    }
-
-                    if viewModel.model.isAwaitingUserInput {
-                        reviewComposer
-                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .animation(.spring(response: 0.52, dampingFraction: 0.88), value: viewModel.model.timelineClips)
-        .animation(.spring(response: 0.52, dampingFraction: 0.88), value: viewModel.model.timelineNotes)
-        .animation(.spring(response: 0.52, dampingFraction: 0.88), value: viewModel.model.isAwaitingUserInput)
-    }
-
-    private var reviewComposer: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-            Text("Refine draft")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-
-            PromptCardContainer(fillsWidth: true) {
-                TextEditor(
-                    text: Binding(
-                        get: { viewModel.model.feedbackDraft },
-                        set: { viewModel.updateFeedbackDraft($0) }
-                    )
-                )
-                .typographyStyle(.body)
-                .foregroundStyle(Color.ds.text)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 88)
-                .tint(Color.ds.accentFg)
-            }
-
-            HStack(spacing: .spacing(.sp2)) {
-                Button("Approve") {
-                    Task {
-                        await viewModel.approveTimeline()
-                    }
-                }
-                .buttonStyle(.secondary)
-                .disabled(!viewModel.model.canApproveTimeline)
-
-                Button(viewModel.model.isSendingFeedback ? "Sending..." : "Update timeline") {
-                    Task {
-                        await viewModel.submitFeedback()
-                    }
-                }
-                .buttonStyle(.primary)
-                .disabled(!viewModel.model.canSubmitFeedback)
-            }
-        }
-    }
-
-    private var sessionBadgeText: String? {
-        switch viewModel.model.stage {
-        case .connecting:
-            return "Live"
-        case .extractingClips:
-            return "Cleanup"
-        case .assemblingTimeline:
-            return "Timeline"
-        case .waitingForFeedback:
-            return "Review"
-        case .completed:
-            return "Complete"
-        case .error:
-            return "Error"
-        case .closed:
-            return "Closed"
-        case .idle:
-            return nil
-        }
-    }
-}
-
-private struct AgentStatusBadge: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .typography(.bodySmall)
-            .foregroundStyle(Color.ds.accentFg)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.ds.accentBg.opacity(0.16))
-            .overlay(
-                Capsule()
-                    .stroke(Color.ds.accentFg.opacity(0.3), lineWidth: 1)
-            )
-            .clipShape(Capsule())
     }
 }
 
@@ -456,12 +321,14 @@ private struct AgentTimelineStripView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let availableWidth = max(geometry.size.width, 1)
             let spacing = CGFloat(max(clips.count - 1, 0)) * .spacing(.sp2)
-            let availableWidth = max(geometry.size.width - spacing, 0)
+            let usableWidth = max(availableWidth - spacing, 1)
             let weights = clips.map { sqrt(max($0.segmentDurationSeconds, 0.15)) }
             let weightSum = max(weights.reduce(0, +), 0.01)
-            let widths = weights.map { max((CGFloat($0) / CGFloat(weightSum)) * availableWidth, 84) }
-            let contentWidth = widths.reduce(0, +) + spacing
+            let widths = weights.map { weight in
+                max((CGFloat(weight) / CGFloat(weightSum)) * usableWidth, 72)
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .bottom, spacing: .spacing(.sp2)) {
@@ -473,7 +340,7 @@ private struct AgentTimelineStripView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
-                .frame(minWidth: max(geometry.size.width, contentWidth), alignment: .leading)
+                .frame(minWidth: availableWidth, alignment: .leading)
             }
         }
         .frame(height: 108)
@@ -486,7 +353,7 @@ private struct AgentTimelineClipView: View {
     @State private var thumbnail: CGImage?
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack {
             background
 
             LinearGradient(
@@ -497,25 +364,6 @@ private struct AgentTimelineClipView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(clip.displayName)
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.white)
-                    .lineLimit(1)
-
-                Text("\(clip.inSec.formattedTimestamp) - \(clip.outSec.formattedTimestamp)")
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.white.opacity(0.82))
-
-                if !clip.rationale.trimmedForTransport.isEmpty {
-                    Text(clip.rationale)
-                        .typography(.bodySmall)
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .lineLimit(2)
-                }
-            }
-            .padding(.sp2)
         }
         .frame(width: width, height: 108)
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
@@ -524,7 +372,12 @@ private struct AgentTimelineClipView: View {
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
         .task(id: clip.videoURL) {
-            thumbnail = await VideoAssetPreviewLoader.generateThumbnail(for: clip.videoURL)
+            guard let videoURL = clip.videoURL else {
+                thumbnail = nil
+                return
+            }
+
+            thumbnail = await VideoAssetPreviewLoader.generateThumbnail(for: videoURL)
         }
     }
 
@@ -564,14 +417,5 @@ private struct ClosedRangeInterval: Identifiable {
 private extension AgentClipRange {
     var asInterval: ClosedRangeInterval {
         ClosedRangeInterval(start: inSec, end: outSec)
-    }
-}
-
-private extension Double {
-    var formattedTimestamp: String {
-        let totalSeconds = max(Int(rounded(.down)), 0)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }

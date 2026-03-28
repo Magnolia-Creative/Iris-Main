@@ -85,12 +85,13 @@ struct AgentClipRange: Identifiable, Equatable {
 struct AgentTimelineClip: Identifiable, Equatable {
     let id: String
     let displayName: String
-    let videoURL: URL
+    let videoURL: URL?
     let remoteClipID: String
     let inSec: Double
     let outSec: Double
     let rationale: String
     let segmentDurationSeconds: Double
+    let usesPlaceholderAsset: Bool
 }
 
 extension String {

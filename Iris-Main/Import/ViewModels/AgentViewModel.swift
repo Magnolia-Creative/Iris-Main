@@ -1,10 +1,15 @@
 import Combine
 import Foundation
+import OSLog
 
 @MainActor
 final class AgentViewModel: ObservableObject {
     @Published private(set) var model = AgentModel()
 
+    private let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "AgentView"
+    )
     private let urlSession: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -49,6 +54,10 @@ final class AgentViewModel: ObservableObject {
             isSendingFeedback: false,
             hasStarted: false
         )
+
+        logger.info(
+            "Configured agent view. promptLength=\(promptText.count) localVideos=\(videos.count) sessionID=\(ingestResponse?.sessionID.rawValue ?? "nil", privacy: .public)"
+        )
     }
 
     func startIfNeeded() async {
@@ -71,6 +80,9 @@ final class AgentViewModel: ObservableObject {
                 throw AgentSessionError.invalidSessionEndpoint
             }
 
+            logger.info(
+                "Opening websocket session \(response.sessionID.rawValue, privacy: .public) at \(socketURL.absoluteString, privacy: .public)"
+            )
             try await openSocket(at: socketURL)
             try await sendMessage(.startSession(prompt: model.promptText))
         } catch {
@@ -132,26 +144,54 @@ final class AgentViewModel: ObservableObject {
         from videos: [SelectedVideoAsset],
         response: IngestResponse
     ) async -> [String: AgentSourceClip] {
+        let localDescriptors = await makeLocalVideoDescriptors(from: videos)
         var lookup: [String: AgentSourceClip] = [:]
+        var usedLocalOrders: Set<Int> = []
+        let remoteSummary = response.videos.map { self.describeResponseVideo($0) }.joined(separator: " | ")
+        let localSummary = localDescriptors.map { self.describeLocalDescriptor($0) }.joined(separator: " | ")
 
-        for (order, video) in videos.enumerated() {
-            let responseVideo = response.videos.first(where: { $0.index == order }) ?? response.videos[safe: order]
-            let durationSeconds = await VideoAssetPreviewLoader.loadDuration(for: video.originalURL)
-            let identifiers = makeRemoteIdentifiers(for: responseVideo, fallbackOrder: order)
+        logger.info(
+            """
+            Building clip lookup. localVideos=\(localDescriptors.count) remoteVideos=\(response.videos.count) remoteSummary=\(remoteSummary, privacy: .public)
+            """
+        )
+
+        for (position, responseVideo) in response.videos.enumerated() {
+            guard let match = matchLocalDescriptor(
+                for: responseVideo,
+                fallbackPosition: position,
+                descriptors: localDescriptors,
+                usedOrders: &usedLocalOrders
+            ) else {
+                logger.error(
+                    "No local video match found for remote clip \(self.describeResponseVideo(responseVideo), privacy: .public). localSummary=\(localSummary, privacy: .public)"
+                )
+                continue
+            }
+
+            let identifiers = makeRemoteIdentifiers(for: responseVideo, fallbackOrder: match.descriptor.order)
 
             let sourceClip = AgentSourceClip(
-                id: video.id,
-                displayName: video.displayName,
-                videoURL: video.originalURL,
-                durationSeconds: durationSeconds,
-                order: order,
+                id: match.descriptor.video.id,
+                displayName: match.descriptor.video.displayName,
+                videoURL: match.descriptor.video.originalURL,
+                durationSeconds: match.descriptor.durationSeconds,
+                order: match.descriptor.order,
                 remoteIdentifiers: identifiers
             )
 
             for identifier in identifiers {
                 lookup[identifier] = sourceClip
             }
+
+            logger.info(
+                "Mapped remote clip ids [\(identifiers.joined(separator: ", "), privacy: .public)] to local video \(match.descriptor.video.displayName, privacy: .public) using \(match.strategy.rawValue, privacy: .public)"
+            )
         }
+
+        logger.info(
+            "Completed clip lookup. registeredKeys=\(lookup.keys.sorted().joined(separator: ", "), privacy: .public)"
+        )
 
         return lookup
     }
@@ -177,6 +217,85 @@ final class AgentViewModel: ObservableObject {
         return identifiers
     }
 
+    private func makeLocalVideoDescriptors(
+        from videos: [SelectedVideoAsset]
+    ) async -> [LocalVideoDescriptor] {
+        var descriptors: [LocalVideoDescriptor] = []
+
+        for (order, video) in videos.enumerated() {
+            let durationSeconds = await VideoAssetPreviewLoader.loadDuration(for: video.originalURL)
+            descriptors.append(
+                LocalVideoDescriptor(
+                    video: video,
+                    order: order,
+                    normalizedStem: normalizedStem(for: video.displayName),
+                    durationSeconds: durationSeconds
+                )
+            )
+        }
+
+        return descriptors
+    }
+
+    private func matchLocalDescriptor(
+        for responseVideo: IngestVideoResponse,
+        fallbackPosition: Int,
+        descriptors: [LocalVideoDescriptor],
+        usedOrders: inout Set<Int>
+    ) -> LocalVideoMatch? {
+        let responseStem = normalizedStem(for: responseVideo.fileName)
+
+        if let exactIndexMatch = descriptors.first(where: {
+            $0.order == responseVideo.index && !usedOrders.contains($0.order)
+        }) {
+            usedOrders.insert(exactIndexMatch.order)
+            return LocalVideoMatch(descriptor: exactIndexMatch, strategy: .exactIndex)
+        }
+
+        if responseVideo.index > 0,
+           let oneBasedIndexMatch = descriptors.first(where: {
+               $0.order == (responseVideo.index - 1) && !usedOrders.contains($0.order)
+           }) {
+            usedOrders.insert(oneBasedIndexMatch.order)
+            return LocalVideoMatch(descriptor: oneBasedIndexMatch, strategy: .oneBasedIndex)
+        }
+
+        if let fileNameMatch = descriptors.first(where: {
+            $0.normalizedStem == responseStem && !usedOrders.contains($0.order)
+        }) {
+            usedOrders.insert(fileNameMatch.order)
+            return LocalVideoMatch(descriptor: fileNameMatch, strategy: .fileNameStem)
+        }
+
+        if let positionalMatch = descriptors[safe: fallbackPosition], !usedOrders.contains(positionalMatch.order) {
+            usedOrders.insert(positionalMatch.order)
+            return LocalVideoMatch(descriptor: positionalMatch, strategy: .fallbackPosition)
+        }
+
+        if let firstUnused = descriptors.first(where: { !usedOrders.contains($0.order) }) {
+            usedOrders.insert(firstUnused.order)
+            return LocalVideoMatch(descriptor: firstUnused, strategy: .firstUnused)
+        }
+
+        return nil
+    }
+
+    private func normalizedStem(for fileName: String) -> String {
+        URL(fileURLWithPath: fileName)
+            .deletingPathExtension()
+            .lastPathComponent
+            .lowercased()
+    }
+
+    private func describeResponseVideo(_ responseVideo: IngestVideoResponse) -> String {
+        let identifiers = makeRemoteIdentifiers(for: responseVideo, fallbackOrder: responseVideo.index)
+        return "file=\(responseVideo.fileName) index=\(responseVideo.index) ids=[\(identifiers.joined(separator: ", "))]"
+    }
+
+    private func describeLocalDescriptor(_ descriptor: LocalVideoDescriptor) -> String {
+        "file=\(descriptor.video.displayName) order=\(descriptor.order) stem=\(descriptor.normalizedStem)"
+    }
+
     private func openSocket(at url: URL) async throws {
         closeSocket(sendDoneMessage: false)
 
@@ -185,6 +304,7 @@ final class AgentViewModel: ObservableObject {
         task.resume()
 
         model.isConnected = true
+        logger.info("Websocket resumed at \(url.absoluteString, privacy: .public)")
         receiveTask = Task { [weak self] in
             await self?.receiveMessages()
         }
@@ -193,6 +313,11 @@ final class AgentViewModel: ObservableObject {
     private func closeSocket(sendDoneMessage: Bool) {
         let task = webSocketTask
         let shouldSendDone = sendDoneMessage && model.isConnected
+        let sessionID = model.sessionID ?? "nil"
+
+        logger.info(
+            "Closing websocket. shouldSendDone=\(shouldSendDone) currentSessionID=\(sessionID, privacy: .public)"
+        )
 
         receiveTask?.cancel()
         receiveTask = nil
@@ -225,6 +350,7 @@ final class AgentViewModel: ObservableObject {
             throw AgentSessionError.encodingFailed
         }
 
+        logger.info("Sending websocket message: \(stringPayload, privacy: .public)")
         try await webSocketTask.send(.string(stringPayload))
     }
 
@@ -237,10 +363,13 @@ final class AgentViewModel: ObservableObject {
 
                 switch message {
                 case .string(let text):
+                    logger.info("Received websocket text payload: \(text, privacy: .public)")
                     try handleMessageData(Data(text.utf8))
                 case .data(let data):
+                    logger.info("Received websocket binary payload of \(data.count) bytes")
                     try handleMessageData(data)
                 @unknown default:
+                    logger.warning("Received unknown websocket message container.")
                     break
                 }
             }
@@ -252,6 +381,7 @@ final class AgentViewModel: ObservableObject {
 
     private func handleMessageData(_ data: Data) throws {
         let event = try AgentSocketEvent.decode(from: data, using: decoder)
+        let eventDescription = event.logDescription
 
         switch event {
         case .sessionStarted(let payload):
@@ -330,15 +460,23 @@ final class AgentViewModel: ObservableObject {
             applyErrorMessage(payload.detail)
 
         case .unknown(let type):
-            print("Ignoring unknown websocket event type: \(type)")
+            logger.warning("Ignoring unknown websocket event type: \(type, privacy: .public)")
         }
+
+        logInterpretedState(after: eventDescription)
     }
 
     private func handleNodeStart(_ event: AgentNodeLifecycleEvent) {
         guard event.node == "clip_cleanup", let payload = event.payload else { return }
+        let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
 
         for inputClip in payload.inputClips ?? [] {
-            guard let sourceClip = sourceClipsByRemoteID[inputClip.clipID.rawValue] else { continue }
+            guard let sourceClip = sourceClipsByRemoteID[inputClip.clipID.rawValue] else {
+                logger.error(
+                    "clip_cleanup start could not map remote clip id \(inputClip.clipID.rawValue, privacy: .public). knownKeys=\(knownKeys, privacy: .public)"
+                )
+                continue
+            }
 
             upsertExtractionClip(for: sourceClip, remoteClipID: inputClip.clipID.rawValue) { clip in
                 clip.summary = inputClip.summary?.trimmedForTransport
@@ -360,9 +498,15 @@ final class AgentViewModel: ObservableObject {
 
         let selectedClipIDs = Set((payload.selectedClipIDs ?? []).map(\.rawValue))
         let droppedClipIDs = Set((payload.droppedClipIDs ?? []).map(\.rawValue))
+        let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
 
         for clipRange in payload.clipRanges ?? [] {
-            guard let sourceClip = sourceClipsByRemoteID[clipRange.clipID.rawValue] else { continue }
+            guard let sourceClip = sourceClipsByRemoteID[clipRange.clipID.rawValue] else {
+                logger.error(
+                    "clip_cleanup complete could not map remote clip id \(clipRange.clipID.rawValue, privacy: .public). knownKeys=\(knownKeys, privacy: .public)"
+                )
+                continue
+            }
 
             upsertExtractionClip(for: sourceClip, remoteClipID: clipRange.clipID.rawValue) { clip in
                 clip.ranges = clipRange.ranges
@@ -374,7 +518,12 @@ final class AgentViewModel: ObservableObject {
         }
 
         for clipID in selectedClipIDs {
-            guard let sourceClip = sourceClipsByRemoteID[clipID] else { continue }
+            guard let sourceClip = sourceClipsByRemoteID[clipID] else {
+                logger.error(
+                    "Selected clip id \(clipID, privacy: .public) was not found in the local clip lookup. knownKeys=\(knownKeys, privacy: .public)"
+                )
+                continue
+            }
 
             upsertExtractionClip(for: sourceClip, remoteClipID: clipID) { clip in
                 clip.isDropped = false
@@ -383,7 +532,12 @@ final class AgentViewModel: ObservableObject {
         }
 
         for clipID in droppedClipIDs {
-            guard let sourceClip = sourceClipsByRemoteID[clipID] else { continue }
+            guard let sourceClip = sourceClipsByRemoteID[clipID] else {
+                logger.error(
+                    "Dropped clip id \(clipID, privacy: .public) was not found in the local clip lookup. knownKeys=\(knownKeys, privacy: .public)"
+                )
+                continue
+            }
 
             upsertExtractionClip(for: sourceClip, remoteClipID: clipID) { clip in
                 clip.ranges = []
@@ -401,10 +555,25 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func makeTimelineClips(from payload: [AgentTimelineEntry]) -> [AgentTimelineClip] {
-        payload.enumerated().compactMap { index, entry in
+        payload.enumerated().map { index, entry in
             guard let sourceClip = sourceClipsByRemoteID[entry.clipID.rawValue] else {
-                print("Unable to match remote clip id \(entry.clipID.rawValue) to a local asset.")
-                return nil
+                let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
+                let remoteResponseDescription = ingestResponse?.videos.map(describeResponseVideo).joined(separator: " | ") ?? "nil"
+                logger.error(
+                    "Unable to map timeline clip id \(entry.clipID.rawValue, privacy: .public). knownKeys=\(knownKeys, privacy: .public) remoteResponse=\(remoteResponseDescription, privacy: .public)"
+                )
+
+                return AgentTimelineClip(
+                    id: "placeholder-\(entry.clipID.rawValue)-\(index)",
+                    displayName: "Clip \(entry.clipID.rawValue)",
+                    videoURL: nil,
+                    remoteClipID: entry.clipID.rawValue,
+                    inSec: entry.inSec,
+                    outSec: entry.outSec,
+                    rationale: entry.rationale,
+                    segmentDurationSeconds: max(entry.outSec - entry.inSec, 0.1),
+                    usesPlaceholderAsset: true
+                )
             }
 
             let segmentDurationSeconds = max(entry.outSec - entry.inSec, 0.1)
@@ -418,7 +587,8 @@ final class AgentViewModel: ObservableObject {
                 inSec: entry.inSec,
                 outSec: entry.outSec,
                 rationale: entry.rationale,
-                segmentDurationSeconds: segmentDurationSeconds
+                segmentDurationSeconds: segmentDurationSeconds,
+                usesPlaceholderAsset: false
             )
         }
     }
@@ -454,6 +624,22 @@ final class AgentViewModel: ObservableObject {
         applyErrorMessage(error.localizedDescription)
     }
 
+    private func logInterpretedState(after eventDescription: String) {
+        let stageDescription = String(describing: self.model.stage)
+        let statusMessage = self.model.statusMessage
+        let timelineCount = self.model.timelineClips.count
+        let extractionCount = self.model.extractionClips.count
+        let awaitingUser = self.model.isAwaitingUserInput
+        let isConnected = self.model.isConnected
+        let sessionID = self.model.sessionID ?? "nil"
+
+        logger.info(
+            """
+            Interpreted \(eventDescription, privacy: .public) -> stage=\(stageDescription, privacy: .public) status=\(statusMessage, privacy: .public) timelineCount=\(timelineCount) extractionCount=\(extractionCount) awaitingUser=\(awaitingUser) connected=\(isConnected) currentSessionID=\(sessionID, privacy: .public)
+            """
+        )
+    }
+
     private func applyErrorMessage(_ message: String) {
         receiveTask?.cancel()
         receiveTask = nil
@@ -466,6 +652,11 @@ final class AgentViewModel: ObservableObject {
         model.isConnected = false
         model.isAwaitingUserInput = false
         model.isSendingFeedback = false
+
+        let sessionID = self.model.sessionID ?? "nil"
+        logger.error(
+            "Agent state entered error. message=\(message, privacy: .public) sessionID=\(sessionID, privacy: .public)"
+        )
     }
 }
 
@@ -708,6 +899,55 @@ private struct AgentClientMessage: Encodable {
         case type
         case userPrompt = "user_prompt"
         case prompt
+    }
+}
+
+private struct LocalVideoDescriptor {
+    let video: SelectedVideoAsset
+    let order: Int
+    let normalizedStem: String
+    let durationSeconds: Double
+}
+
+private struct LocalVideoMatch {
+    let descriptor: LocalVideoDescriptor
+    let strategy: LocalVideoMatchStrategy
+}
+
+private enum LocalVideoMatchStrategy: String {
+    case exactIndex
+    case oneBasedIndex
+    case fileNameStem
+    case fallbackPosition
+    case firstUnused
+}
+
+private extension AgentSocketEvent {
+    var logDescription: String {
+        switch self {
+        case .sessionStarted(let payload):
+            return "session_started(session_id=\(payload.sessionID.rawValue))"
+        case .sessionResumed(let payload):
+            return "session_resumed(session_id=\(payload.sessionID.rawValue), iteration=\(payload.iterationCount))"
+        case .sessionComplete(let payload):
+            return "session_complete(session_id=\(payload.sessionID.rawValue), timeline_count=\(payload.timeline.count))"
+        case .sessionClosed(let payload):
+            return "session_closed(session_id=\(payload.sessionID.rawValue))"
+        case .timelineUpdate(let payload):
+            return "timeline_update(session_id=\(payload.sessionID.rawValue), timeline_count=\(payload.timeline.count), notes_count=\(payload.timelineNotes.count))"
+        case .waitingForUser(let payload):
+            return "waiting_for_user(session_id=\(payload.sessionID.rawValue))"
+        case .nodeStart(let payload):
+            return "node_start(node=\(payload.node))"
+        case .nodeComplete(let payload):
+            return "node_complete(node=\(payload.node))"
+        case .statusUpdate(let payload):
+            return "status_update(session_id=\(payload.sessionID.rawValue), node=\(payload.node ?? "nil"))"
+        case .error(let payload):
+            return "error(session_id=\(payload.sessionID?.rawValue ?? "nil"))"
+        case .unknown(let type):
+            return "unknown(type=\(type))"
+        }
     }
 }
 
