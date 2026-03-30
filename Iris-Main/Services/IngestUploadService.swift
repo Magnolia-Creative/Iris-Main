@@ -26,6 +26,7 @@ struct IngestUploadService {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120
 
         let body = try makeMultipartBody(assets: assets, boundary: boundary)
         let (data, response) = try await session.upload(for: request, from: body)
@@ -54,10 +55,24 @@ struct IngestUploadService {
             body.append("Content-Type: \(asset.mimeType)\r\n\r\n")
             body.append(try Data(contentsOf: asset.audioURL))
             body.append("\r\n")
+            appendTextPart(
+                named: AppConfiguration.uploadLocalKeyFieldName,
+                value: asset.localKey,
+                to: &body,
+                boundary: boundary
+            )
         }
 
         body.append("--\(boundary)--\r\n")
         return body
+    }
+
+    private func appendTextPart(named name: String, value: String, to body: inout Data, boundary: String) {
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n")
+        body.append("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+        body.append(value)
+        body.append("\r\n")
     }
 }
 

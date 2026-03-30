@@ -33,9 +33,9 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
-                        VideoIngestView()
+                        ImportView()
                     } label: {
-                        Label("Ingest", systemImage: "waveform.badge.mic")
+                        Label("Import", systemImage: "square.and.arrow.down.on.square")
                     }
                 }
             }
@@ -59,11 +59,11 @@ struct ContentView: View {
             }
 
             NavigationLink {
-                VideoIngestView()
+                ImportView()
             } label: {
-                Label("Open Video Ingest", systemImage: "arrow.up.doc")
+                Label("Open Import", systemImage: "square.and.arrow.down.on.square")
             }
-            .buttonStyle(.primary)
+            .buttonStyle(.secondary)
         }
     }
 
