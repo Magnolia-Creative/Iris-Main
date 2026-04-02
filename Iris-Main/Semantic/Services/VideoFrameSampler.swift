@@ -9,11 +9,23 @@ struct SampledVideoFrame {
 
 enum VideoFrameSamplerError: LocalizedError {
     case invalidDuration
+    case mediaNotPlayable
+    case protectedContent
+    case noVideoTrack
+    case allFramesFailed(details: String)
 
     var errorDescription: String? {
         switch self {
         case .invalidDuration:
             return "Video has an invalid duration."
+        case .mediaNotPlayable:
+            return "Video asset is not marked as playable by AVFoundation."
+        case .protectedContent:
+            return "Video appears to be protected content and cannot be decoded for frame extraction."
+        case .noVideoTrack:
+            return "Video has no decodable video track."
+        case .allFramesFailed(let details):
+            return "Unable to extract any frames from this video. \(details)"
         }
     }
 }
@@ -37,6 +49,24 @@ struct VideoFrameSampler {
     ) async throws -> [SampledVideoFrame] {
         print("[SemanticIndex] sampleFrames start url=\(videoURL.lastPathComponent) start=\(startTime)s end=\(endTime ?? -1)s step=\(stepSeconds)s")
         let asset = AVURLAsset(url: videoURL)
+        let isPlayable = try await asset.load(.isPlayable)
+        if !isPlayable {
+            print("[SemanticIndex] sampleFrames asset not playable for \(videoURL.lastPathComponent)")
+            throw VideoFrameSamplerError.mediaNotPlayable
+        }
+
+        let hasProtectedContent = try await asset.load(.hasProtectedContent)
+        if hasProtectedContent {
+            print("[SemanticIndex] sampleFrames protected content for \(videoURL.lastPathComponent)")
+            throw VideoFrameSamplerError.protectedContent
+        }
+
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        if videoTracks.isEmpty {
+            print("[SemanticIndex] sampleFrames no video tracks for \(videoURL.lastPathComponent)")
+            throw VideoFrameSamplerError.noVideoTrack
+        }
+
         let duration = try await asset.load(.duration)
         let videoDuration = CMTimeGetSeconds(duration)
         guard videoDuration.isFinite, videoDuration > 0 else {
@@ -51,27 +81,43 @@ struct VideoFrameSampler {
             return []
         }
 
+        let timescale = CMTimeScale(NSEC_PER_SEC)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceAfter = .zero
-        generator.requestedTimeToleranceBefore = .zero
+        // Allow nearby frame decode when exact timestamp has no keyframe.
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: timescale)
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: timescale)
 
         var samples: [SampledVideoFrame] = []
         var current = clampedStart
-        let timescale = CMTimeScale(NSEC_PER_SEC)
+        var failures = 0
+        var firstFailureDescription: String?
 
         while current <= clampedEnd {
-            let requestedTime = CMTime(seconds: current, preferredTimescale: timescale)
+            // Avoid strict zero-second extraction which often fails on some MP4s.
+            let targetTime = (current == 0) ? min(0.1, clampedEnd) : current
+            let requestedTime = CMTime(seconds: targetTime, preferredTimescale: timescale)
             do {
                 let image = try generator.copyCGImage(at: requestedTime, actualTime: nil)
-                samples.append(SampledVideoFrame(timestampSeconds: current, image: image))
+                samples.append(SampledVideoFrame(timestampSeconds: targetTime, image: image))
             } catch {
+                failures += 1
+                if firstFailureDescription == nil {
+                    firstFailureDescription = error.localizedDescription
+                }
                 print("[SemanticIndex] copyCGImage failed at \(current)s for \(videoURL.lastPathComponent): \(error)")
-                throw error
             }
             current += stepSeconds
         }
 
+        if samples.isEmpty {
+            let details = firstFailureDescription ?? "Unknown frame extraction failure."
+            throw VideoFrameSamplerError.allFramesFailed(details: details)
+        }
+
+        if failures > 0 {
+            print("[SemanticIndex] sampleFrames partial failures for \(videoURL.lastPathComponent): failures=\(failures) successes=\(samples.count)")
+        }
         print("[SemanticIndex] sampleFrames done url=\(videoURL.lastPathComponent) count=\(samples.count)")
         return samples
     }

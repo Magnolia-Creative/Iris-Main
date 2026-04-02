@@ -17,7 +17,7 @@ enum MobileCLIPEmbeddingError: LocalizedError {
         case .packageUnavailable:
             return "swift-mobileclip is not linked. Add the package dependency to the app target."
         case .modelUnavailable:
-            return "MobileCLIP model could not be loaded. Confirm compiled .modelc files are available."
+            return "MobileCLIP s2 model is unavailable. Set encoder URI to an explicit folder path like s2:///absolute/path containing mobileclip_s2_text.mlmodelc and mobileclip_s2_image.mlmodelc."
         case .textTooLong:
             return "Query text is too long for MobileCLIP. Keep it under 77 characters."
         case .textEmbeddingFailed:
@@ -40,6 +40,36 @@ struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
         self.encoderURI = encoderURIString
     }
 
+    private func explicitModelsDirectoryPath() -> String? {
+        guard let components = URLComponents(string: encoderURI) else { return nil }
+        let trimmedPath = components.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedPath.isEmpty ? nil : trimmedPath
+    }
+
+    private func ensureModelAvailability() throws {
+        guard !encoderURI.isEmpty else {
+            print("[SemanticIndex] model availability failed: empty encoder URI")
+            throw MobileCLIPEmbeddingError.modelUnavailable
+        }
+
+        // Avoid the package crash path that force-unwraps bundled model URLs when missing.
+        guard let modelsDirectoryPath = explicitModelsDirectoryPath() else {
+            print("[SemanticIndex] model availability failed: encoderURI has no explicit path (\(encoderURI))")
+            throw MobileCLIPEmbeddingError.modelUnavailable
+        }
+
+        let imagePath = (modelsDirectoryPath as NSString).appendingPathComponent("mobileclip_s2_image.mlmodelc")
+        let textPath = (modelsDirectoryPath as NSString).appendingPathComponent("mobileclip_s2_text.mlmodelc")
+        let fileManager = FileManager.default
+        let imageExists = fileManager.fileExists(atPath: imagePath)
+        let textExists = fileManager.fileExists(atPath: textPath)
+        print("[SemanticIndex] model availability check dir=\(modelsDirectoryPath) imageExists=\(imageExists) textExists=\(textExists)")
+
+        guard imageExists, textExists else {
+            throw MobileCLIPEmbeddingError.modelUnavailable
+        }
+    }
+
     func textEmbedding(for text: String) async throws -> [Float] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= 77 else {
@@ -48,8 +78,8 @@ struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
         }
 
         #if canImport(MobileCLIP)
+        try ensureModelAvailability()
         print("[SemanticIndex] textEmbedding using encoderURI=\(encoderURI)")
-        guard !encoderURI.isEmpty else { throw MobileCLIPEmbeddingError.modelUnavailable }
         let encoder = try NewClipEncoder(uri: encoderURI)
         let tokenizer = CLIPTokenizer()
         let result = await ComputeTextEmbeddings(
@@ -74,8 +104,8 @@ struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
 
     func imageEmbedding(for image: CGImage) async throws -> [Float] {
         #if canImport(MobileCLIP)
+        try ensureModelAvailability()
         print("[SemanticIndex] imageEmbedding using encoderURI=\(encoderURI)")
-        guard !encoderURI.isEmpty else { throw MobileCLIPEmbeddingError.modelUnavailable }
         let encoder = try NewClipEncoder(uri: encoderURI)
         let result = await ComputeImageEmbeddings(
             encoder: encoder,
