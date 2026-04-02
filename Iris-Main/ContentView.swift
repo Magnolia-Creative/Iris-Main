@@ -32,10 +32,20 @@ struct ContentView: View {
             .navigationTitle("Iris")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        ImportView()
+                    Menu {
+                        NavigationLink {
+                            ImportView()
+                        } label: {
+                            Label("Import", systemImage: "square.and.arrow.down.on.square")
+                        }
+
+                        NavigationLink {
+                            SemanticView()
+                        } label: {
+                            Label("Semantic", systemImage: "sparkle.magnifyingglass")
+                        }
                     } label: {
-                        Label("Import", systemImage: "square.and.arrow.down.on.square")
+                        Label("Tools", systemImage: "square.grid.2x2")
                     }
                 }
             }
@@ -62,6 +72,13 @@ struct ContentView: View {
                 ImportView()
             } label: {
                 Label("Open Import", systemImage: "square.and.arrow.down.on.square")
+            }
+            .buttonStyle(.secondary)
+
+            NavigationLink {
+                SemanticView()
+            } label: {
+                Label("Open Semantic Search", systemImage: "sparkle.magnifyingglass")
             }
             .buttonStyle(.secondary)
         }
