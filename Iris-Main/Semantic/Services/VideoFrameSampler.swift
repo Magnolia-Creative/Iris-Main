@@ -45,7 +45,8 @@ struct VideoFrameSampler {
         videoURL: URL,
         startTime: Double = 0,
         endTime: Double? = nil,
-        stepSeconds: Double
+        stepSeconds: Double,
+        maximumDimension: CGFloat? = nil
     ) async throws -> [SampledVideoFrame] {
         print("[SemanticIndex] sampleFrames start url=\(videoURL.lastPathComponent) start=\(startTime)s end=\(endTime ?? -1)s step=\(stepSeconds)s")
         let asset = AVURLAsset(url: videoURL)
@@ -84,6 +85,9 @@ struct VideoFrameSampler {
         let timescale = CMTimeScale(NSEC_PER_SEC)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
+        if let maximumDimension, maximumDimension > 0 {
+            generator.maximumSize = CGSize(width: maximumDimension, height: maximumDimension)
+        }
         // Allow nearby frame decode when exact timestamp has no keyframe.
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: timescale)
         generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: timescale)
@@ -124,7 +128,8 @@ struct VideoFrameSampler {
 
     func sampleFrames(
         videoURL: URL,
-        atTimestamps timestamps: [Double]
+        atTimestamps timestamps: [Double],
+        maximumDimension: CGFloat? = nil
     ) async throws -> [SampledVideoFrame] {
         guard !timestamps.isEmpty else { return [] }
 
@@ -158,6 +163,9 @@ struct VideoFrameSampler {
         let timescale = CMTimeScale(NSEC_PER_SEC)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
+        if let maximumDimension, maximumDimension > 0 {
+            generator.maximumSize = CGSize(width: maximumDimension, height: maximumDimension)
+        }
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: timescale)
         generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: timescale)
 

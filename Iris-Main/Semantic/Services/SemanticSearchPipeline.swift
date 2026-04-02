@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 struct SemanticSearchConstants {
@@ -7,6 +8,7 @@ struct SemanticSearchConstants {
     static let resultsLimit = 3
     static let rangeMergeGapSeconds = 0.6
     static let frameEmbeddingConcurrency = 4
+    static let indexingFrameMaximumDimension: CGFloat = 320
 
     static var chunkStrideSeconds: Double {
         max(0.1, chunkDurationSeconds - chunkOverlapSeconds)
@@ -162,7 +164,8 @@ final class SemanticSearchPipeline {
             let centerTimestamps = chunks.map(\.centerTimeSeconds)
             let frames = try await frameSampler.sampleFrames(
                 videoURL: video.fileURL,
-                atTimestamps: centerTimestamps
+                atTimestamps: centerTimestamps,
+                maximumDimension: SemanticSearchConstants.indexingFrameMaximumDimension
             )
             print("[SemanticIndex] Sampled \(frames.count) chunk center frame(s) for \(video.displayName)")
 
