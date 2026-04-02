@@ -33,8 +33,14 @@ protocol MobileCLIPEmbeddingProviding {
     func imageEmbedding(for image: CGImage) async throws -> [Float]
 }
 
-struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
+actor MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
+    static let shared = MobileCLIPEmbeddingService()
+
     private let encoderURI: String
+    #if canImport(MobileCLIP)
+    private var cachedEncoder: CLIPEncoder?
+    private var hasValidatedModelAvailability = false
+    #endif
 
     init(encoderURIString: String = AppConfiguration.semanticMobileCLIPEncoderURI) {
         self.encoderURI = encoderURIString
@@ -70,6 +76,23 @@ struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
         }
     }
 
+    #if canImport(MobileCLIP)
+    private func encoder() throws -> CLIPEncoder {
+        if let cachedEncoder {
+            return cachedEncoder
+        }
+
+        if !hasValidatedModelAvailability {
+            try ensureModelAvailability()
+            hasValidatedModelAvailability = true
+        }
+
+        let encoder = try NewClipEncoder(uri: encoderURI)
+        cachedEncoder = encoder
+        return encoder
+    }
+    #endif
+
     func textEmbedding(for text: String) async throws -> [Float] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= 77 else {
@@ -78,9 +101,8 @@ struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
         }
 
         #if canImport(MobileCLIP)
-        try ensureModelAvailability()
         print("[SemanticIndex] textEmbedding using encoderURI=\(encoderURI)")
-        let encoder = try NewClipEncoder(uri: encoderURI)
+        let encoder = try encoder()
         let tokenizer = CLIPTokenizer()
         let result = await ComputeTextEmbeddings(
             encoder: encoder,
@@ -104,9 +126,8 @@ struct MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
 
     func imageEmbedding(for image: CGImage) async throws -> [Float] {
         #if canImport(MobileCLIP)
-        try ensureModelAvailability()
         print("[SemanticIndex] imageEmbedding using encoderURI=\(encoderURI)")
-        let encoder = try NewClipEncoder(uri: encoderURI)
+        let encoder = try encoder()
         let result = await ComputeImageEmbeddings(
             encoder: encoder,
             image: image

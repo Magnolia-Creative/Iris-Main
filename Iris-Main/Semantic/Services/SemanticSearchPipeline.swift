@@ -37,7 +37,7 @@ final class SemanticSearchPipeline {
     private var coarseFrameCount = 0
 
     init(
-        embeddingService: MobileCLIPEmbeddingProviding = MobileCLIPEmbeddingService(),
+        embeddingService: MobileCLIPEmbeddingProviding = MobileCLIPEmbeddingService.shared,
         frameSampler: VideoFrameSampler = VideoFrameSampler()
     ) {
         self.embeddingService = embeddingService
