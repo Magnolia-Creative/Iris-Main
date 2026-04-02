@@ -41,7 +41,7 @@ struct SemanticView: View {
                 .typography(.title)
                 .foregroundStyle(Color.ds.text)
 
-            Text("Build a coarse index at 1 frame every 2 seconds, then refine at 5 fps around nearest chunks to return the best ranges.")
+            Text("Build overlapping 4-second chunks with 0.5-second overlap, then rank and merge chunk hits to return the best ranges.")
                 .typography(.body)
                 .foregroundStyle(Color.ds.textMuted)
         }

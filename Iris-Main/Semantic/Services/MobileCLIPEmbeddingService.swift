@@ -28,7 +28,7 @@ enum MobileCLIPEmbeddingError: LocalizedError {
     }
 }
 
-protocol MobileCLIPEmbeddingProviding {
+protocol MobileCLIPEmbeddingProviding: Sendable {
     func textEmbedding(for text: String) async throws -> [Float]
     func imageEmbedding(for image: CGImage) async throws -> [Float]
 }
@@ -145,5 +145,40 @@ actor MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
         print("[SemanticIndex] imageEmbedding package unavailable")
         throw MobileCLIPEmbeddingError.packageUnavailable
         #endif
+    }
+}
+
+actor MobileCLIPEmbeddingPool: MobileCLIPEmbeddingProviding {
+    static let shared = MobileCLIPEmbeddingPool()
+
+    private let services: [MobileCLIPEmbeddingService]
+    private var nextServiceIndex = 0
+
+    init(
+        poolSize: Int = max(1, min(4, ProcessInfo.processInfo.activeProcessorCount / 2)),
+        encoderURIString: String = AppConfiguration.semanticMobileCLIPEncoderURI
+    ) {
+        let normalizedPoolSize = max(1, poolSize)
+        self.services = (0..<normalizedPoolSize).map { _ in
+            MobileCLIPEmbeddingService(encoderURIString: encoderURIString)
+        }
+        print("[SemanticIndex] Initialized encoder pool size=\(normalizedPoolSize)")
+    }
+
+    private func nextService() -> MobileCLIPEmbeddingService {
+        let service = services[nextServiceIndex]
+        nextServiceIndex = (nextServiceIndex + 1) % services.count
+        return service
+    }
+
+    func textEmbedding(for text: String) async throws -> [Float] {
+        // Text embedding is infrequent; route to one service.
+        let service = nextService()
+        return try await service.textEmbedding(for: text)
+    }
+
+    func imageEmbedding(for image: CGImage) async throws -> [Float] {
+        let service = nextService()
+        return try await service.imageEmbedding(for: image)
     }
 }

@@ -26,7 +26,7 @@ final class SemanticSearchViewModel: ObservableObject {
             model.videos = []
             model.results = []
             model.indexedFrameCount = 0
-            model.statusMessage = "Import videos to build a coarse semantic index."
+            model.statusMessage = "Import videos to build a chunk index."
             model.isImportingVideos = false
             model.importErrorMessage = nil
             pipeline.reset()
@@ -74,13 +74,13 @@ final class SemanticSearchViewModel: ObservableObject {
 
     func buildIndex() async {
         guard model.canBuildIndex else { return }
-        print("[SemanticIndex] Starting coarse index build for \(model.videos.count) video(s)")
+        print("[SemanticIndex] Starting chunk index build for \(model.videos.count) video(s)")
         model.isBuildingIndex = true
         model.searchErrorMessage = nil
         model.results = []
 
         do {
-            try await pipeline.buildCoarseIndex(videos: model.videos) { [weak self] message in
+            try await pipeline.buildChunkIndex(videos: model.videos) { [weak self] message in
                 await MainActor.run {
                     self?.model.statusMessage = message
                 }

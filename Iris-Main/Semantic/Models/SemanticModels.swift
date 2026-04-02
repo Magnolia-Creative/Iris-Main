@@ -23,7 +23,7 @@ struct SemanticSearchModel {
     var isBuildingIndex = false
     var isSearching = false
     var queryText = ""
-    var statusMessage = "Import videos to build a coarse semantic index."
+    var statusMessage = "Import videos to build a chunk index."
     var importErrorMessage: String?
     var searchErrorMessage: String?
     var indexedFrameCount = 0

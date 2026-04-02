@@ -11,6 +11,6 @@ This feature uses `swift-mobileclip` with the `s2` encoder URI from `AppConfigur
 
 ## Runtime behavior
 
-- Coarse index samples one frame every 2 seconds.
-- Fine search samples 5 fps around top coarse candidates.
+- Single-pass chunk index uses 4-second chunks with 0.5-second overlap.
+- One center frame is embedded per chunk and reused at query time (no query-time frame embedding pass).
 - Query text is embedded with MobileCLIP text encoder and compared with cosine similarity.

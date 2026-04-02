@@ -1,24 +1,25 @@
 import Foundation
 
 struct SemanticSearchConstants {
-    static let coarseStepSeconds = 2.0
-    static let fineFramesPerSecond = 5.0
-    static let coarseTopK = 10
+    static let chunkDurationSeconds = 4.0
+    static let chunkOverlapSeconds = 0.5
+    static let chunkTopK = 10
     static let resultsLimit = 3
-    static let coarseWindowHalfWidth = 2.0
     static let rangeMergeGapSeconds = 0.6
+    static let frameEmbeddingConcurrency = 4
+
+    static var chunkStrideSeconds: Double {
+        max(0.1, chunkDurationSeconds - chunkOverlapSeconds)
+    }
 }
 
-struct CoarseFramePoint: Hashable {
+struct VideoChunkPoint: Hashable {
     let videoID: SemanticImportedVideo.ID
     let videoName: String
     let videoDuration: Double
-    let timestampSeconds: Double
-}
-
-struct FineFrameScore {
-    let point: CoarseFramePoint
-    let score: Double
+    let startTimeSeconds: Double
+    let endTimeSeconds: Double
+    let centerTimeSeconds: Double
 }
 
 struct SemanticRangeCandidate {
@@ -33,11 +34,11 @@ final class SemanticSearchPipeline {
     private let embeddingService: MobileCLIPEmbeddingProviding
     private let frameSampler: VideoFrameSampler
 
-    private var coarseIndex = LocalVectorIndex<CoarseFramePoint>()
-    private var coarseFrameCount = 0
+    private var chunkIndex = LocalVectorIndex<VideoChunkPoint>()
+    private var indexedChunkCount = 0
 
     init(
-        embeddingService: MobileCLIPEmbeddingProviding = MobileCLIPEmbeddingService.shared,
+        embeddingService: MobileCLIPEmbeddingProviding = MobileCLIPEmbeddingPool.shared,
         frameSampler: VideoFrameSampler = VideoFrameSampler()
     ) {
         self.embeddingService = embeddingService
@@ -45,109 +46,174 @@ final class SemanticSearchPipeline {
     }
 
     var indexedFrameCount: Int {
-        coarseFrameCount
+        indexedChunkCount
+    }
+
+    private func chunkPoints(for video: SemanticImportedVideo) -> [VideoChunkPoint] {
+        guard video.durationSeconds > 0 else { return [] }
+
+        let chunkDuration = min(SemanticSearchConstants.chunkDurationSeconds, video.durationSeconds)
+        guard chunkDuration > 0 else { return [] }
+
+        if video.durationSeconds <= chunkDuration {
+            return [
+                VideoChunkPoint(
+                    videoID: video.id,
+                    videoName: video.displayName,
+                    videoDuration: video.durationSeconds,
+                    startTimeSeconds: 0,
+                    endTimeSeconds: video.durationSeconds,
+                    centerTimeSeconds: video.durationSeconds / 2
+                )
+            ]
+        }
+
+        let stride = SemanticSearchConstants.chunkStrideSeconds
+        var starts: [Double] = []
+        var currentStart = 0.0
+
+        while currentStart + chunkDuration < video.durationSeconds {
+            starts.append(currentStart)
+            currentStart += stride
+        }
+
+        let finalStart = max(0, video.durationSeconds - chunkDuration)
+        if let lastStart = starts.last {
+            if abs(lastStart - finalStart) > 0.001 {
+                starts.append(finalStart)
+            }
+        } else {
+            starts.append(finalStart)
+        }
+
+        return starts.map { start in
+            let end = min(start + chunkDuration, video.durationSeconds)
+            let center = min(video.durationSeconds, start + ((end - start) / 2))
+            return VideoChunkPoint(
+                videoID: video.id,
+                videoName: video.displayName,
+                videoDuration: video.durationSeconds,
+                startTimeSeconds: start,
+                endTimeSeconds: end,
+                centerTimeSeconds: center
+            )
+        }
+    }
+
+    private func embedFrames(
+        _ frames: [SampledVideoFrame],
+        maxConcurrency: Int
+    ) async throws -> [(frame: SampledVideoFrame, embedding: [Float])] {
+        guard !frames.isEmpty else { return [] }
+
+        let boundedConcurrency = max(1, maxConcurrency)
+        var frameIterator = frames.makeIterator()
+
+        return try await withThrowingTaskGroup(of: (SampledVideoFrame, [Float]).self) { group in
+            var results: [(frame: SampledVideoFrame, embedding: [Float])] = []
+
+            let initialTaskCount = min(boundedConcurrency, frames.count)
+            for _ in 0..<initialTaskCount {
+                guard let frame = frameIterator.next() else { break }
+                group.addTask {
+                    let embedding = try await self.embeddingService.imageEmbedding(for: frame.image)
+                    return (frame, embedding)
+                }
+            }
+
+            while let completed = try await group.next() {
+                results.append((frame: completed.0, embedding: completed.1))
+
+                if let frame = frameIterator.next() {
+                    group.addTask {
+                        let embedding = try await self.embeddingService.imageEmbedding(for: frame.image)
+                        return (frame, embedding)
+                    }
+                }
+            }
+
+            return results
+        }
     }
 
     func reset() {
-        coarseIndex.reset()
-        coarseFrameCount = 0
+        chunkIndex.reset()
+        indexedChunkCount = 0
     }
 
-    func buildCoarseIndex(
+    func buildChunkIndex(
         videos: [SemanticImportedVideo],
         onProgress: @escaping @Sendable (String) async -> Void
     ) async throws {
+        let buildStart = Date()
         reset()
         guard !videos.isEmpty else { return }
-        print("[SemanticIndex] buildCoarseIndex called with \(videos.count) video(s)")
+        print("[SemanticIndex] buildChunkIndex called with \(videos.count) video(s)")
 
-        var index = LocalVectorIndex<CoarseFramePoint>()
-        var totalFrames = 0
+        var index = LocalVectorIndex<VideoChunkPoint>()
+        var totalChunks = 0
 
         for (videoIndex, video) in videos.enumerated() {
-            print("[SemanticIndex] Sampling coarse frames for video \(videoIndex + 1)/\(videos.count): \(video.displayName), duration=\(video.durationSeconds)s")
+            let videoStart = Date()
+            print("[SemanticIndex] Building chunks for video \(videoIndex + 1)/\(videos.count): \(video.displayName), duration=\(video.durationSeconds)s")
             await onProgress("Indexing \(video.displayName) (\(videoIndex + 1)/\(videos.count))...")
+
+            let chunks = chunkPoints(for: video)
+            let centerTimestamps = chunks.map(\.centerTimeSeconds)
             let frames = try await frameSampler.sampleFrames(
                 videoURL: video.fileURL,
-                startTime: 0,
-                endTime: video.durationSeconds,
-                stepSeconds: SemanticSearchConstants.coarseStepSeconds
+                atTimestamps: centerTimestamps
             )
-            print("[SemanticIndex] Sampled \(frames.count) coarse frame(s) for \(video.displayName)")
+            print("[SemanticIndex] Sampled \(frames.count) chunk center frame(s) for \(video.displayName)")
 
-            for frame in frames {
-                do {
-                    let embedding = try await embeddingService.imageEmbedding(for: frame.image)
-                    index.add(
-                        vector: embedding,
-                        payload: CoarseFramePoint(
-                            videoID: video.id,
-                            videoName: video.displayName,
-                            videoDuration: video.durationSeconds,
-                            timestampSeconds: frame.timestampSeconds
-                        )
-                    )
-                    totalFrames += 1
-                } catch {
-                    print("[SemanticIndex] Embedding failed for video=\(video.displayName) timestamp=\(frame.timestampSeconds)s error=\(error)")
-                    throw error
-                }
+            let frameByTimestamp = Dictionary(uniqueKeysWithValues: frames.map { ($0.timestampSeconds, $0) })
+            let availableChunks = chunks.compactMap { chunk -> (chunk: VideoChunkPoint, frame: SampledVideoFrame)? in
+                guard let frame = frameByTimestamp[chunk.centerTimeSeconds] else { return nil }
+                return (chunk, frame)
             }
-            print("[SemanticIndex] Finished video \(video.displayName). runningFrameTotal=\(totalFrames)")
+
+            let embeddedFrames = try await embedFrames(
+                availableChunks.map(\.frame),
+                maxConcurrency: SemanticSearchConstants.frameEmbeddingConcurrency
+            )
+
+            let chunkByCenter = Dictionary(uniqueKeysWithValues: availableChunks.map { ($0.chunk.centerTimeSeconds, $0.chunk) })
+            for item in embeddedFrames {
+                guard let chunk = chunkByCenter[item.frame.timestampSeconds] else { continue }
+                index.add(
+                    vector: item.embedding,
+                    payload: chunk
+                )
+                totalChunks += 1
+            }
+            let videoElapsed = Date().timeIntervalSince(videoStart)
+            print("[SemanticIndex] Finished video \(video.displayName). runningChunkTotal=\(totalChunks) elapsed=\(String(format: "%.2f", videoElapsed))s")
         }
 
-        coarseIndex = index
-        coarseFrameCount = totalFrames
-        print("[SemanticIndex] Coarse index finalized. totalFrames=\(totalFrames)")
-        await onProgress("Coarse index ready with \(totalFrames) sampled frames.")
+        chunkIndex = index
+        indexedChunkCount = totalChunks
+        let buildElapsed = Date().timeIntervalSince(buildStart)
+        print("[SemanticIndex] Chunk index finalized. totalChunks=\(totalChunks) elapsed=\(String(format: "%.2f", buildElapsed))s")
+        await onProgress("Chunk index ready with \(totalChunks) chunks.")
     }
 
     func search(query: String, videos: [SemanticImportedVideo]) async throws -> [SemanticRangeCandidate] {
+        let searchStart = Date()
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         guard !videos.isEmpty else { return [] }
-        guard coarseFrameCount > 0 else { return [] }
+        guard indexedChunkCount > 0 else { return [] }
 
         let queryVector = try await embeddingService.textEmbedding(for: query)
-        let coarseHits = coarseIndex.topK(query: queryVector, limit: SemanticSearchConstants.coarseTopK)
-        guard !coarseHits.isEmpty else { return [] }
+        let chunkHits = chunkIndex.topK(query: queryVector, limit: SemanticSearchConstants.chunkTopK)
+        guard !chunkHits.isEmpty else { return [] }
 
-        let videoLookup = Dictionary(uniqueKeysWithValues: videos.map { ($0.id, $0) })
-        var fineScores: [FineFrameScore] = []
-
-        for hit in coarseHits {
-            guard let video = videoLookup[hit.payload.videoID] else { continue }
-            let windowStart = max(0, hit.payload.timestampSeconds - SemanticSearchConstants.coarseWindowHalfWidth)
-            let windowEnd = min(video.durationSeconds, hit.payload.timestampSeconds + SemanticSearchConstants.coarseWindowHalfWidth)
-            let fineStep = 1.0 / SemanticSearchConstants.fineFramesPerSecond
-
-            let fineFrames = try await frameSampler.sampleFrames(
-                videoURL: video.fileURL,
-                startTime: windowStart,
-                endTime: windowEnd,
-                stepSeconds: fineStep
-            )
-
-            for frame in fineFrames {
-                let imageVector = try await embeddingService.imageEmbedding(for: frame.image)
-                let score = cosineSimilarity(queryVector, imageVector)
-                fineScores.append(
-                    FineFrameScore(
-                        point: CoarseFramePoint(
-                            videoID: video.id,
-                            videoName: video.displayName,
-                            videoDuration: video.durationSeconds,
-                            timestampSeconds: frame.timestampSeconds
-                        ),
-                        score: score
-                    )
-                )
-            }
-        }
-
-        let candidates = TemporalRangeScorer.mergeFineFrameScores(
-            fineScores,
+        let candidates = TemporalRangeScorer.mergeChunkHits(
+            chunkHits,
             maxGapSeconds: SemanticSearchConstants.rangeMergeGapSeconds
         )
+
+        let searchElapsed = Date().timeIntervalSince(searchStart)
+        print("[SemanticIndex] Search completed. chunkHits=\(chunkHits.count) candidates=\(candidates.count) elapsed=\(String(format: "%.2f", searchElapsed))s")
 
         return candidates
             .sorted { $0.confidence > $1.confidence }
@@ -157,31 +223,31 @@ final class SemanticSearchPipeline {
 }
 
 enum TemporalRangeScorer {
-    static func mergeFineFrameScores(
-        _ scores: [FineFrameScore],
+    static func mergeChunkHits(
+        _ hits: [VectorSearchHit<VideoChunkPoint>],
         maxGapSeconds: Double
     ) -> [SemanticRangeCandidate] {
-        guard !scores.isEmpty else { return [] }
+        guard !hits.isEmpty else { return [] }
 
-        let grouped = Dictionary(grouping: scores, by: { $0.point.videoID })
+        let grouped = Dictionary(grouping: hits, by: { $0.payload.videoID })
         var merged: [SemanticRangeCandidate] = []
 
-        for videoScores in grouped.values {
-            let sorted = videoScores.sorted { $0.point.timestampSeconds < $1.point.timestampSeconds }
+        for videoHits in grouped.values {
+            let sorted = videoHits.sorted { $0.payload.startTimeSeconds < $1.payload.startTimeSeconds }
             guard let first = sorted.first else { continue }
 
-            var rangeStart = first.point.timestampSeconds
-            var rangeEnd = first.point.timestampSeconds
+            var rangeStart = first.payload.startTimeSeconds
+            var rangeEnd = first.payload.endTimeSeconds
             var scoreSum = first.score
             var scoreCount = 1
             var peak = first.score
-            let videoName = first.point.videoName
-            let videoID = first.point.videoID
+            let videoName = first.payload.videoName
+            let videoID = first.payload.videoID
 
             for current in sorted.dropFirst() {
-                let gap = current.point.timestampSeconds - rangeEnd
+                let gap = current.payload.startTimeSeconds - rangeEnd
                 if gap <= maxGapSeconds {
-                    rangeEnd = current.point.timestampSeconds
+                    rangeEnd = max(rangeEnd, current.payload.endTimeSeconds)
                     scoreSum += current.score
                     scoreCount += 1
                     peak = max(peak, current.score)
@@ -196,8 +262,8 @@ enum TemporalRangeScorer {
                             confidence: confidence
                         )
                     )
-                    rangeStart = current.point.timestampSeconds
-                    rangeEnd = current.point.timestampSeconds
+                    rangeStart = current.payload.startTimeSeconds
+                    rangeEnd = current.payload.endTimeSeconds
                     scoreSum = current.score
                     scoreCount = 1
                     peak = current.score
