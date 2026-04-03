@@ -26,6 +26,7 @@ final class RenderEngine: NSObject {
     private let frameCache: FrameCache
     private let frameScheduler: FrameScheduler
     private let assetProvider: AssetFrameProvider
+    private let audioController: TimelineAudioController
 
     private var timeline: RenderTimelineInput = .empty
     private var lastDrawTime: CFTimeInterval = 0
@@ -67,6 +68,7 @@ final class RenderEngine: NSObject {
         self.frameCache = FrameCache()
         self.frameScheduler = FrameScheduler()
         self.assetProvider = AssetFrameProvider(metalContext: context)
+        self.audioController = TimelineAudioController()
         super.init()
     }
 
@@ -81,12 +83,20 @@ final class RenderEngine: NSObject {
         lastRenderedTextures.removeAll()
         inFlightKeys.removeAll()
         currentTime = 0
+        audioController.configure(timeline: timeline, currentTime: currentTime)
+        if isPlaying {
+            audioController.play(at: currentTime)
+        }
         needsRedraw = true
         triggerPrefetch(intent: .playback)
     }
 
     func updateTimeline(_ timeline: RenderTimelineInput) {
         self.timeline = timeline
+        audioController.configure(timeline: timeline, currentTime: currentTime)
+        if isPlaying {
+            audioController.play(at: currentTime)
+        }
         requestRedraw()
         triggerPrefetch(intent: .scrub(velocity: 0))
     }
@@ -136,6 +146,7 @@ final class RenderEngine: NSObject {
         lastDrawTime = CACurrentMediaTime()
         needsRedraw = true
         refreshDrawingMode()
+        audioController.play(at: currentTime)
         onPlaybackStateChanged?(true)
         triggerPrefetch(intent: .playback)
     }
@@ -144,6 +155,7 @@ final class RenderEngine: NSObject {
         guard isPlaying else { return }
         isPlaying = false
         refreshDrawingMode()
+        audioController.pause()
         onPlaybackStateChanged?(false)
         cancelAllPrefetch()
         mtkView?.setNeedsDisplay()
@@ -194,6 +206,13 @@ final class RenderEngine: NSObject {
             currentTime = max(0, min(quantized, timeline.duration))
         }
         requestRedraw()
+        if isScrubbing {
+            audioController.pause()
+        } else if isPlaying {
+            audioController.play(at: currentTime)
+        } else {
+            audioController.seek(to: currentTime)
+        }
         onTimeChanged?(currentTime)
         let didTimeMove = abs(currentTime - previousTime) >= scrubNoMovementEpsilon
 
@@ -232,7 +251,12 @@ final class RenderEngine: NSObject {
         lastScrubPrefetchTime = 0
         refreshDrawingMode()
         if scrubbing {
+            audioController.pause()
             assetProvider.resetSequentialReaders()
+        } else if isPlaying {
+            audioController.play(at: currentTime)
+        } else {
+            audioController.seek(to: currentTime)
         }
     }
 
@@ -845,12 +869,18 @@ extension RenderEngine: MTKViewDelegate {
             let now = CACurrentMediaTime()
             let delta = lastDrawTime > 0 ? now - lastDrawTime : 0
             lastDrawTime = now
-            currentTime = min(currentTime + delta, timeline.duration)
+
+            if audioController.isDrivingPlaybackClock, let audioTime = audioController.playbackTime {
+                currentTime = min(audioTime, timeline.duration)
+            } else {
+                currentTime = min(currentTime + delta, timeline.duration)
+            }
 
             if currentTime >= timeline.duration {
                 currentTime = timeline.duration
                 isPlaying = false
                 refreshDrawingMode()
+                audioController.pause()
                 onPlaybackStateChanged?(false)
             }
 
@@ -926,5 +956,141 @@ final class LockedValue<Value>: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return update(&valueStorage)
+    }
+}
+
+private final class TimelineAudioController {
+    private let player: AVPlayer
+    private var audioDuration: Double = 0
+    private var playRequestID: Int = 0
+    private var isAwaitingPlaybackStart: Bool = false
+
+    #if DEBUG
+    private static let logger = Logger(subsystem: "Iris-Main", category: "Render.Audio")
+    #endif
+
+    init() {
+        let player = AVPlayer()
+        player.automaticallyWaitsToMinimizeStalling = false
+        self.player = player
+    }
+
+    func configure(timeline: RenderTimelineInput, currentTime: Double) {
+        playRequestID += 1
+        isAwaitingPlaybackStart = false
+        player.pause()
+
+        guard let item = Self.makePlayerItem(for: timeline) else {
+            audioDuration = 0
+            player.replaceCurrentItem(with: nil)
+            return
+        }
+
+        audioDuration = item.asset.duration.seconds
+        player.replaceCurrentItem(with: item)
+        seek(to: currentTime)
+    }
+
+    func play(at time: Double) {
+        guard hasAudio else { return }
+        playRequestID += 1
+        let requestID = playRequestID
+        let clamped = clampedTime(for: time)
+        let current = player.currentTime().seconds
+
+        if current.isFinite, abs(current - clamped) < 0.02 {
+            isAwaitingPlaybackStart = false
+            player.playImmediately(atRate: 1.0)
+            return
+        }
+
+        isAwaitingPlaybackStart = true
+        let target = CMTime(seconds: clamped, preferredTimescale: 600)
+        let tolerance = CMTime(seconds: 1.0 / 120.0, preferredTimescale: 600)
+        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
+            guard let self else { return }
+            guard finished, self.playRequestID == requestID else { return }
+            self.isAwaitingPlaybackStart = false
+            self.player.playImmediately(atRate: 1.0)
+        }
+    }
+
+    func pause() {
+        playRequestID += 1
+        isAwaitingPlaybackStart = false
+        player.pause()
+    }
+
+    func seek(to time: Double) {
+        guard hasAudio else { return }
+        playRequestID += 1
+        isAwaitingPlaybackStart = false
+        let clamped = clampedTime(for: time)
+        let target = CMTime(seconds: clamped, preferredTimescale: 600)
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    var playbackTime: Double? {
+        guard hasAudio else { return nil }
+        let seconds = player.currentTime().seconds
+        guard seconds.isFinite else { return nil }
+        return clampedTime(for: seconds)
+    }
+
+    var isDrivingPlaybackClock: Bool {
+        hasAudio && (isAwaitingPlaybackStart || player.rate > 0)
+    }
+
+    private var hasAudio: Bool {
+        audioDuration > 0
+    }
+
+    private func clampedTime(for time: Double) -> Double {
+        guard audioDuration > 0 else { return 0 }
+        return min(max(time, 0), audioDuration)
+    }
+
+    private static func makePlayerItem(for timeline: RenderTimelineInput) -> AVPlayerItem? {
+        let composition = AVMutableComposition()
+        var insertedAnyAudio = false
+
+        for track in timeline.tracks.sorted(by: { $0.zOrder < $1.zOrder }) {
+            for clip in track.clips.sorted(by: { $0.timelineRange.lowerBound < $1.timelineRange.lowerBound }) {
+                let asset = AVURLAsset(url: clip.assetURL)
+                guard let sourceTrack = asset.tracks(withMediaType: .audio).first else { continue }
+                guard let compositionTrack = composition.addMutableTrack(
+                    withMediaType: .audio,
+                    preferredTrackID: kCMPersistentTrackID_Invalid
+                ) else {
+                    continue
+                }
+
+                let sourceDuration = max(0, clip.sourceRange.upperBound - clip.sourceRange.lowerBound)
+                let timelineDuration = max(0, clip.timelineRange.upperBound - clip.timelineRange.lowerBound)
+                let duration = min(sourceDuration, timelineDuration)
+                guard duration > 0 else { continue }
+
+                let sourceStart = CMTime(seconds: clip.sourceRange.lowerBound, preferredTimescale: 600)
+                let targetStart = CMTime(seconds: clip.timelineRange.lowerBound, preferredTimescale: 600)
+                let timeRange = CMTimeRange(
+                    start: sourceStart,
+                    duration: CMTime(seconds: duration, preferredTimescale: 600)
+                )
+
+                do {
+                    try compositionTrack.insertTimeRange(timeRange, of: sourceTrack, at: targetStart)
+                    insertedAnyAudio = true
+                } catch {
+                    #if DEBUG
+                    Self.logger.error(
+                        "audio insert failed file=\(clip.assetURL.lastPathComponent, privacy: .public) start=\(clip.timelineRange.lowerBound, format: .fixed(precision: 3))s duration=\(duration, format: .fixed(precision: 3))s"
+                    )
+                    #endif
+                }
+            }
+        }
+
+        guard insertedAnyAudio else { return nil }
+        return AVPlayerItem(asset: composition)
     }
 }
