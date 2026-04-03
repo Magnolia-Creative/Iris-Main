@@ -13,30 +13,74 @@ final class CaptionRenderer {
     }
 
     private var cache: [UUID: CachedCaption] = [:]
+    private let cacheLock = NSLock()
 
     init(metalContext: MetalContext) {
         self.metalContext = metalContext
     }
 
+    /// Main-thread lookup used during `draw(in:)`. Returns cached texture or
+    /// falls back to synchronous rasterization if the background pre-render
+    /// hasn't populated the cache yet.
     func texture(for caption: RenderCaptionCueInput, outputSize: CGSize, displayScale: CGFloat = 2.0) -> MTLTexture? {
+        cacheLock.lock()
         if let cached = cache[caption.id],
            cached.text == caption.text,
            cached.fontSize == caption.style.fontSize {
+            cacheLock.unlock()
             return cached.texture
         }
+        cacheLock.unlock()
 
         guard let texture = renderCaptionTexture(caption, outputSize: outputSize, displayScale: displayScale) else { return nil }
+        cacheLock.lock()
         cache[caption.id] = CachedCaption(
             texture: texture,
             text: caption.text,
             fontSize: caption.style.fontSize,
             textureSize: CGSize(width: texture.width, height: texture.height)
         )
+        cacheLock.unlock()
         return texture
     }
 
     func textureSize(for captionID: UUID) -> CGSize? {
-        cache[captionID]?.textureSize
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return cache[captionID]?.textureSize
+    }
+
+    /// Pre-renders captions whose time window overlaps `[nearTime, nearTime + window]`
+    /// on whatever thread the caller is running (intended for background prefetch).
+    func prerenderCaptions(
+        _ captions: [RenderCaptionCueInput],
+        near time: Double,
+        window: Double = 2.0,
+        outputSize: CGSize,
+        displayScale: CGFloat
+    ) {
+        for caption in captions {
+            guard caption.startTime <= time + window, caption.endTime >= time else { continue }
+
+            cacheLock.lock()
+            let alreadyCached = cache[caption.id].map {
+                $0.text == caption.text && $0.fontSize == caption.style.fontSize
+            } ?? false
+            cacheLock.unlock()
+
+            if alreadyCached { continue }
+
+            guard let texture = renderCaptionTexture(caption, outputSize: outputSize, displayScale: displayScale) else { continue }
+
+            cacheLock.lock()
+            cache[caption.id] = CachedCaption(
+                texture: texture,
+                text: caption.text,
+                fontSize: caption.style.fontSize,
+                textureSize: CGSize(width: texture.width, height: texture.height)
+            )
+            cacheLock.unlock()
+        }
     }
 
     func buildTransform(
@@ -55,6 +99,8 @@ final class CaptionRenderer {
     }
 
     func clearCache() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
         cache.removeAll()
     }
 

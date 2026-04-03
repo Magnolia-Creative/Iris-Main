@@ -26,6 +26,15 @@ final class RenderEngine: NSObject {
     private var prefetchTask: Task<Void, Never>?
     private var needsRedraw: Bool = true
     private var lastRenderedTextures: [UUID: MTLTexture] = [:]
+    private var isScrubbing: Bool = false
+    private var lastScrubPrefetchTime: CFTimeInterval = 0
+    private let inFlightKeys = LockedSet<FrameCache.CacheKey>()
+    private let prefetchGeneration = LockedValue<Int>(0)
+    private let lastRedrawSignalTime = LockedValue<CFTimeInterval>(0)
+
+    private let maxConcurrentDecodes = 4
+    private let redrawCoalesceInterval = 4
+    private let scrubPrefetchInterval: CFTimeInterval = 1.0 / 40.0
 
     override init() {
         let context = try! MetalContext()
@@ -42,10 +51,12 @@ final class RenderEngine: NSObject {
 
     func configure(timeline: RenderTimelineInput) {
         self.timeline = timeline
+        prefetchTask?.cancel()
         frameCache.clear()
         captionRenderer.clearCache()
         assetProvider.invalidateAll()
         lastRenderedTextures.removeAll()
+        inFlightKeys.removeAll()
         currentTime = 0
         needsRedraw = true
         triggerPrefetch(intent: .playback)
@@ -71,6 +82,7 @@ final class RenderEngine: NSObject {
 
     func play() {
         guard !isPlaying, timeline.duration > 0 else { return }
+        isScrubbing = false
         if currentTime >= timeline.duration {
             currentTime = 0
         }
@@ -89,10 +101,51 @@ final class RenderEngine: NSObject {
     }
 
     func seek(to time: Double, intent: RenderIntent = .scrub(velocity: 0)) {
-        currentTime = max(0, min(time, timeline.duration))
+        let clampedTime = max(0, min(time, timeline.duration))
+        switch intent {
+        case .playback:
+            currentTime = clampedTime
+        case .scrub(let velocity):
+            // Keep scrub responsive while still avoiding over-rendering.
+            let quantum: Double
+            if isScrubbing {
+                if abs(velocity) > 20 {
+                    quantum = 1.0 / 24.0
+                } else if abs(velocity) > 8 {
+                    quantum = 1.0 / 30.0
+                } else {
+                    quantum = 1.0 / 45.0
+                }
+            } else {
+                quantum = 1.0 / 60.0
+            }
+            let quantized = (clampedTime / quantum).rounded() * quantum
+            currentTime = max(0, min(quantized, timeline.duration))
+        }
         needsRedraw = true
         onTimeChanged?(currentTime)
-        triggerPrefetch(intent: intent)
+
+        let shouldTriggerPrefetch: Bool = {
+            guard case .scrub = intent, isScrubbing else { return true }
+            let now = CACurrentMediaTime()
+            if now - lastScrubPrefetchTime >= scrubPrefetchInterval {
+                lastScrubPrefetchTime = now
+                return true
+            }
+            return false
+        }()
+
+        if shouldTriggerPrefetch {
+            triggerPrefetch(intent: intent)
+        }
+    }
+
+    func setScrubbing(_ scrubbing: Bool) {
+        isScrubbing = scrubbing
+        lastScrubPrefetchTime = 0
+        if !scrubbing {
+            triggerPrefetch(intent: .scrub(velocity: 0))
+        }
     }
 
     func loadAssetDuration(for url: URL) async throws -> Double {
@@ -103,34 +156,140 @@ final class RenderEngine: NSObject {
 
     private func triggerPrefetch(intent: RenderIntent) {
         prefetchTask?.cancel()
+        let generation = prefetchGeneration.modify { $0 += 1; return $0 }
+
         let timelineCopy = timeline
         let time = currentTime
         let cache = frameCache
         let scheduler = frameScheduler
         let provider = assetProvider
+        let captions = captionRenderer
+        let inFlight = inFlightKeys
+        let maxConcurrent = (isScrubbing && !isPlaying) ? 2 : maxConcurrentDecodes
+        let coalesceInterval = redrawCoalesceInterval
+        let redrawDuringPrefetch: Bool = {
+            if case .playback = intent { return true }
+            return isScrubbing
+        }()
+        let minRedrawInterval: CFTimeInterval = isPlaying ? 0.05 : 1.0 / 30.0
         let previewSize = mtkView.map { CGSize(width: $0.drawableSize.width, height: $0.drawableSize.height) }
+        let displayScale = mtkView.map { CGFloat($0.contentScaleFactor) } ?? 2.0
+        let generationTracker = prefetchGeneration
+        let redrawSignalTracker = lastRedrawSignalTime
 
         prefetchTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let requests = scheduler.computeFramesToPrefetch(
+            let plan = scheduler.computeFramesToPrefetch(
                 timeline: timelineCopy,
                 currentTime: time,
                 intent: intent,
                 cache: cache
             )
 
-            for request in requests {
-                guard !Task.isCancelled else { break }
-                do {
-                    let texture = try await provider.decodeFrame(
-                        from: request.assetURL,
-                        at: request.sourceTime,
-                        maxSize: previewSize
-                    )
+            let requests = plan.flat.filter { request in
+                let key = FrameCache.CacheKey(clipID: request.clipID, time: request.sourceTime)
+                return !inFlight.contains(key) && cache.get(key) == nil
+            }
+
+            await withTaskGroup(of: Bool.self) { group in
+                // Pre-render upcoming captions alongside frame decoding
+                if !timelineCopy.captions.isEmpty, let size = previewSize {
+                    group.addTask {
+                        captions.prerenderCaptions(
+                            timelineCopy.captions,
+                            near: time,
+                            outputSize: size,
+                            displayScale: displayScale
+                        )
+                        return true
+                    }
+                }
+
+                var active = 0
+                var insertsSinceNotify = 0
+                var insertedFrames = 0
+
+                for request in requests {
+                    guard !Task.isCancelled, generationTracker.value == generation else { break }
+
                     let key = FrameCache.CacheKey(clipID: request.clipID, time: request.sourceTime)
-                    cache.insert(key, texture: texture)
-                    await MainActor.run { self?.needsRedraw = true }
-                } catch {
-                    // Non-fatal: skip frames that fail to decode
+                    inFlight.insert(key)
+
+                    if active >= maxConcurrent {
+                        if let success = await group.next(), success {
+                            insertsSinceNotify += 1
+                            insertedFrames += 1
+                        }
+                        active -= 1
+
+                        if redrawDuringPrefetch && insertsSinceNotify >= coalesceInterval {
+                            insertsSinceNotify = 0
+                            let now = CACurrentMediaTime()
+                            let shouldSignal = redrawSignalTracker.modify { lastSignal in
+                                if now - lastSignal >= minRedrawInterval {
+                                    lastSignal = now
+                                    return true
+                                }
+                                return false
+                            }
+                            if !shouldSignal { continue }
+                            await MainActor.run {
+                                guard generationTracker.value == generation else { return }
+                                self?.needsRedraw = true
+                            }
+                        }
+                    }
+
+                    active += 1
+                    group.addTask {
+                        defer { inFlight.remove(key) }
+                        if Task.isCancelled || generationTracker.value != generation {
+                            return false
+                        }
+                        do {
+                            let texture = try await provider.decodeFrame(
+                                from: request.assetURL,
+                                at: request.sourceTime,
+                                maxSize: previewSize
+                            )
+                            if Task.isCancelled || generationTracker.value != generation {
+                                return false
+                            }
+                            cache.insert(key, texture: texture)
+                            return true
+                        } catch {
+                            return false
+                        }
+                    }
+                }
+
+                for await success in group {
+                    if success {
+                        insertsSinceNotify += 1
+                        insertedFrames += 1
+                    }
+                    if redrawDuringPrefetch && insertsSinceNotify >= coalesceInterval {
+                        insertsSinceNotify = 0
+                        let now = CACurrentMediaTime()
+                        let shouldSignal = redrawSignalTracker.modify { lastSignal in
+                            if now - lastSignal >= minRedrawInterval {
+                                lastSignal = now
+                                return true
+                            }
+                            return false
+                        }
+                        if !shouldSignal { continue }
+                        await MainActor.run {
+                            guard generationTracker.value == generation else { return }
+                            self?.needsRedraw = true
+                        }
+                    }
+                }
+
+                if insertedFrames > 0 {
+                    await MainActor.run {
+                        guard generationTracker.value == generation else { return }
+                        self?.needsRedraw = true
+                    }
                 }
             }
         }
@@ -304,5 +463,58 @@ extension RenderEngine: MTKViewDelegate {
             lastMetricsBroadcast = now
             onMetricsUpdated?(metrics)
         }
+    }
+}
+
+// MARK: - Thread-safe set for in-flight tracking
+
+final class LockedSet<Element: Hashable>: @unchecked Sendable {
+    private var storage = Set<Element>()
+    private let lock = NSLock()
+
+    func insert(_ element: Element) {
+        lock.lock()
+        storage.insert(element)
+        lock.unlock()
+    }
+
+    func remove(_ element: Element) {
+        lock.lock()
+        storage.remove(element)
+        lock.unlock()
+    }
+
+    func contains(_ element: Element) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage.contains(element)
+    }
+
+    func removeAll() {
+        lock.lock()
+        storage.removeAll()
+        lock.unlock()
+    }
+}
+
+final class LockedValue<Value>: @unchecked Sendable {
+    private var valueStorage: Value
+    private let lock = NSLock()
+
+    init(_ initialValue: Value) {
+        self.valueStorage = initialValue
+    }
+
+    var value: Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return valueStorage
+    }
+
+    @discardableResult
+    func modify<Result>(_ update: (inout Value) -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return update(&valueStorage)
     }
 }

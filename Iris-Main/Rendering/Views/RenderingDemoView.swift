@@ -72,7 +72,10 @@ struct RenderingDemoView: View {
                     get: { viewModel.currentTime },
                     set: { viewModel.seek(to: $0) }
                 ),
-                in: 0 ... max(viewModel.duration, 0.01)
+                in: 0 ... max(viewModel.duration, 0.01),
+                onEditingChanged: { isEditing in
+                    viewModel.setScrubbing(isEditing)
+                }
             )
             .tint(Color.ds.accentFg)
 

@@ -47,6 +47,10 @@ final class RenderingDemoViewModel: ObservableObject {
     init() {
         self.engine = RenderEngine()
 
+        engine.onTimeChanged = { [weak self] time in
+            Task { @MainActor in self?.currentTime = time }
+        }
+
         engine.onPlaybackStateChanged = { [weak self] playing in
             Task { @MainActor in self?.isPlaying = playing }
         }
@@ -135,9 +139,25 @@ final class RenderingDemoViewModel: ObservableObject {
 
     func seek(to time: Double) {
         let now = CACurrentMediaTime()
-        let velocity = lastSeekTime > 0 ? (time - currentTime) / max(now - lastSeekTime, 0.001) : 0
+        let dt = now - lastSeekTime
+        let velocity = (lastSeekTime > 0 && dt < 0.25)
+            ? (time - engine.currentTime) / max(dt, 0.001)
+            : 0
         lastSeekTime = now
         engine.seek(to: time, intent: .scrub(velocity: velocity))
+    }
+
+    func setScrubbing(_ scrubbing: Bool) {
+        if !scrubbing {
+            // Force a precise settle at release point and refresh nearby cache.
+            lastSeekTime = 0
+            engine.setScrubbing(false)
+            engine.seek(to: engine.currentTime, intent: .scrub(velocity: 0))
+            return
+        }
+
+        lastSeekTime = 0
+        engine.setScrubbing(true)
     }
 
     // MARK: - Transform
