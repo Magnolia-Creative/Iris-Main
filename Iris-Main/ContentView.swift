@@ -44,6 +44,12 @@ struct ContentView: View {
                         } label: {
                             Label("Semantic", systemImage: "sparkle.magnifyingglass")
                         }
+
+                        NavigationLink {
+                            RenderingDemoView()
+                        } label: {
+                            Label("Rendering", systemImage: "film.stack")
+                        }
                     } label: {
                         Label("Tools", systemImage: "square.grid.2x2")
                     }
@@ -79,6 +85,13 @@ struct ContentView: View {
                 SemanticView()
             } label: {
                 Label("Open Semantic Search", systemImage: "sparkle.magnifyingglass")
+            }
+            .buttonStyle(.secondary)
+
+            NavigationLink {
+                RenderingDemoView()
+            } label: {
+                Label("Open Rendering Demo", systemImage: "film.stack")
             }
             .buttonStyle(.secondary)
         }
