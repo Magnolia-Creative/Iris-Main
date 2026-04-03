@@ -77,7 +77,7 @@ final class AssetFrameProvider {
     func decodeFrame(from assetURL: URL, at time: Double, maxSize: CGSize? = nil) async throws -> DecodedFrame {
         let pool = getOrCreatePool(for: assetURL, maxSize: maxSize)
         let checkoutStart = CACurrentMediaTime()
-        let generator = await pool.checkout()
+        let generator = try await pool.checkout()
         let waitMs = (CACurrentMediaTime() - checkoutStart) * 1000
         defer { pool.checkin(generator) }
 
@@ -135,6 +135,13 @@ final class AssetFrameProvider {
         lock.unlock()
         for pool in allPools { pool.cancelAll() }
         for reader in allReaders { reader.cancel() }
+    }
+
+    func cancelRandomAccessDecodes() {
+        lock.lock()
+        let allPools = Array(pools.values)
+        lock.unlock()
+        for pool in allPools { pool.cancelAll() }
     }
 
     func resetSequentialReaders() {
@@ -398,10 +405,16 @@ final class SequentialReader: @unchecked Sendable {
 /// asset URL. Callers check out a generator, use it, then return it. When all
 /// generators are busy, checkout suspends until one is returned.
 final class GeneratorPool: @unchecked Sendable {
+    private struct Waiter {
+        let id: UUID
+        let continuation: CheckedContinuation<AVAssetImageGenerator, Error>
+    }
+
     private let url: URL
     private let maxSize: CGSize?
+    private let allGenerators: [AVAssetImageGenerator]
     private var available: [AVAssetImageGenerator]
-    private var waiters: [CheckedContinuation<AVAssetImageGenerator, Never>] = []
+    private var waiters: [Waiter] = []
     private let lock = NSLock()
 
     #if DEBUG
@@ -411,12 +424,17 @@ final class GeneratorPool: @unchecked Sendable {
     init(url: URL, maxSize: CGSize?, poolSize: Int) {
         self.url = url
         self.maxSize = maxSize
-        self.available = (0..<poolSize).map { _ in
+        self.allGenerators = (0..<poolSize).map { _ in
             Self.makeGenerator(url: url, maxSize: maxSize)
         }
+        self.available = allGenerators
     }
 
-    func checkout() async -> AVAssetImageGenerator {
+    func checkout() async throws -> AVAssetImageGenerator {
+        if Task.isCancelled {
+            throw CancellationError()
+        }
+
         lock.lock()
         if let generator = available.popLast() {
             lock.unlock()
@@ -430,21 +448,26 @@ final class GeneratorPool: @unchecked Sendable {
         #endif
         lock.unlock()
 
-        return await withCheckedContinuation { continuation in
-            lock.lock()
-            if let generator = available.popLast() {
-                lock.unlock()
-                continuation.resume(returning: generator)
-            } else {
-                waiters.append(continuation)
-                #if DEBUG
-                let waiterCount = waiters.count
-                Self.logger.debug(
-                    "pool enqueue file=\(self.url.lastPathComponent, privacy: .public) waiters=\(waiterCount)"
-                )
-                #endif
-                lock.unlock()
+        let waiterID = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                if let generator = available.popLast() {
+                    lock.unlock()
+                    continuation.resume(returning: generator)
+                } else {
+                    waiters.append(Waiter(id: waiterID, continuation: continuation))
+                    #if DEBUG
+                    let waiterCount = waiters.count
+                    Self.logger.debug(
+                        "pool enqueue file=\(self.url.lastPathComponent, privacy: .public) waiters=\(waiterCount)"
+                    )
+                    #endif
+                    lock.unlock()
+                }
             }
+        } onCancel: {
+            self.cancelWaiter(id: waiterID)
         }
     }
 
@@ -453,7 +476,7 @@ final class GeneratorPool: @unchecked Sendable {
         if let waiter = waiters.first {
             waiters.removeFirst()
             lock.unlock()
-            waiter.resume(returning: generator)
+            waiter.continuation.resume(returning: generator)
         } else {
             available.append(generator)
             lock.unlock()
@@ -462,17 +485,32 @@ final class GeneratorPool: @unchecked Sendable {
 
     func cancelAll() {
         lock.lock()
-        let generators = available
-        let waiterCount = waiters.count
+        let generators = allGenerators
+        let cancelledWaiters = waiters
+        waiters.removeAll()
         lock.unlock()
         #if DEBUG
         Self.logger.debug(
-            "pool cancel_all file=\(self.url.lastPathComponent, privacy: .public) generators=\(generators.count) waiters=\(waiterCount)"
+            "pool cancel_all file=\(self.url.lastPathComponent, privacy: .public) generators=\(generators.count) waiters=\(cancelledWaiters.count)"
         )
         #endif
         for generator in generators {
             generator.cancelAllCGImageGeneration()
         }
+        for waiter in cancelledWaiters {
+            waiter.continuation.resume(throwing: CancellationError())
+        }
+    }
+
+    private func cancelWaiter(id: UUID) {
+        lock.lock()
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else {
+            lock.unlock()
+            return
+        }
+        let waiter = waiters.remove(at: index)
+        lock.unlock()
+        waiter.continuation.resume(throwing: CancellationError())
     }
 
     private static func makeGenerator(url: URL, maxSize: CGSize?) -> AVAssetImageGenerator {

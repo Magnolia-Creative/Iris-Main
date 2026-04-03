@@ -1,3 +1,4 @@
+import AVFoundation
 import MetalKit
 import simd
 import QuartzCore
@@ -39,15 +40,20 @@ final class RenderEngine: NSObject {
     private var lastRenderedTextures: [UUID: MTLTexture] = [:]
     private var isScrubbing: Bool = false
     private var lastScrubPrefetchTime: CFTimeInterval = 0
+    private var lastScrubReplaceTime: CFTimeInterval = 0
     private let inFlightKeys = LockedSet<FrameCache.CacheKey>()
     private let prefetchGeneration = LockedValue<Int>(0)
     private let lastRedrawSignalTime = LockedValue<CFTimeInterval>(0)
     private let isPrefetchActive = LockedValue<Bool>(false)
     private let pendingScrubPrefetchIntent = LockedValue<RenderIntent?>(nil)
+    private let activeScrubPrefetchTime = LockedValue<Double>(0)
 
     private let maxConcurrentDecodes = 4
     private let redrawCoalesceInterval = 4
     private let scrubPrefetchInterval: CFTimeInterval = 1.0 / 40.0
+    private let scrubPrefetchJumpCancellationThreshold: Double = 0.75
+    private let scrubNoMovementEpsilon: Double = 0.004
+    private let scrubReplaceMinInterval: CFTimeInterval = 0.20
 
     #if DEBUG
     private static let logger = Logger(subsystem: "Iris-Main", category: "Render.Engine")
@@ -108,6 +114,10 @@ final class RenderEngine: NSObject {
         }
     }
 
+    private func refreshDrawingMode() {
+        setDrawingMode(continuous: isPlaying || isScrubbing)
+    }
+
     func requestRedraw() {
         needsRedraw = true
         if !isPlaying {
@@ -125,7 +135,7 @@ final class RenderEngine: NSObject {
         isPlaying = true
         lastDrawTime = CACurrentMediaTime()
         needsRedraw = true
-        setDrawingMode(continuous: true)
+        refreshDrawingMode()
         onPlaybackStateChanged?(true)
         triggerPrefetch(intent: .playback)
     }
@@ -133,20 +143,31 @@ final class RenderEngine: NSObject {
     func pause() {
         guard isPlaying else { return }
         isPlaying = false
-        setDrawingMode(continuous: false)
+        refreshDrawingMode()
         onPlaybackStateChanged?(false)
         cancelAllPrefetch()
         mtkView?.setNeedsDisplay()
     }
 
     private func cancelAllPrefetch() {
+        cancelActivePrefetchTasks(cancelRandomAccess: true, cancelSequentialReaders: true)
+        pendingScrubPrefetchIntent.modify { $0 = nil }
+        isPrefetchActive.modify { $0 = false }
+    }
+
+    private func cancelActivePrefetchTasks(cancelRandomAccess: Bool, cancelSequentialReaders: Bool) {
         prefetchTask?.cancel()
-        for (_, task) in activePrefetchTasks {
+        prefetchTask = nil
+        for task in activePrefetchTasks.values {
             task.cancel()
         }
         activePrefetchTasks.removeAll()
-        assetProvider.cancelAllPendingDecodes()
-        pendingScrubPrefetchIntent.modify { $0 = nil }
+        if cancelRandomAccess {
+            assetProvider.cancelRandomAccessDecodes()
+        }
+        if cancelSequentialReaders {
+            assetProvider.resetSequentialReaders()
+        }
     }
 
     func seek(to time: Double, intent: RenderIntent = .scrub(velocity: 0)) {
@@ -174,10 +195,14 @@ final class RenderEngine: NSObject {
         }
         requestRedraw()
         onTimeChanged?(currentTime)
+        let didTimeMove = abs(currentTime - previousTime) >= scrubNoMovementEpsilon
 
         let shouldTriggerPrefetch: Bool = {
             guard case .scrub = intent, isScrubbing else { return true }
             let now = CACurrentMediaTime()
+            if !didTimeMove {
+                return !isPrefetchActive.value && (now - lastScrubPrefetchTime >= scrubPrefetchInterval)
+            }
             if now - lastScrubPrefetchTime >= scrubPrefetchInterval {
                 lastScrubPrefetchTime = now
                 return true
@@ -189,9 +214,15 @@ final class RenderEngine: NSObject {
             triggerPrefetch(intent: intent)
         } else if case .scrub(let velocity) = intent {
             #if DEBUG
-            Self.logger.debug(
-                "scrub prefetch throttled time=\(self.currentTime, format: .fixed(precision: 3))s previous=\(previousTime, format: .fixed(precision: 3))s velocity=\(velocity, format: .fixed(precision: 2))"
-            )
+            if !didTimeMove {
+                Self.logger.debug(
+                    "scrub prefetch skipped reason=stationary time=\(self.currentTime, format: .fixed(precision: 3))s velocity=\(velocity, format: .fixed(precision: 2)) active=\(self.isPrefetchActive.value)"
+                )
+            } else {
+                Self.logger.debug(
+                    "scrub prefetch throttled time=\(self.currentTime, format: .fixed(precision: 3))s previous=\(previousTime, format: .fixed(precision: 3))s velocity=\(velocity, format: .fixed(precision: 2))"
+                )
+            }
             #endif
         }
     }
@@ -199,10 +230,9 @@ final class RenderEngine: NSObject {
     func setScrubbing(_ scrubbing: Bool) {
         isScrubbing = scrubbing
         lastScrubPrefetchTime = 0
+        refreshDrawingMode()
         if scrubbing {
             assetProvider.resetSequentialReaders()
-        } else {
-            triggerPrefetch(intent: .scrub(velocity: 0))
         }
     }
 
@@ -213,16 +243,42 @@ final class RenderEngine: NSObject {
     // MARK: - Prefetch
 
     private func triggerPrefetch(intent: RenderIntent) {
+        let currentPrefetchTime = currentTime
+        let now = CACurrentMediaTime()
+        let settledScrub = {
+            if case .scrub = intent {
+                return !isScrubbing
+            }
+            return false
+        }()
+        let scrubVelocity: Double = {
+            if case .scrub(let velocity) = intent { return velocity }
+            return 0
+        }()
+        let absVel = abs(scrubVelocity)
+        let dynamicJumpThreshold: Double = {
+            if absVel > 40 { return 2.5 }
+            if absVel > 20 { return 1.8 }
+            return scrubPrefetchJumpCancellationThreshold
+        }()
+        let dynamicReplaceInterval: CFTimeInterval = absVel > 20 ? 0.15 : scrubReplaceMinInterval
+        let shouldForceReplaceScrub: Bool = {
+            guard case .scrub = intent, isScrubbing, isPrefetchActive.value else { return false }
+            let activeTime = activeScrubPrefetchTime.value
+            guard now - lastScrubReplaceTime >= dynamicReplaceInterval else { return false }
+            return abs(currentPrefetchTime - activeTime) >= dynamicJumpThreshold
+        }()
+
         let shouldCoalesceScrub: Bool = {
             guard case .scrub = intent, isScrubbing else { return false }
-            return isPrefetchActive.value
+            return isPrefetchActive.value && !shouldForceReplaceScrub
         }()
         if shouldCoalesceScrub {
             pendingScrubPrefetchIntent.modify { $0 = intent }
             #if DEBUG
             if case .scrub(let velocity) = intent {
                 Self.logger.debug(
-                    "scrub prefetch coalesced time=\(self.currentTime, format: .fixed(precision: 3))s velocity=\(velocity, format: .fixed(precision: 2))"
+                    "scrub prefetch coalesced time=\(currentPrefetchTime, format: .fixed(precision: 3))s velocity=\(velocity, format: .fixed(precision: 2))"
                 )
             }
             #endif
@@ -234,32 +290,74 @@ final class RenderEngine: NSObject {
             case .playback:
                 return true
             case .scrub:
-                // During active scrubbing, avoid cancellation storms that prevent
-                // decode tasks from ever inserting into cache.
-                return !isScrubbing
+                return !isScrubbing || shouldForceReplaceScrub
             }
         }()
+        let shouldCancelRandomAccess: Bool = {
+            switch intent {
+            case .playback:
+                return true
+            case .scrub:
+                if settledScrub {
+                    // Once the gesture ends, stale random-access decodes should
+                    // not block the exact settle frame at the release position.
+                    return true
+                }
+                // During an active scrub, let in-flight decodes finish so they
+                // can still populate nearby frames without repeated re-seeks.
+                return false
+            }
+        }()
+        #if DEBUG
+        if case .scrub = intent {
+            Self.logger.debug(
+                "scrub prefetch decision time=\(currentPrefetchTime, format: .fixed(precision: 3))s velocity=\(scrubVelocity, format: .fixed(precision: 2)) active=\(self.isPrefetchActive.value) coalesce=\(shouldCoalesceScrub) force_replace=\(shouldForceReplaceScrub) cancel_existing=\(shouldCancelExisting) cancel_random=\(shouldCancelRandomAccess)"
+            )
+        }
+        #endif
         if shouldCancelExisting {
-            prefetchTask?.cancel()
+            cancelActivePrefetchTasks(
+                cancelRandomAccess: shouldCancelRandomAccess,
+                cancelSequentialReaders: false
+            )
+            pendingScrubPrefetchIntent.modify { $0 = nil }
+            if case .scrub = intent {
+                lastScrubReplaceTime = now
+                #if DEBUG
+                Self.logger.debug(
+                    "scrub prefetch replaced time=\(currentPrefetchTime, format: .fixed(precision: 3))s previous_active=\(self.activeScrubPrefetchTime.value, format: .fixed(precision: 3))s velocity=\(scrubVelocity, format: .fixed(precision: 2)) cancel_random=\(shouldCancelRandomAccess)"
+                )
+                #endif
+            }
         }
         let generation = prefetchGeneration.modify { $0 += 1; return $0 }
         isPrefetchActive.modify { $0 = true }
+        if case .scrub = intent {
+            activeScrubPrefetchTime.modify { $0 = currentPrefetchTime }
+        }
         activePrefetchTasks = activePrefetchTasks.filter { !$0.value.isCancelled }
 
         let timelineCopy = timeline
-        let time = currentTime
+        let time = currentPrefetchTime
         let cache = frameCache
         let scheduler = frameScheduler
         let provider = assetProvider
         let captions = captionRenderer
         let inFlight = inFlightKeys
-        let maxConcurrent = (isScrubbing && !isPlaying) ? 2 : maxConcurrentDecodes
-        let coalesceInterval = redrawCoalesceInterval
+        let maxConcurrent: Int = {
+            if isScrubbing && !isPlaying {
+                // Use 2 of 3 pool generators so in-progress decodes from
+                // previous generations can still finish on the 3rd generator.
+                return 2
+            }
+            return maxConcurrentDecodes
+        }()
+        let coalesceInterval = (isScrubbing && !isPlaying) ? 1 : redrawCoalesceInterval
         let redrawDuringPrefetch: Bool = {
             if case .playback = intent { return true }
             return isScrubbing
         }()
-        let minRedrawInterval: CFTimeInterval = isPlaying ? 0.05 : 1.0 / 30.0
+        let minRedrawInterval: CFTimeInterval = 1.0 / 60.0
         let previewSize = mtkView.map { CGSize(width: $0.drawableSize.width, height: $0.drawableSize.height) }
         let displayScale = mtkView.map { CGFloat($0.contentScaleFactor) } ?? 2.0
         let generationTracker = prefetchGeneration
@@ -269,11 +367,14 @@ final class RenderEngine: NSObject {
 
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             defer {
-                prefetchActiveTracker.modify { $0 = false }
                 Task { @MainActor [weak self] in
                     self?.activePrefetchTasks.removeValue(forKey: generation)
                 }
-                if !Task.isCancelled {
+                let isLatestGeneration = generationTracker.value == generation
+                if isLatestGeneration {
+                    prefetchActiveTracker.modify { $0 = false }
+                }
+                if !Task.isCancelled && isLatestGeneration {
                     let pendingIntent = pendingScrubIntentTracker.modify { pending in
                         let value = pending
                         pending = nil
@@ -308,8 +409,10 @@ final class RenderEngine: NSObject {
             if case .scrub(let velocity) = intent {
                 let firstRequest = requests.first?.sourceTime ?? -1
                 let lastRequest = requests.last?.sourceTime ?? -1
+                let timelineMin = requests.map(\.timelineTime).min() ?? -1
+                let timelineMax = requests.map(\.timelineTime).max() ?? -1
                 Self.logger.debug(
-                    "scrub work gen=\(generation) velocity=\(velocity, format: .fixed(precision: 2)) requests=\(requests.count) first=\(firstRequest, format: .fixed(precision: 3))s last=\(lastRequest, format: .fixed(precision: 3))s cache=\(cache.count)"
+                    "scrub work gen=\(generation) velocity=\(velocity, format: .fixed(precision: 2)) requests=\(requests.count) first=\(firstRequest, format: .fixed(precision: 3))s last=\(lastRequest, format: .fixed(precision: 3))s tmin=\(timelineMin, format: .fixed(precision: 3))s tmax=\(timelineMax, format: .fixed(precision: 3))s cache=\(cache.count)"
                 )
             }
             #endif
@@ -522,13 +625,18 @@ final class RenderEngine: NSObject {
                 guard clip.timelineRange.contains(currentTime) else { continue }
                 let sourceTime = FrameScheduler.mapToSourceTime(timelineTime: currentTime, clip: clip)
                 let key = FrameCache.CacheKey(clipID: clip.id, time: sourceTime)
+                let scrubNearestToleranceMs = isScrubbing ? 1500 : 250
 
                 let texture: MTLTexture?
                 if let cached = frameCache.get(key) {
                     cacheHits += 1
                     lookupStats.exactHits += 1
                     texture = cached
-                } else if let nearby = frameCache.nearestResult(clipID: clip.id, time: sourceTime) {
+                } else if let nearby = frameCache.nearestResult(
+                    clipID: clip.id,
+                    time: sourceTime,
+                    toleranceMs: scrubNearestToleranceMs
+                ) {
                     cacheHits += 1
                     lookupStats.nearestHits += 1
                     texture = nearby.texture
@@ -675,6 +783,12 @@ final class RenderEngine: NSObject {
     private func logDecodeFailure(error: Error, request: FrameScheduler.FrameRequest) {
         #if DEBUG
         let nsError = error as NSError
+        if error is CancellationError || (nsError.domain == AVFoundationErrorDomain && nsError.code == -11878) {
+            Self.logger.debug(
+                "decode cancelled clip=\(request.clipID.uuidString, privacy: .public) file=\(request.assetURL.lastPathComponent, privacy: .public) src=\(request.sourceTime, format: .fixed(precision: 3))s domain=\(nsError.domain, privacy: .public) code=\(nsError.code)"
+            )
+            return
+        }
         Self.logger.error(
             "decode failed clip=\(request.clipID.uuidString, privacy: .public) file=\(request.assetURL.lastPathComponent, privacy: .public) src=\(request.sourceTime, format: .fixed(precision: 3))s domain=\(nsError.domain, privacy: .public) code=\(nsError.code)"
         )
@@ -736,7 +850,7 @@ extension RenderEngine: MTKViewDelegate {
             if currentTime >= timeline.duration {
                 currentTime = timeline.duration
                 isPlaying = false
-                setDrawingMode(continuous: false)
+                refreshDrawingMode()
                 onPlaybackStateChanged?(false)
             }
 
@@ -749,7 +863,7 @@ extension RenderEngine: MTKViewDelegate {
             }
         }
 
-        guard needsRedraw || isPlaying else { return }
+        guard needsRedraw || isPlaying || isScrubbing else { return }
         needsRedraw = false
 
         renderCurrentFrame(in: view)
