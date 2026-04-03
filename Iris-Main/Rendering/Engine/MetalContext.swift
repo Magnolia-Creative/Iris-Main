@@ -1,5 +1,7 @@
 import Metal
 import MetalKit
+import CoreVideo
+import os
 import simd
 
 enum RenderEngineError: Error, LocalizedError {
@@ -30,6 +32,11 @@ final class MetalContext {
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
     let library: MTLLibrary
+    private var metalTextureCache: CVMetalTextureCache?
+
+    #if DEBUG
+    private static let logger = Logger(subsystem: "Iris-Main", category: "Render.MetalContext")
+    #endif
 
     init() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -54,6 +61,10 @@ final class MetalContext {
         self.device = device
         self.commandQueue = queue
         self.library = library
+
+        var cache: CVMetalTextureCache?
+        CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cache)
+        self.metalTextureCache = cache
     }
 
     func makeTexture(width: Int, height: Int, pixelFormat: MTLPixelFormat = .bgra8Unorm, usage: MTLTextureUsage = .shaderRead) -> MTLTexture? {
@@ -66,6 +77,87 @@ final class MetalContext {
         descriptor.usage = usage
         descriptor.storageMode = .shared
         return device.makeTexture(descriptor: descriptor)
+    }
+
+    struct BackedTexture {
+        let texture: MTLTexture
+        let backing: Any?
+    }
+
+    func textureFromPixelBuffer(_ pixelBuffer: CVPixelBuffer) -> BackedTexture? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width > 0, height > 0 else { return nil }
+
+        let pixelFormatType = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        let texturePixelFormat: MTLPixelFormat = .bgra8Unorm
+
+        if let cache = metalTextureCache {
+            var cvTexture: CVMetalTexture?
+            let status = CVMetalTextureCacheCreateTextureFromImage(
+                kCFAllocatorDefault,
+                cache,
+                pixelBuffer,
+                nil,
+                texturePixelFormat,
+                width,
+                height,
+                0,
+                &cvTexture
+            )
+            if status == kCVReturnSuccess,
+               let cvTex = cvTexture,
+               let texture = CVMetalTextureGetTexture(cvTex) {
+                return BackedTexture(texture: texture, backing: cvTex)
+            }
+
+            #if DEBUG
+            Self.logger.error(
+                "pixel buffer wrap failed status=\(status) size=\(width)x\(height) format=\(pixelFormatType)"
+            )
+            #endif
+        }
+
+        guard pixelFormatType == kCVPixelFormatType_32BGRA else {
+            #if DEBUG
+            Self.logger.error(
+                "pixel buffer fallback unsupported format=\(pixelFormatType) size=\(width)x\(height)"
+            )
+            #endif
+            return nil
+        }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            #if DEBUG
+            Self.logger.error(
+                "pixel buffer fallback missing base address size=\(width)x\(height) format=\(pixelFormatType)"
+            )
+            #endif
+            return nil
+        }
+
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard let texture = makeTexture(width: width, height: height, pixelFormat: texturePixelFormat) else {
+            return nil
+        }
+
+        texture.replace(
+            region: MTLRegion(origin: .init(), size: .init(width: width, height: height, depth: 1)),
+            mipmapLevel: 0,
+            withBytes: baseAddress,
+            bytesPerRow: bytesPerRow
+        )
+
+        #if DEBUG
+        Self.logger.debug(
+            "pixel buffer fallback upload size=\(width)x\(height) format=\(pixelFormatType) bytes_per_row=\(bytesPerRow)"
+        )
+        #endif
+
+        return BackedTexture(texture: texture, backing: nil)
     }
 
     func textureFromCGImage(_ image: CGImage) -> MTLTexture? {

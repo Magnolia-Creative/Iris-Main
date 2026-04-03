@@ -29,12 +29,12 @@ final class FrameScheduler {
 
         switch intent {
         case .playback:
-            prefetchWindow = 1.0
+            prefetchWindow = 0.4
             stepSize = 1.0 / 30.0
             direction = 1.0
-            maxRequests = 24
+            maxRequests = 10
             var times: [Double] = []
-            var t = max(0, currentTime - (stepSize * 2.0))
+            var t = max(0, currentTime - stepSize)
             while t <= min(timeline.duration, currentTime + prefetchWindow) {
                 times.append(t)
                 t += stepSize
