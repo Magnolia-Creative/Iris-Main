@@ -1,4 +1,4 @@
-import Combine
+internal import Combine
 import Foundation
 import OSLog
 

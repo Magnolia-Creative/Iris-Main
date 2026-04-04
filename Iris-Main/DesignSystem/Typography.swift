@@ -83,6 +83,15 @@ extension Text {
     }
 }
 
+extension TextField {
+    func typographyStyle(_ style: Typography) -> some View {
+        self
+            .font(style.font)
+            .lineSpacing(style.lineHeight - style.fontSize)
+            .tracking(style.letterSpacing * style.fontSize)
+    }
+}
+
 extension View {
     func typographyStyle(_ style: Typography) -> some View {
         self
