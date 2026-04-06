@@ -29,16 +29,20 @@ final class TimelineRenderBridge: ObservableObject {
             }
             .store(in: &cancellables)
 
-        engine.onTimeChanged = { [weak controller] seconds in
+        engine.onTimeChanged = { [weak self, weak controller] seconds in
             let us = Int64(seconds * 1_000_000)
             Task { @MainActor in
+                guard let self, self.engine.isPlaying else { return }
                 controller?.updateCurrentTime(us)
             }
         }
 
-        engine.onPlaybackStateChanged = { [weak controller] playing in
+        engine.onPlaybackStateChanged = { [weak self, weak controller] playing in
             guard !playing else { return }
             Task { @MainActor in
+                guard let self else { return }
+                let endTimeUs = Int64(self.engine.currentTime * 1_000_000)
+                controller?.updateCurrentTime(endTimeUs)
                 controller?.setPlaybackState(.idle)
             }
         }
@@ -109,7 +113,6 @@ final class TimelineRenderBridge: ObservableObject {
             self.isUserScrubbing = false
             self.lastSeekTime = 0
             self.engine.setScrubbing(false)
-            self.engine.seek(to: self.engine.currentTime, intent: .scrub(velocity: 0))
         }
         scrubEndWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
