@@ -11,7 +11,7 @@ struct TimelineLayout: Equatable {
 
     static let expanded = TimelineLayout(
         rulerHeight: 32,
-        trackTopOffset: 40,
+        trackTopOffset: 24,
         iconSize: 24,
         trackSpacing: .spacing(.sp2),
         videoTrackHeight: .spacing(.sp10),
@@ -21,7 +21,7 @@ struct TimelineLayout: Equatable {
 
     static let compressed = TimelineLayout(
         rulerHeight: 28,
-        trackTopOffset: 24,
+        trackTopOffset: 16,
         iconSize: 20,
         trackSpacing: .spacing(.sp1),
         videoTrackHeight: .spacing(.sp5),

@@ -73,14 +73,15 @@ struct ImportSpaceView: View {
 
 // MARK: - Panel (extends from nav bar)
 
+@MainActor
 struct ImportPanelContent: View {
     @ObservedObject var controller: TimelineController
 
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var filterTag: MediaFilterTag = .all
     @State private var isSemanticSearchActive = false
-    @State private var expandedSemanticGroups: Set<String> = []
-    @StateObject private var semanticVM = SemanticSearchViewModel()
+    @State private var selectedSemanticVideoId: String?
+    @ObservedObject private var semanticVM = SemanticSearchViewModel.shared
     @FocusState private var isSearchFieldFocused: Bool
 
     enum MediaFilterTag: String, CaseIterable {
@@ -99,7 +100,7 @@ struct ImportPanelContent: View {
 
             Group {
                 if isSemanticSearchActive {
-                    semanticSearchContent
+                    semanticSearchContent(state: state)
                 } else {
                     mediaGrid(state: state)
                 }
@@ -109,18 +110,24 @@ struct ImportPanelContent: View {
             importSelectedPhotos(items)
         }
         .task(id: searchableVideoSignature(for: state)) {
-            await semanticVM.syncImportedMedia(searchableVideos(from: state), autoBuildIndex: isSemanticSearchActive)
+            semanticVM.queueImportedMediaSync(searchableVideos(from: state), autoBuildIndex: false)
         }
         .onChange(of: isSemanticSearchActive) { _, isActive in
             if isActive {
-                expandedSemanticGroups.removeAll()
-                isSearchFieldFocused = true
-                Task {
-                    await semanticVM.syncImportedMedia(searchableVideos(from: controller.state), autoBuildIndex: true)
+                Task { @MainActor in
+                    await Task.yield()
+                    isSearchFieldFocused = true
                 }
             } else {
                 isSearchFieldFocused = false
+                selectedSemanticVideoId = nil
                 semanticVM.clearSearch()
+            }
+        }
+        .onChange(of: semanticVM.model.results) { _, results in
+            guard let selectedSemanticVideoId else { return }
+            if !results.contains(where: { $0.videoID == selectedSemanticVideoId }) {
+                self.selectedSemanticVideoId = nil
             }
         }
     }
@@ -129,6 +136,20 @@ struct ImportPanelContent: View {
     private var topBar: some View {
         if isSemanticSearchActive {
             HStack(spacing: .spacing(.sp2)) {
+                if selectedSemanticVideoId != nil {
+                    Button {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
+                            selectedSemanticVideoId = nil
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.ds.textMuted)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 HStack(spacing: .spacing(.sp2)) {
                     Image(systemName: "sparkle.magnifyingglass")
                         .font(.system(size: 16, weight: .semibold))
@@ -140,6 +161,7 @@ struct ImportPanelContent: View {
                             get: { semanticVM.model.queryText },
                             set: {
                                 semanticVM.updateQuery($0)
+                                selectedSemanticVideoId = nil
                                 semanticVM.queueLiveSearch()
                             }
                         )
@@ -268,30 +290,70 @@ struct ImportPanelContent: View {
         }
     }
 
-    private var semanticSearchContent: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-                semanticSearchStatusCard
+    @ViewBuilder
+    private func semanticSearchContent(state: TimelineState) -> some View {
+        if semanticVM.model.trimmedQuery.isEmpty {
+            semanticLibraryGrid(state: state)
+        } else if semanticVM.model.isBuildingIndex || semanticVM.model.isSearching, semanticVM.model.results.isEmpty {
+            semanticCenteredState(
+                icon: "sparkle.magnifyingglass",
+                title: semanticVM.model.isBuildingIndex ? "Indexing imported clips..." : "Searching clips...",
+                subtitle: "Results will appear here automatically."
+            )
+        } else if let searchError = semanticVM.model.searchErrorMessage {
+            semanticCenteredState(
+                icon: "exclamationmark.triangle",
+                title: "Search failed",
+                subtitle: searchError
+            )
+        } else if semanticGroups.isEmpty {
+            semanticCenteredState(
+                icon: "tray",
+                title: "No matches found",
+                subtitle: "Try a broader description or import more video."
+            )
+        } else if let selectedGroup {
+            semanticRangeGrid(for: selectedGroup, state: state)
+        } else {
+            semanticResultGrid(state: state)
+        }
+    }
 
-                if semanticVM.model.results.isEmpty {
-                    semanticEmptyState
-                } else {
-                    VStack(spacing: .spacing(.sp2)) {
-                        ForEach(semanticGroups) { group in
-                            SemanticResultGroupCard(
-                                group: group,
-                                isExpanded: Binding(
-                                    get: { expandedSemanticGroups.contains(group.id) },
-                                    set: { isExpanded in
-                                        if isExpanded {
-                                            expandedSemanticGroups.insert(group.id)
-                                        } else {
-                                            expandedSemanticGroups.remove(group.id)
-                                        }
-                                    }
-                                )
-                            )
-                        }
+    private func semanticLibraryGrid(state: TimelineState) -> some View {
+        let videos = searchableVideos(from: state)
+        if videos.isEmpty {
+            return AnyView(
+                semanticCenteredState(
+                    icon: "video.slash",
+                    title: "No searchable clips yet",
+                    subtitle: "Import at least one video to search it semantically."
+                )
+            )
+        }
+
+        return AnyView(
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
+                    ForEach(videos) { media in
+                        MediaThumbnailCell(media: media)
+                    }
+                }
+                .padding(.sp3)
+            }
+        )
+    }
+
+    private func semanticResultGrid(state: TimelineState) -> some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
+                ForEach(semanticGroups) { group in
+                    if let media = state.mediaById[group.id] {
+                        SemanticVideoResultCell(media: media, matchCount: group.segments.count)
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
+                                    selectedSemanticVideoId = group.id
+                                }
+                            }
                     }
                 }
             }
@@ -299,72 +361,20 @@ struct ImportPanelContent: View {
         }
     }
 
-    private var semanticSearchStatusCard: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            Text("Semantic search")
-                .typography(.heading)
-                .foregroundStyle(Color.ds.text)
-
-            if semanticVM.model.isBuildingIndex {
-                ProgressView("Indexing imported clips...")
-                    .tint(Color.ds.accentFg)
-            } else if semanticVM.model.isSearching {
-                ProgressView("Searching matching segments...")
-                    .tint(Color.ds.accentFg)
-            } else if let searchError = semanticVM.model.searchErrorMessage {
-                Text(searchError)
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.danger)
-            } else {
-                Text(semanticVM.model.statusMessage)
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.textMuted)
+    private func semanticRangeGrid(for group: SemanticResultGroup, state: TimelineState) -> some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
+                ForEach(group.segments) { segment in
+                    if let media = state.mediaById[group.id] {
+                        SemanticRangeThumbnailCell(result: segment, assetRefId: media.assetRefId)
+                    }
+                }
             }
-
-            Text("Drag any result into the timeline above to create a clip from that exact segment.")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.sp3)
-        .background(Color.ds.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: .spacing(.sp2))
-                .stroke(Color.ds.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
-    }
-
-    @ViewBuilder
-    private var semanticEmptyState: some View {
-        if semanticVM.model.videos.isEmpty {
-            emptyState(
-                icon: "video.slash",
-                title: "No searchable clips yet",
-                subtitle: "Import at least one video to search it semantically."
-            )
-        } else if semanticVM.model.queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            emptyState(
-                icon: "text.magnifyingglass",
-                title: "Describe what you want to find",
-                subtitle: "Try phrases like person speaking to camera or hands typing on a keyboard."
-            )
-        } else if semanticVM.model.isBuildingIndex || semanticVM.model.isSearching {
-            emptyState(
-                icon: "sparkle.magnifyingglass",
-                title: "Searching clips",
-                subtitle: "Results will appear here as soon as the index finishes and the search completes."
-            )
-        } else {
-            emptyState(
-                icon: "tray",
-                title: "No matches found",
-                subtitle: "Try a broader description or import additional video clips."
-            )
+            .padding(.sp3)
         }
     }
 
-    private func emptyState(icon: String, title: String, subtitle: String) -> some View {
+    private func semanticCenteredState(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: .spacing(.sp2)) {
             Image(systemName: icon)
                 .font(.system(size: 28, weight: .semibold))
@@ -403,13 +413,17 @@ struct ImportPanelContent: View {
         }
 
         return orderedIds.compactMap { id in
-            guard let results = grouped[id], let first = results.first else { return nil }
+            guard let results = grouped[id] else { return nil }
             return SemanticResultGroup(
                 id: id,
-                title: first.videoName,
                 segments: results.sorted { $0.confidence > $1.confidence }
             )
         }
+    }
+
+    private var selectedGroup: SemanticResultGroup? {
+        guard let selectedSemanticVideoId else { return nil }
+        return semanticGroups.first(where: { $0.id == selectedSemanticVideoId })
     }
 
     private func searchableVideos(from state: TimelineState) -> [Media] {
@@ -463,100 +477,34 @@ private struct MediaThumbnailCell: View {
 
 private struct SemanticResultGroup: Identifiable {
     let id: String
-    let title: String
     let segments: [SemanticMatchRange]
-
-    var bestConfidence: Double {
-        segments.map(\.confidence).max() ?? 0
-    }
 }
 
-private struct SemanticResultGroupCard: View {
-    let group: SemanticResultGroup
-    @Binding var isExpanded: Bool
+private struct SemanticVideoResultCell: View {
+    let media: Media
+    let matchCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            Button {
-                guard group.segments.count > 1 else { return }
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                ZStack(alignment: .topLeading) {
-                    if group.segments.count > 1, !isExpanded {
-                        stackedBackground(offset: 8, opacity: 0.26)
-                        stackedBackground(offset: 4, opacity: 0.4)
-                    }
-
-                    headerCard
+        MediaThumbnailCell(media: media)
+            .overlay(alignment: .topTrailing) {
+                if matchCount > 1 {
+                    Text("\(matchCount)")
+                        .typography(.bodySmall)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, .sp2)
+                        .padding(.vertical, 3)
+                        .background(Color.ds.accentBg)
+                        .clipShape(Capsule())
+                        .padding(6)
                 }
             }
-            .buttonStyle(.plain)
-
-            if isExpanded || group.segments.count == 1 {
-                VStack(spacing: .spacing(.sp2)) {
-                    ForEach(group.segments) { segment in
-                        SemanticSegmentRow(result: segment)
-                    }
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(.bottom, group.segments.count > 1 && !isExpanded ? 8 : 0)
-    }
-
-    private var headerCard: some View {
-        HStack(alignment: .center, spacing: .spacing(.sp3)) {
-            VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-                Text(group.title)
-                    .typography(.body)
-                    .foregroundStyle(Color.ds.text)
-                    .lineLimit(1)
-
-                Text(group.segments.count == 1 ? "1 segment" : "\(group.segments.count) matching segments")
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.textMuted)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: .spacing(.sp1)) {
-                Text("Best \(String(format: "%.2f", group.bestConfidence))")
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.accentFg)
-
-                if group.segments.count > 1 {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.ds.textMuted)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.sp3)
-        .background(Color.ds.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: .spacing(.sp2))
-                .stroke(Color.ds.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
-    }
-
-    private func stackedBackground(offset: CGFloat, opacity: Double) -> some View {
-        RoundedRectangle(cornerRadius: .spacing(.sp2))
-            .fill(Color.ds.surface.opacity(opacity))
-            .overlay(
-                RoundedRectangle(cornerRadius: .spacing(.sp2))
-                    .stroke(Color.ds.border.opacity(opacity), lineWidth: 1)
-            )
-            .offset(y: offset)
-            .padding(.horizontal, offset)
     }
 }
 
-private struct SemanticSegmentRow: View {
+private struct SemanticRangeThumbnailCell: View {
     let result: SemanticMatchRange
+    let assetRefId: String
+    @State private var thumbnail: UIImage?
 
     var body: some View {
         let transferItem = ImportedTimelineSegment(
@@ -565,50 +513,47 @@ private struct SemanticSegmentRow: View {
             endTimeUs: timeToMicroseconds(result.endTimeSeconds)
         )
 
-        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-            HStack(spacing: .spacing(.sp2)) {
-                Text("\(formatTime(result.startTimeSeconds)) - \(formatTime(result.endTimeSeconds))")
-                    .typography(.body)
-                    .foregroundStyle(Color.ds.text)
-
-                Spacer()
-
-                Text(String(format: "%.2f", result.confidence))
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.accentFg)
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.ds.surface)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let thumbnail {
+                    Image(uiImage: thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .clipped()
+                } else {
+                    Image(systemName: "video.fill")
+                        .foregroundColor(Color.ds.textMuted)
+                }
             }
-
-            Text("Drag into timeline")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.sp3)
-        .background(Color.ds.bg)
-        .overlay(
-            RoundedRectangle(cornerRadius: .spacing(.sp2))
-                .stroke(Color.ds.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
-        .draggable(transferItem) {
-            segmentPreview
-        }
-    }
-
-    private var segmentPreview: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-            Text(result.videoName)
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.text)
-                .lineLimit(1)
-
-            Text("\(formatTime(result.startTimeSeconds)) - \(formatTime(result.endTimeSeconds))")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-        }
-        .padding(.sp3)
-        .background(Color.ds.surface)
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+            .overlay(alignment: .bottomLeading) {
+                Text("\(formatTime(result.startTimeSeconds)) - \(formatTime(result.endTimeSeconds))")
+                    .typography(.bodySmall)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, .sp2)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.72))
+                    .clipShape(Capsule())
+                    .padding(6)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .draggable(transferItem) {
+                Text("\(formatTime(result.startTimeSeconds)) - \(formatTime(result.endTimeSeconds))")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.text)
+                    .padding(.sp3)
+                    .background(Color.ds.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+            }
+            .task {
+                let midpoint = max(result.startTimeSeconds, (result.startTimeSeconds + result.endTimeSeconds) / 2)
+                thumbnail = try? await ThumbnailService.shared.loadVideoThumbnails(
+                    for: assetRefId,
+                    size: CGSize(width: 160, height: 160),
+                    times: [midpoint]
+                ).first
+            }
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -623,7 +568,7 @@ private struct SemanticSegmentRow: View {
     }
 }
 
-private struct ImportedTimelineSegment: Codable, Transferable {
+struct ImportedTimelineSegment: Codable, Transferable {
     let mediaId: String
     let startTimeUs: Int64
     let endTimeUs: Int64

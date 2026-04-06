@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 internal import Combine
 
@@ -7,7 +8,7 @@ struct EditorContainerView: View {
     @StateObject private var renderBridge = TimelineRenderBridge()
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
-    @Namespace private var editorNamespace
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @Environment(\.dismiss) private var dismiss
 
     init(timelineId: String) {
@@ -26,38 +27,12 @@ struct EditorContainerView: View {
         VStack(spacing: 0) {
             editorHeaderBar
 
-            Group {
-                switch activeSpace {
-                case .importMedia:
-                    ImportSpaceView(
-                        controller: controller,
-                        playbackController: playbackController,
-                        renderBridge: renderBridge,
-                        namespace: editorNamespace
-                    )
-                case .edit:
-                    EditSpaceView(
-                        controller: controller,
-                        playbackController: playbackController,
-                        renderBridge: renderBridge,
-                        namespace: editorNamespace
-                    )
-                case .chat:
-                    ChatSpaceView(
-                        controller: controller,
-                        playbackController: playbackController,
-                        renderBridge: renderBridge,
-                        namespace: editorNamespace
-                    )
-                case .export:
-                    ExportSpaceView(
-                        controller: controller,
-                        playbackController: playbackController,
-                        renderBridge: renderBridge,
-                        namespace: editorNamespace
-                    )
-                }
-            }
+            EditorCanvasView(
+                controller: controller,
+                playbackController: playbackController,
+                renderBridge: renderBridge,
+                activeSpace: activeSpace
+            )
             .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
 
@@ -67,16 +42,22 @@ struct EditorContainerView: View {
                 onSplitClip: { controller.splitSelectedClip() },
                 onDeleteClip: { controller.deleteSelectedClip() }
             ) {
-                switch activeSpace {
-                case .importMedia:
-                    ImportPanelContent(controller: controller)
-                case .chat:
-                    ChatPanelContent(controller: controller)
-                case .export:
-                    ExportPanelContent(controller: controller)
-                case .edit:
-                    EmptyView()
+                ZStack {
+                    switch activeSpace {
+                    case .importMedia:
+                        ImportPanelContent(controller: controller)
+                            .transition(.opacity)
+                    case .chat:
+                        ChatPanelContent(controller: controller)
+                            .transition(.opacity)
+                    case .export:
+                        ExportPanelContent(controller: controller)
+                            .transition(.opacity)
+                    case .edit:
+                        EmptyView()
+                    }
                 }
+                .animation(.easeInOut(duration: 0.2), value: activeSpace)
             }
             .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
             .padding(.horizontal, activeSpace != .edit ? .spacing(.sp3) : 0)
@@ -95,6 +76,25 @@ struct EditorContainerView: View {
         }
         .onTapGesture {
             controller.clearSelection()
+        }
+        .photosPicker(
+            isPresented: controller.binding(\.showingMediaPicker),
+            selection: $selectedPhotos,
+            maxSelectionCount: 20,
+            matching: photosFilter(for: state.pendingImport?.kind)
+        )
+        .fileImporter(
+            isPresented: controller.binding(\.showingFilePicker),
+            allowedContentTypes: state.filePickerTypes(),
+            allowsMultipleSelection: true
+        ) { result in
+            handleFileImport(result)
+        }
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            let kind = controller.state.pendingImport?.kind ?? .video
+            controller.importPickerItems(items, kind: kind)
+            selectedPhotos = []
         }
     }
 
@@ -124,5 +124,17 @@ struct EditorContainerView: View {
         }
         .padding(.horizontal, .spacing(.sp5))
         .padding(.vertical, .spacing(.sp2))
+    }
+
+    private func photosFilter(for kind: TrackKind?) -> PHPickerFilter {
+        switch kind {
+        case .audio: return .videos
+        default: return .any(of: [.videos, .images])
+        }
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        Task { await controller.importFiles(urls) }
     }
 }

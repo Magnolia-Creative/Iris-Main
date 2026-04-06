@@ -3,12 +3,15 @@ import Foundation
 
 @MainActor
 final class SemanticSearchViewModel: ObservableObject {
+    static let shared = SemanticSearchViewModel()
+
     @Published private(set) var model = SemanticSearchModel()
 
     private let frameSampler: VideoFrameSampler
     private let pipeline: SemanticSearchPipeline
     private let thumbnailService: ThumbnailService
     private var liveSearchTask: Task<Void, Never>?
+    private var syncTask: Task<Void, Never>?
     private var indexedVideoKeys: [String] = []
 
     init(
@@ -89,10 +92,30 @@ final class SemanticSearchViewModel: ObservableObject {
         }
     }
 
+    func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
+        syncTask?.cancel()
+        syncTask = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            await self.syncImportedMedia(media, autoBuildIndex: autoBuildIndex)
+        }
+    }
+
     func syncImportedMedia(_ media: [Media], autoBuildIndex: Bool) async {
         let candidateMedia = media
             .filter { $0.kind == .video }
             .sorted { $0.createdAt < $1.createdAt }
+        let nextKeys = candidateMedia.map(\.mediaId)
+        let currentKeys = model.videos.map(\.localKey)
+
+        guard nextKeys != currentKeys else {
+            if autoBuildIndex {
+                await buildIndexIfNeeded()
+                if !model.trimmedQuery.isEmpty {
+                    await runSearch()
+                }
+            }
+            return
+        }
 
         var importedVideos: [SemanticImportedVideo] = []
         importedVideos.reserveCapacity(candidateMedia.count)
@@ -115,16 +138,6 @@ final class SemanticSearchViewModel: ObservableObject {
             )
         }
 
-        let nextKeys = importedVideos.map(\.localKey)
-        let didChangeVideos = nextKeys != model.videos.map(\.localKey)
-
-        guard didChangeVideos else {
-            if autoBuildIndex {
-                await buildIndexIfNeeded()
-            }
-            return
-        }
-
         liveSearchTask?.cancel()
         model.videos = importedVideos
         model.results = []
@@ -145,6 +158,9 @@ final class SemanticSearchViewModel: ObservableObject {
 
         if autoBuildIndex {
             await buildIndexIfNeeded()
+            if !model.trimmedQuery.isEmpty {
+                await runSearch()
+            }
         }
     }
 

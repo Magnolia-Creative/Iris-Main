@@ -108,6 +108,20 @@ final class TimelineController: ObservableObject {
         state.mediaById[media.mediaId] = media
     }
 
+    func generateThumbnailStrips(for media: [Media]) {
+        for item in media where item.kind == .video {
+            Task(priority: .utility) {
+                let updated = await importService.generateThumbnailStrip(for: item)
+                await MainActor.run { updateMedia(updated) }
+            }
+        }
+    }
+
+    func syncSemanticIndexForImportedMedia() {
+        let media = Array(state.mediaById.values)
+        SemanticSearchViewModel.shared.queueImportedMediaSync(media, autoBuildIndex: true)
+    }
+
     func insertClipSegment(mediaId: String, sourceRange: TimeRange, at timeUs: Int64, kind: TrackKind = .video) {
         guard let media = state.mediaById[mediaId] else { return }
         let before = state.clips
@@ -136,13 +150,9 @@ final class TimelineController: ObservableObject {
                     if !media.isEmpty {
                         await MainActor.run {
                             ingestMedia(media, kind: kind)
+                            syncSemanticIndexForImportedMedia()
                         }
-                        for m in media {
-                            Task {
-                                let updated = await importService.generateThumbnailStrip(for: m)
-                                await MainActor.run { updateMedia(updated) }
-                            }
-                        }
+                        generateThumbnailStrips(for: media)
                     }
                 } catch {
                     print("Failed to import picker item: \(error)")
@@ -166,7 +176,9 @@ final class TimelineController: ObservableObject {
                 let before = state.clips
                 state.ingestImportedMedia(imported: imported, matching: matching, kind: request.kind)
                 persistClipChanges(before: before, after: state.clips)
+                syncSemanticIndexForImportedMedia()
             }
+            generateThumbnailStrips(for: imported)
         } catch {
             await MainActor.run { state.clearPendingImport() }
         }
@@ -187,13 +199,9 @@ final class TimelineController: ObservableObject {
                 let before = state.clips
                 state.ingestImportedMedia(imported: imported, matching: imported, kind: request.kind)
                 persistClipChanges(before: before, after: state.clips)
+                syncSemanticIndexForImportedMedia()
             }
-            for media in imported {
-                Task {
-                    let updated = await importService.generateThumbnailStrip(for: media)
-                    await MainActor.run { updateMedia(updated) }
-                }
-            }
+            generateThumbnailStrips(for: imported)
         } catch {
             await MainActor.run { state.clearPendingImport() }
         }

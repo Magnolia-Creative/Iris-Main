@@ -92,24 +92,32 @@ struct TimelineClipView: View {
                     }
                 } catch { thumbnail = nil }
             } else {
-                thumbnail = nil
-                thumbnailStrip = await ThumbnailService.shared.loadThumbnailStripImage(for: media)
-                waveformImage = await ThumbnailService.shared.loadWaveformImage(for: media)
-                if thumbnailStrip == nil {
-                    do {
-                        let stream = try ThumbnailService.shared.loadThumbnailStream(for: media.assetRefId, size: size)
-                        for await update in stream {
-                            if let image = update.image { thumbnail = image }
-                            if update.isFinal { break }
-                        }
-                    } catch { thumbnail = nil }
+                thumbnailStrip = nil
+                async let stripImage = ThumbnailService.shared.loadThumbnailStripImage(for: media)
+                async let waveform = ThumbnailService.shared.loadWaveformImage(for: media)
+
+                do {
+                    let stream = try ThumbnailService.shared.loadThumbnailStream(for: media.assetRefId, size: size)
+                    for await update in stream {
+                        if let image = update.image { thumbnail = image }
+                        if update.isFinal { break }
+                    }
+                } catch { thumbnail = nil }
+
+                waveformImage = await waveform
+                if let resolvedStrip = await stripImage {
+                    thumbnailStrip = resolvedStrip
+                    thumbnail = nil
                 }
             }
         }
     }
 
     private var thumbnailTaskId: String {
-        "\(media?.mediaId ?? "none")-\(clip.sourceRange.start)-\(clip.sourceRange.end)-\(width)-\(height)"
+        let widthBucket = max(1, Int(width.rounded(.up)))
+        let heightBucket = max(1, Int(height.rounded(.up)))
+        let stripPath = media?.spec.thumbnailStripPath ?? "nostrip"
+        return "\(media?.mediaId ?? "none")-\(trackKind)-\(stripPath)-\(widthBucket)x\(heightBucket)"
     }
 
     private var clipSourceUnits: (start: CGFloat, end: CGFloat)? {

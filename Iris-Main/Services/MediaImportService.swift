@@ -58,7 +58,7 @@ class MediaImportService {
 
     func importAsset(_ asset: PHAsset, to mediaLibraryId: String) async throws -> Media {
         let assetRef = try createAssetReference(from: asset)
-        var spec = extractMediaSpec(from: asset)
+        let spec = extractMediaSpec(from: asset)
         let kind: MediaKind = switch asset.mediaType {
         case .image: .photo
         case .video: .video
@@ -66,29 +66,12 @@ class MediaImportService {
         default: .photo
         }
 
-        var media = Media(
+        let media = Media(
             mediaLibraryId: mediaLibraryId,
             kind: kind,
             assetRefId: assetRef.assetRefId,
             spec: spec
         )
-
-        if kind == .video {
-            if let url = try await ThumbnailService.shared.loadVideoURL(for: assetRef.assetRefId) {
-                if let stripInfo = try await ThumbnailService.shared.generateThumbnailStripIfNeeded(
-                    for: media, videoURL: url
-                ) {
-                    spec.thumbnailStripPath = stripInfo.path
-                    spec.thumbnailStripHeight = stripInfo.height
-                    spec.thumbnailStripFrameCount = stripInfo.frameCount
-                    media = Media(
-                        mediaId: media.mediaId, mediaLibraryId: media.mediaLibraryId,
-                        kind: media.kind, assetRefId: media.assetRefId,
-                        spec: spec, createdAt: media.createdAt, updatedAt: Date()
-                    )
-                }
-            }
-        }
 
         try db.create(media)
         return media
@@ -233,31 +216,12 @@ class MediaImportService {
         let localURL = try copyFileToLibrary(url)
         let assetRef = try createAssetReference(from: localURL)
         let spec = try await extractMediaSpec(from: localURL, kind: preferredKind)
-
-        var finalMedia = Media(
+        let finalMedia = Media(
             mediaLibraryId: mediaLibraryId,
             kind: preferredKind,
             assetRefId: assetRef.assetRefId,
             spec: spec
         )
-
-        if preferredKind == .video {
-            var updatedSpec = spec
-            if let stripInfo = try await ThumbnailService.shared.generateThumbnailStripIfNeeded(
-                for: finalMedia, videoURL: localURL
-            ) {
-                updatedSpec.thumbnailStripPath = stripInfo.path
-                updatedSpec.thumbnailStripHeight = stripInfo.height
-                updatedSpec.thumbnailStripFrameCount = stripInfo.frameCount
-            }
-            if updatedSpec.thumbnailStripPath != nil {
-                finalMedia = Media(
-                    mediaId: finalMedia.mediaId, mediaLibraryId: finalMedia.mediaLibraryId,
-                    kind: finalMedia.kind, assetRefId: finalMedia.assetRefId,
-                    spec: updatedSpec, createdAt: finalMedia.createdAt, updatedAt: Date()
-                )
-            }
-        }
 
         try db.create(finalMedia)
         return finalMedia

@@ -15,6 +15,7 @@ struct TimelineSectionView: View {
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
     var showAddButton: Bool = true
+    var rulerVerticalOffset: CGFloat = 0
 
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var lastScrollOffsetX: CGFloat = 0
@@ -50,6 +51,7 @@ struct TimelineSectionView: View {
                                 )
                                 .frame(height: layout.rulerHeight)
                                 .frame(minWidth: timelineWidth, alignment: .leading)
+                                .offset(y: rulerVerticalOffset)
 
                                 TimelineTracksContent(
                                     tracks: tracks, clipsByTrackId: clipsByTrackId,
@@ -177,8 +179,11 @@ struct TimelineSectionView: View {
                     )
                     .frame(width: .spacing(.sp5), height: 64)
                 }
+                .offset(y: rulerVerticalOffset)
 
-                PlayheadView().padding(.top, 27)
+                PlayheadView()
+                    .padding(.top, 27)
+                    .offset(y: rulerVerticalOffset)
 
                 HStack(spacing: 0) {
                     Spacer()
@@ -191,6 +196,7 @@ struct TimelineSectionView: View {
                     )
                     .frame(width: .spacing(.sp4), height: layout.rulerHeight)
                 }
+                .offset(y: rulerVerticalOffset)
 
                 if isAddMenuOpen {
                     Color.clear
