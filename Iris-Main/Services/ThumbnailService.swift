@@ -133,11 +133,19 @@ final class ThumbnailService {
     }
 
     func loadThumbnail(for assetRefId: String, size: CGSize) async throws -> UIImage? {
+        let start = EditorDebugTrace.mark()
         let stream = try loadThumbnailStream(for: assetRefId, size: size)
         var latest: UIImage?
         for await update in stream {
             if let image = update.image { latest = image }
             if update.isFinal { break }
+        }
+        let elapsedMs = (ProcessInfo.processInfo.systemUptime - start) * 1000
+        if elapsedMs > 150 {
+            EditorDebugTrace.log(
+                "ThumbnailService",
+                "slow thumbnail load assetRefId=\(assetRefId) elapsed=\(String(format: "%.1fms", elapsedMs))"
+            )
         }
         return latest
     }
@@ -172,6 +180,7 @@ final class ThumbnailService {
     }
 
     func loadVideoThumbnails(for assetRefId: String, size: CGSize, times: [Double]) async throws -> [UIImage] {
+        let start = EditorDebugTrace.mark()
         guard let url = try await loadVideoURL(for: assetRefId) else { return [] }
 
         let asset = AVURLAsset(url: url)
@@ -191,6 +200,13 @@ final class ThumbnailService {
                         let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
                         images.append(UIImage(cgImage: cgImage))
                     } catch { continue }
+                }
+                let elapsedMs = (ProcessInfo.processInfo.systemUptime - start) * 1000
+                if elapsedMs > 150 {
+                    EditorDebugTrace.log(
+                        "ThumbnailService",
+                        "slow video thumbnail load assetRefId=\(assetRefId) requested=\(times.count) elapsed=\(String(format: "%.1fms", elapsedMs))"
+                    )
                 }
                 continuation.resume(returning: images)
             }

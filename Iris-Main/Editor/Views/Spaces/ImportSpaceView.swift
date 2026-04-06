@@ -110,13 +110,22 @@ struct ImportPanelContent: View {
             importSelectedPhotos(items)
         }
         .task(id: searchableVideoSignature(for: state)) {
+            EditorDebugTrace.log(
+                "ImportPanelContent",
+                "queue semantic sync videoCount=\(searchableVideos(from: state).count)"
+            )
             semanticVM.queueImportedMediaSync(searchableVideos(from: state), autoBuildIndex: false)
         }
         .onChange(of: isSemanticSearchActive) { _, isActive in
+            EditorDebugTrace.log(
+                "ImportPanelContent",
+                "semantic search toggled active=\(isActive) selectedVideo=\(selectedSemanticVideoId ?? "nil")"
+            )
             if isActive {
                 Task { @MainActor in
                     await Task.yield()
                     isSearchFieldFocused = true
+                    EditorDebugTrace.log("ImportPanelContent", "search field focus requested")
                 }
             } else {
                 isSearchFieldFocused = false
@@ -125,10 +134,25 @@ struct ImportPanelContent: View {
             }
         }
         .onChange(of: semanticVM.model.results) { _, results in
+            EditorDebugTrace.log(
+                "ImportPanelContent",
+                "semantic results updated count=\(results.count) isSearching=\(semanticVM.model.isSearching)"
+            )
             guard let selectedSemanticVideoId else { return }
             if !results.contains(where: { $0.videoID == selectedSemanticVideoId }) {
                 self.selectedSemanticVideoId = nil
             }
+        }
+        .onAppear {
+            EditorDebugTrace.log(
+                "ImportPanelContent",
+                "appeared mediaCount=\(state.mediaById.count) videoCount=\(searchableVideos(from: state).count)"
+            )
+            EditorDebugTrace.end(
+                "space-content-importMedia",
+                scope: "ImportPanelContent",
+                message: "import panel appeared"
+            )
         }
     }
 
@@ -236,6 +260,7 @@ struct ImportPanelContent: View {
                 Spacer()
 
                 Button {
+                    EditorDebugTrace.log("ImportPanelContent", "semantic search button tapped")
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
                         isSemanticSearchActive = true
                     }
@@ -277,6 +302,7 @@ struct ImportPanelContent: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
+                let filteredCount = filtered.count
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
                     ForEach(filtered) { media in
                         MediaThumbnailCell(media: media)
@@ -286,6 +312,12 @@ struct ImportPanelContent: View {
                     }
                 }
                 .padding(.sp3)
+                .onAppear {
+                    EditorDebugTrace.log(
+                        "ImportPanelContent",
+                        "media grid appeared filter=\(filterTag.rawValue) count=\(filteredCount)"
+                    )
+                }
             }
         }
     }
@@ -467,10 +499,18 @@ private struct MediaThumbnailCell: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .task {
+                let loadStart = EditorDebugTrace.mark()
                 thumbnail = try? await ThumbnailService.shared.loadThumbnail(
                     for: media.assetRefId,
                     size: CGSize(width: 160, height: 160)
                 )
+                let elapsedMs = (ProcessInfo.processInfo.systemUptime - loadStart) * 1000
+                if elapsedMs > 150 {
+                    EditorDebugTrace.log(
+                        "MediaThumbnailCell",
+                        "slow thumbnail mediaId=\(media.mediaId) kind=\(media.kind.rawValue) elapsed=\(String(format: "%.1fms", elapsedMs))"
+                    )
+                }
             }
     }
 }
@@ -547,12 +587,20 @@ private struct SemanticRangeThumbnailCell: View {
                     .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
             }
             .task {
+                let loadStart = EditorDebugTrace.mark()
                 let midpoint = max(result.startTimeSeconds, (result.startTimeSeconds + result.endTimeSeconds) / 2)
                 thumbnail = try? await ThumbnailService.shared.loadVideoThumbnails(
                     for: assetRefId,
                     size: CGSize(width: 160, height: 160),
                     times: [midpoint]
                 ).first
+                let elapsedMs = (ProcessInfo.processInfo.systemUptime - loadStart) * 1000
+                if elapsedMs > 150 {
+                    EditorDebugTrace.log(
+                        "SemanticRangeThumbnailCell",
+                        "slow range thumbnail mediaId=\(result.videoID) elapsed=\(String(format: "%.1fms", elapsedMs))"
+                    )
+                }
             }
     }
 

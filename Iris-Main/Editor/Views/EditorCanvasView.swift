@@ -8,7 +8,6 @@ struct EditorCanvasView: View {
     let activeSpace: EditorSpace
 
     @State private var isTimelineDropTargeted = false
-
     private var showsPlaybackControls: Bool {
         activeSpace == .edit || activeSpace == .export
     }
@@ -27,7 +26,11 @@ struct EditorCanvasView: View {
     }
 
     private var previewBottomSpacing: CGFloat {
-        showsPlaybackControls ? .spacing(.sp6) : 0
+        showsPlaybackControls ? .spacing(.sp6) : .spacing(.sp2)
+    }
+
+    private var timelineTopInset: CGFloat {
+        previewHeight + previewBottomSpacing + (showsPlaybackControls ? 32 : 0)
     }
 
     private var timelineLayout: TimelineLayout {
@@ -39,12 +42,7 @@ struct EditorCanvasView: View {
     }
 
     private var rulerVerticalOffset: CGFloat {
-        switch activeSpace {
-        case .importMedia, .chat:
-            -12
-        case .edit, .export:
-            0
-        }
+        0
     }
 
     var body: some View {
@@ -54,6 +52,47 @@ struct EditorCanvasView: View {
             actions: controller
         )
 
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                timelineTopSection(playback: playback)
+
+                if activeSpace == .export {
+                    ExportTimelineOverview(state: state)
+                        .frame(height: 60)
+                        .padding(.horizontal, .sp3)
+                        .transition(.opacity)
+                } else {
+                    Color.clear
+                        .frame(height: timelineLayout.sectionHeight(for: state.orderedTracks))
+                        .transaction { transaction in
+                            transaction.animation = nil
+                        }
+                }
+            }
+
+            if activeSpace != .export {
+                timelineViewContainer(state: state)
+                    .padding(.top, timelineTopInset)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
+        .onChange(of: activeSpace) { _, newSpace in
+            EditorDebugTrace.log(
+                "EditorCanvasView",
+                "canvas updated activeSpace=\(newSpace.rawValue) previewHeight=\(Int(previewHeight)) layout=\(timelineLayout == .expanded ? "expanded" : "compressed")"
+            )
+        }
+    }
+
+    private func timelineViewContainer(state: TimelineState) -> some View {
+        timelineView(state: state, layout: timelineLayout)
+            .animation(nil, value: activeSpace)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+
+    private func timelineTopSection(playback: PlaybackController) -> some View {
         VStack(spacing: 0) {
             PreviewSection(controller: playback, renderBridge: renderBridge)
                 .frame(height: previewHeight)
@@ -64,29 +103,11 @@ struct EditorCanvasView: View {
                 PlaybackControls(controller: playback)
                     .padding(.horizontal, .sp4)
             }
-
-            if activeSpace == .export {
-                ExportTimelineOverview(state: state)
-                    .frame(height: 60)
-                    .padding(.horizontal, .sp3)
-                    .transition(.opacity)
-            } else {
-                regularTimelineView(state: state)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
-    }
-
-    @ViewBuilder
-    private func regularTimelineView(state: TimelineState) -> some View {
-        if activeSpace == .importMedia {
-            importTimelineView(state: state)
-        } else {
-            standardTimelineView(state: state)
         }
     }
 
-    private func standardTimelineView(state: TimelineState) -> some View {
+    private func timelineView(state: TimelineState, layout: TimelineLayout) -> some View {
+        let allowsTimelineAdditions = layout == .expanded
         let addSelection: (TrackKind, ImportSource) -> Void
         if allowsTimelineAdditions {
             addSelection = controller.handleAddSelection(kind:source:)
@@ -98,7 +119,7 @@ struct EditorCanvasView: View {
             tracks: state.orderedTracks,
             clipsByTrackId: state.clipsByTrackId,
             mediaById: state.mediaById,
-            layout: timelineLayout,
+            layout: layout,
             pixelsPerSecond: state.pixelsPerSecond,
             timelineDurationUs: state.calculatedTimelineDurationUs,
             scrollableDurationUs: state.scrollableDurationUs,
@@ -111,39 +132,19 @@ struct EditorCanvasView: View {
             showAddButton: allowsTimelineAdditions,
             rulerVerticalOffset: rulerVerticalOffset
         )
-        .frame(height: timelineLayout.sectionHeight(for: state.orderedTracks))
-    }
-
-    private func importTimelineView(state: TimelineState) -> some View {
-        TimelineSectionView(
-            tracks: state.orderedTracks,
-            clipsByTrackId: state.clipsByTrackId,
-            mediaById: state.mediaById,
-            layout: timelineLayout,
-            pixelsPerSecond: state.pixelsPerSecond,
-            timelineDurationUs: state.calculatedTimelineDurationUs,
-            scrollableDurationUs: state.scrollableDurationUs,
-            currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),
-            scrollTargetTimeUs: controller.binding(\.scrollTargetTimeUs),
-            selectedClipId: controller.binding(\.selectedClipId),
-            onAddSelection: { _, _ in },
-            onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
-            onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
-            showAddButton: false,
-            rulerVerticalOffset: rulerVerticalOffset
-        )
-        .frame(height: timelineLayout.sectionHeight(for: state.orderedTracks))
+        .frame(height: layout.sectionHeight(for: state.orderedTracks))
+        .animation(nil, value: layout.sectionHeight(for: state.orderedTracks))
         .overlay {
             RoundedRectangle(cornerRadius: .spacing(.sp3))
                 .stroke(
-                    isTimelineDropTargeted ? Color.ds.accentFg : Color.clear,
+                    activeSpace == .importMedia && isTimelineDropTargeted ? Color.ds.accentFg : Color.clear,
                     style: StrokeStyle(lineWidth: 2, dash: [8, 6])
                 )
                 .padding(.horizontal, .sp3)
                 .animation(.easeOut(duration: 0.18), value: isTimelineDropTargeted)
         }
         .dropDestination(for: ImportedTimelineSegment.self) { items, _ in
-            guard let item = items.first else { return false }
+            guard activeSpace == .importMedia, let item = items.first else { return false }
             controller.insertClipSegment(
                 mediaId: item.mediaId,
                 sourceRange: item.sourceRange,
@@ -151,9 +152,15 @@ struct EditorCanvasView: View {
             )
             return true
         } isTargeted: { isTargeted in
-            isTimelineDropTargeted = isTargeted
+            isTimelineDropTargeted = activeSpace == .importMedia && isTargeted
+        }
+        .onChange(of: activeSpace) { _, newSpace in
+            if newSpace != .importMedia {
+                isTimelineDropTargeted = false
+            }
         }
     }
+
 }
 
 private struct ExportTimelineOverview: View {

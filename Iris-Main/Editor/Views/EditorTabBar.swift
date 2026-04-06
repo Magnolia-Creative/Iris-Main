@@ -118,6 +118,18 @@ struct EditorTabBar<SpaceExtension: View>: View {
         HStack(spacing: .spacing(.sp3)) {
             ForEach(EditorSpace.allCases) { space in
                 Button {
+                    let transitionMark = "space-transition-\(space.rawValue)"
+                    let appearanceMark = "space-content-\(space.rawValue)"
+                    EditorDebugTrace.begin(
+                        transitionMark,
+                        scope: "EditorTabBar",
+                        message: "tap from=\(activeSpace.rawValue) to=\(space.rawValue)"
+                    )
+                    EditorDebugTrace.begin(
+                        appearanceMark,
+                        scope: "EditorTabBar",
+                        message: "waiting for content appearance space=\(space.rawValue)"
+                    )
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         activeSpace = space
                     }

@@ -63,6 +63,9 @@ struct TimelineSectionView: View {
                                     isUserScrolling: isUserScrolling
                                 )
                                 .padding(.top, layout.trackTopOffset)
+                                .transaction { transaction in
+                                    transaction.animation = nil
+                                }
                             }
                             .padding(.leading, centerX)
                             .padding(.trailing, centerX)
@@ -145,6 +148,9 @@ struct TimelineSectionView: View {
                 .frame(height: stackHeight + layout.rulerHeight + layout.trackTopOffset, alignment: .topLeading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .allowsHitTesting(false)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
 
                 // Time display
                 HStack(alignment: .top, spacing: 0) {

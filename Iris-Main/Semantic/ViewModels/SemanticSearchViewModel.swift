@@ -94,6 +94,11 @@ final class SemanticSearchViewModel: ObservableObject {
 
     func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
         syncTask?.cancel()
+        let queuedVideoCount = media.filter { $0.kind == .video }.count
+        EditorDebugTrace.log(
+            "SemanticSearchViewModel",
+            "queue imported media sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
+        )
         syncTask = Task(priority: .utility) { [weak self] in
             guard let self else { return }
             await self.syncImportedMedia(media, autoBuildIndex: autoBuildIndex)
@@ -101,13 +106,23 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func syncImportedMedia(_ media: [Media], autoBuildIndex: Bool) async {
+        let syncStart = EditorDebugTrace.mark()
         let candidateMedia = media
             .filter { $0.kind == .video }
             .sorted { $0.createdAt < $1.createdAt }
         let nextKeys = candidateMedia.map(\.mediaId)
         let currentKeys = model.videos.map(\.localKey)
 
+        EditorDebugTrace.log(
+            "SemanticSearchViewModel",
+            "sync start candidateVideos=\(candidateMedia.count) autoBuildIndex=\(autoBuildIndex)"
+        )
+
         guard nextKeys != currentKeys else {
+            EditorDebugTrace.log(
+                "SemanticSearchViewModel",
+                "sync skipped unchangedVideos count=\(candidateMedia.count) \(EditorDebugTrace.elapsedMessage(since: syncStart))"
+            )
             if autoBuildIndex {
                 await buildIndexIfNeeded()
                 if !model.trimmedQuery.isEmpty {
@@ -149,6 +164,10 @@ final class SemanticSearchViewModel: ObservableObject {
 
         if importedVideos.isEmpty {
             model.statusMessage = "Import videos to search them semantically."
+            EditorDebugTrace.log(
+                "SemanticSearchViewModel",
+                "sync completed with no imported videos \(EditorDebugTrace.elapsedMessage(since: syncStart))"
+            )
             return
         }
 
@@ -162,6 +181,11 @@ final class SemanticSearchViewModel: ObservableObject {
                 await runSearch()
             }
         }
+
+        EditorDebugTrace.log(
+            "SemanticSearchViewModel",
+            "sync completed importedVideos=\(importedVideos.count) indexedFrames=\(model.indexedFrameCount) \(EditorDebugTrace.elapsedMessage(since: syncStart))"
+        )
     }
 
     func queueLiveSearch() {

@@ -77,6 +77,17 @@ struct EditorContainerView: View {
         .onTapGesture {
             controller.clearSelection()
         }
+        .onChange(of: activeSpace) { oldSpace, newSpace in
+            EditorDebugTrace.log(
+                "EditorContainerView",
+                "activeSpace changed from=\(oldSpace.rawValue) to=\(newSpace.rawValue)"
+            )
+            EditorDebugTrace.end(
+                "space-transition-\(newSpace.rawValue)",
+                scope: "EditorContainerView",
+                message: "activeSpace committed to \(newSpace.rawValue)"
+            )
+        }
         .photosPicker(
             isPresented: controller.binding(\.showingMediaPicker),
             selection: $selectedPhotos,

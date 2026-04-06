@@ -30,7 +30,7 @@ struct TimelineClipView: View {
                         .clipped()
                 } else {
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.ds.accentBg)
+                        .fill(Color.clear)
                 }
 
                 if trackKind != .video {
