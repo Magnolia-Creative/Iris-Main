@@ -45,33 +45,36 @@ struct EditorTabBar<SpaceExtension: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Group {
-                if activeSpace == .edit {
-                    toolsRow
-                } else {
-                    spaceExtension
+        GlassEffectContainer(spacing: shellInset * 2) {
+            VStack(spacing: 0) {
+                Group {
+                    if activeSpace == .edit {
+                        toolsRow
+                    } else {
+                        spaceExtension
+                    }
                 }
-            }
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.top, .spacing(.sp3))
-            .padding(.bottom, .spacing(.sp2))
+                .padding(.horizontal, .spacing(.sp3))
+                .padding(.top, .spacing(.sp3))
+                .padding(.bottom, .spacing(.sp2))
 
-            navCard
-                .padding(.horizontal, shellInset)
-                .padding(.bottom, shellInset)
-        }
-        .frame(width: activeSpace == .edit ? shellWidth : nil)
-        .background { outerShellBackground }
-        .clipShape(RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous))
-        .overlay(outerShellStroke)
-        .shadow(color: outerShadowColor, radius: 20, x: 0, y: 14)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: activeSpace)
-        .onChange(of: isClipSelected) { _, _ in
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
-        }
-        .onChange(of: activeSpace) { _, _ in
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
+                navCard
+                    .padding(.horizontal, shellInset)
+                    .padding(.bottom, shellInset)
+            }
+            .frame(width: activeSpace == .edit ? shellWidth : nil)
+            .glassEffect(
+                .regular.tint(shellTint),
+                in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
+            )
+            .shadow(color: outerShadowColor, radius: 20, x: 0, y: 14)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: activeSpace)
+            .onChange(of: isClipSelected) { _, _ in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
+            }
+            .onChange(of: activeSpace) { _, _ in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
+            }
         }
     }
 
@@ -80,43 +83,15 @@ struct EditorTabBar<SpaceExtension: View>: View {
     private var navCard: some View {
         navigationRow
             .frame(width: navWidth)
-            .background { navBackground }
-            .clipShape(RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous))
-            .overlay(navStroke)
+            .glassEffect(
+                .regular.tint(navTint).interactive(),
+                in: RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous)
+            )
             .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
     }
 
-    private var navBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(colorScheme == .dark ? 0.1 : 0.3),
-                            Color.white.opacity(colorScheme == .dark ? 0.03 : 0.08)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
-    }
-
-    private var navStroke: some View {
-        RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous)
-            .strokeBorder(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(colorScheme == .dark ? 0.22 : 0.6),
-                        Color.white.opacity(colorScheme == .dark ? 0.06 : 0.15)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                lineWidth: 1
-            )
+    private var navTint: Color {
+        Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12)
     }
 
     private var navInnerShadowColor: Color {
@@ -127,38 +102,8 @@ struct EditorTabBar<SpaceExtension: View>: View {
 
     // MARK: - Outer Shell
 
-    private var outerShellBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
-                .fill(.thinMaterial)
-            RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-        }
-    }
-
-    private var outerShellStroke: some View {
-        RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
-            .strokeBorder(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(colorScheme == .dark ? 0.14 : 0.4),
-                        Color.white.opacity(colorScheme == .dark ? 0.03 : 0.08),
-                        Color.ds.border.opacity(colorScheme == .dark ? 0.3 : 0.12)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
+    private var shellTint: Color {
+        Color.white.opacity(colorScheme == .dark ? 0.02 : 0.08)
     }
 
     private var outerShadowColor: Color {
@@ -180,12 +125,16 @@ struct EditorTabBar<SpaceExtension: View>: View {
                     Image(systemName: space.iconName)
                         .font(.system(size: 21, weight: .medium))
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(activeSpace == space ? Color.ds.accentFg : Color.ds.textMuted)
+                        .foregroundStyle(
+                            activeSpace == space
+                                ? Color.white
+                                : Color.white.opacity(0.72)
+                        )
                         .frame(width: tabItemWidth, height: tabRowHeight)
                         .background {
                             if activeSpace == space {
                                 RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous)
-                                    .fill(Color.ds.accentBg.opacity(0.22))
+                                    .fill(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.22))
                                     .matchedGeometryEffect(id: "tabIndicator", in: tabNamespace)
                             }
                         }
@@ -223,7 +172,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
                             toolLabel(
                                 systemImage: item.systemImage,
                                 title: item.title,
-                                foreground: Color.ds.text,
+                                foreground: Color.ds.textMuted,
                                 matchedId: "tool-\(item.id)"
                             )
                         }
@@ -244,10 +193,10 @@ struct EditorTabBar<SpaceExtension: View>: View {
                                     .typography(.body)
                                     .lineLimit(1)
                             }
-                            .foregroundColor(Color.ds.accentFg)
+                            .foregroundColor(Color.ds.textMuted)
                             .padding(.horizontal, .spacing(.sp3))
                             .padding(.vertical, .spacing(.sp2))
-                            .background(Color.ds.accentBg.opacity(0.15))
+                            .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
                             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -258,9 +207,9 @@ struct EditorTabBar<SpaceExtension: View>: View {
                                 Button { sub.action() } label: {
                                     Image(systemName: sub.systemImage)
                                         .font(.system(size: 18, weight: .semibold))
-                                        .foregroundColor(Color.ds.text)
+                                        .foregroundColor(Color.ds.textMuted)
                                         .frame(width: 40, height: 40)
-                                        .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.25))
+                                        .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
                                         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
                                 }
                                 .buttonStyle(.plain)

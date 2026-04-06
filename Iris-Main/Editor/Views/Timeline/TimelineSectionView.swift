@@ -4,10 +4,8 @@ struct TimelineSectionView: View {
     let tracks: [Track]
     let clipsByTrackId: [String: [Clip]]
     let mediaById: [String: Media]
+    let layout: TimelineLayout
     let pixelsPerSecond: CGFloat
-    let rulerHeight: CGFloat
-    let trackTopOffset: CGFloat
-    let iconSize: CGFloat
     let timelineDurationUs: Int64
     let scrollableDurationUs: Int64
     @Binding var currentTimeAtCenter: Int64
@@ -37,7 +35,7 @@ struct TimelineSectionView: View {
     var body: some View {
         GeometryReader { geometry in
             let centerX = geometry.size.width / 2
-            let stackHeight = trackStackHeight(for: tracks)
+            let stackHeight = layout.trackStackHeight(for: tracks)
             let timelineWidth = CGFloat(max(0, scrollableDurationUs)) / 1_000_000 * pixelsPerSecond
 
             ZStack(alignment: .topLeading) {
@@ -50,19 +48,19 @@ struct TimelineSectionView: View {
                                     durationUs: scrollableDurationUs,
                                     currentTime: $currentTimeAtCenter
                                 )
-                                .frame(height: rulerHeight)
+                                .frame(height: layout.rulerHeight)
                                 .frame(minWidth: timelineWidth, alignment: .leading)
 
                                 TimelineTracksContent(
                                     tracks: tracks, clipsByTrackId: clipsByTrackId,
-                                    mediaById: mediaById, pixelsPerSecond: pixelsPerSecond,
+                                    mediaById: mediaById, layout: layout, pixelsPerSecond: pixelsPerSecond,
                                     onMoveClip: onMoveClip, onTrimClip: onTrimClip,
                                     viewportWidth: geometry.size.width, contentWidth: timelineWidth,
                                     scrollOffset: $sharedScrollOffset, selectedClipId: $selectedClipId,
                                     onAutoScroll: updateAutoScroll(direction:),
                                     isUserScrolling: isUserScrolling
                                 )
-                                .padding(.top, .sp10)
+                                .padding(.top, layout.trackTopOffset)
                             }
                             .padding(.leading, centerX)
                             .padding(.trailing, centerX)
@@ -133,7 +131,7 @@ struct TimelineSectionView: View {
                 // Track kind icons
                 ZStack(alignment: .topLeading) {
                     ForEach(Array(tracks.enumerated()), id: \.element.trackId) { index, track in
-                        let trackHeight = TimelineTrackRow.height(for: track.kind)
+                        let trackHeight = layout.trackHeight(for: track.kind)
                         iconView(for: track.kind, trackHeight: trackHeight)
                             .position(
                                 x: trackIconX(for: geometry.size.width),
@@ -141,8 +139,8 @@ struct TimelineSectionView: View {
                             )
                     }
                 }
-                .padding(.top, rulerHeight + trackTopOffset)
-                .frame(height: stackHeight + rulerHeight + trackTopOffset, alignment: .topLeading)
+                .padding(.top, layout.rulerHeight + layout.trackTopOffset)
+                .frame(height: stackHeight + layout.rulerHeight + layout.trackTopOffset, alignment: .topLeading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .allowsHitTesting(false)
 
@@ -191,7 +189,7 @@ struct TimelineSectionView: View {
                         ]),
                         startPoint: .leading, endPoint: .trailing
                     )
-                    .frame(width: .spacing(.sp4), height: rulerHeight)
+                    .frame(width: .spacing(.sp4), height: layout.rulerHeight)
                 }
 
                 if isAddMenuOpen {
@@ -247,34 +245,28 @@ struct TimelineSectionView: View {
     private func iconView(for kind: TrackKind, trackHeight: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: .spacing(.sp1))
             .fill(Color.ds.bg.opacity(0.75))
-            .frame(width: iconSize, height: trackHeight)
+            .frame(width: layout.iconSize, height: trackHeight)
             .overlay(RoundedRectangle(cornerRadius: .spacing(.sp1)).stroke(Color.ds.textMuted.opacity(0.75), lineWidth: 1))
             .overlay(
                 Image(systemName: iconName(for: kind))
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: min(14, trackHeight * 0.7), weight: .semibold))
                     .foregroundColor(Color.ds.textMuted.opacity(0.75))
             )
     }
 
     private func trackIconX(for width: CGFloat) -> CGFloat {
         let centerX = width / 2
-        let desiredCenter = centerX - .spacing(.sp3) - iconSize / 2 - sharedScrollOffset
-        let minCenter: CGFloat = .spacing(.sp3) + iconSize / 2
-        let maxCenter = centerX - .spacing(.sp3) - iconSize / 2
+        let desiredCenter = centerX - .spacing(.sp3) - layout.iconSize / 2 - sharedScrollOffset
+        let minCenter: CGFloat = .spacing(.sp3) + layout.iconSize / 2
+        let maxCenter = centerX - .spacing(.sp3) - layout.iconSize / 2
         return min(maxCenter, max(minCenter, desiredCenter))
     }
 
     private func iconYPosition(for index: Int, in tracks: [Track]) -> CGFloat {
-        let priorHeights = tracks.prefix(index).map { TimelineTrackRow.height(for: $0.kind) }.reduce(0, +)
-        let spacingTotal = CGFloat(index) * .spacing(.sp2)
-        let trackHeight = TimelineTrackRow.height(for: tracks[index].kind)
+        let priorHeights = tracks.prefix(index).map { layout.trackHeight(for: $0.kind) }.reduce(0, +)
+        let spacingTotal = CGFloat(index) * layout.trackSpacing
+        let trackHeight = layout.trackHeight(for: tracks[index].kind)
         return priorHeights + spacingTotal + trackHeight / 2
-    }
-
-    private func trackStackHeight(for tracks: [Track]) -> CGFloat {
-        let heights = tracks.map { TimelineTrackRow.height(for: $0.kind) }.reduce(0, +)
-        let spacing = CGFloat(max(0, tracks.count - 1)) * .spacing(.sp2)
-        return heights + spacing
     }
 
     private func scheduleShowAddButton() {

@@ -9,10 +9,7 @@ struct EditSpaceView: View {
     var namespace: Namespace.ID
 
     @State private var selectedPhotos: [PhotosPickerItem] = []
-
-    private let rulerHeight: CGFloat = 32
-    private let trackTopOffset: CGFloat = 40
-    private let iconSize: CGFloat = 24
+    private let timelineLayout = TimelineLayout.expanded
 
     var body: some View {
         let state = controller.state
@@ -37,10 +34,8 @@ struct EditSpaceView: View {
                 tracks: state.orderedTracks,
                 clipsByTrackId: state.clipsByTrackId,
                 mediaById: state.mediaById,
+                layout: timelineLayout,
                 pixelsPerSecond: state.pixelsPerSecond,
-                rulerHeight: rulerHeight,
-                trackTopOffset: trackTopOffset,
-                iconSize: iconSize,
                 timelineDurationUs: state.calculatedTimelineDurationUs,
                 scrollableDurationUs: state.scrollableDurationUs,
                 currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),

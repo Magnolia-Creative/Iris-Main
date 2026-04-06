@@ -4,6 +4,7 @@ struct TimelineTrackRow: View {
     let track: Track
     let clips: [Clip]
     let mediaById: [String: Media]
+    let layout: TimelineLayout
     let pixelsPerSecond: CGFloat
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
@@ -13,7 +14,7 @@ struct TimelineTrackRow: View {
     let onAutoScroll: (CGFloat) -> Void
     let isUserScrolling: Bool
 
-    private var trackHeight: CGFloat { Self.height(for: track.kind) }
+    private var trackHeight: CGFloat { layout.trackHeight(for: track.kind) }
     private let swapThresholdPx: CGFloat = 75
 
     @State private var dragState: DragState?
@@ -128,13 +129,6 @@ struct TimelineTrackRow: View {
         .frame(height: trackHeight)
         .onChange(of: dragState?.clipId) { _, newValue in
             if newValue == nil { onAutoScroll(0) }
-        }
-    }
-
-    static func height(for kind: TrackKind) -> CGFloat {
-        switch kind {
-        case .video: return .spacing(.sp10)
-        case .audio, .overlay: return .spacing(.sp8)
         }
     }
 

@@ -1,16 +1,17 @@
 import Foundation
 
 struct SemanticImportedVideo: Identifiable, Equatable {
-    let id = UUID()
     let localKey: String
     let fileURL: URL
     let displayName: String
     let durationSeconds: Double
+
+    var id: String { localKey }
 }
 
 struct SemanticMatchRange: Identifiable, Equatable {
     let id = UUID()
-    let videoID: SemanticImportedVideo.ID
+    let videoID: String
     let videoName: String
     let startTimeSeconds: Double
     let endTimeSeconds: Double

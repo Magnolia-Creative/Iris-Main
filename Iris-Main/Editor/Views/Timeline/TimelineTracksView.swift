@@ -4,6 +4,7 @@ struct TimelineTracksContent: View {
     let tracks: [Track]
     let clipsByTrackId: [String: [Clip]]
     let mediaById: [String: Media]
+    let layout: TimelineLayout
     let pixelsPerSecond: CGFloat
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
@@ -15,12 +16,13 @@ struct TimelineTracksContent: View {
     let isUserScrolling: Bool
 
     var body: some View {
-        VStack(spacing: .spacing(.sp2)) {
+        VStack(spacing: layout.trackSpacing) {
             ForEach(tracks) { track in
                 TimelineTrackRow(
                     track: track,
                     clips: clipsByTrackId[track.trackId] ?? [],
                     mediaById: mediaById,
+                    layout: layout,
                     pixelsPerSecond: pixelsPerSecond,
                     onMoveClip: onMoveClip,
                     onTrimClip: onTrimClip,

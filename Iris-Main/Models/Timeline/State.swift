@@ -281,6 +281,34 @@ struct TimelineState {
         clips.append(newClip)
     }
 
+    mutating func addClipSegment(of kind: TrackKind, at timeUs: Int64, media: Media, sourceRange: TimeRange) {
+        let track = ensureTrack(for: kind, timelineId: timelineId)
+        let mediaDuration = resolvedDurationUs(for: media)
+        let boundedStart = min(max(0, sourceRange.start), mediaDuration)
+        let boundedEnd = min(max(boundedStart, sourceRange.end), mediaDuration)
+        let segmentDuration = max(1, boundedEnd - boundedStart)
+        let desiredStartUs = magneticStartTime(
+            desiredStartUs: max(0, timeUs),
+            existingClips: clips.filter { $0.trackId == track.trackId }
+        )
+        let startUs = resolvedStartTime(
+            desiredStartUs: desiredStartUs,
+            durationUs: segmentDuration,
+            existingClips: clips.filter { $0.trackId == track.trackId }
+        )
+        if startUs != desiredStartUs {
+            requestScrollTo(timeUs: startUs)
+        }
+
+        let newClip = Clip(
+            trackId: track.trackId,
+            mediaId: media.mediaId,
+            sourceRange: TimeRange(start: boundedStart, end: boundedStart + segmentDuration),
+            timelineRange: TimeRange(start: startUs, end: startUs + segmentDuration)
+        )
+        clips.append(newClip)
+    }
+
     mutating func addClips(from mediaItems: [Media], kind: TrackKind, startingAt timeUs: Int64) {
         let track = ensureTrack(for: kind, timelineId: timelineId)
         var existingClips = clips.filter { $0.trackId == track.trackId }

@@ -108,6 +108,13 @@ final class TimelineController: ObservableObject {
         state.mediaById[media.mediaId] = media
     }
 
+    func insertClipSegment(mediaId: String, sourceRange: TimeRange, at timeUs: Int64, kind: TrackKind = .video) {
+        guard let media = state.mediaById[mediaId] else { return }
+        let before = state.clips
+        state.addClipSegment(of: kind, at: timeUs, media: media, sourceRange: sourceRange)
+        persistClipChanges(before: before, after: state.clips)
+    }
+
     func importPickerItems(_ items: [PhotosPickerItem], kind: TrackKind) {
         guard let library = state.mediaLibrary else { return }
         let preferredKind = state.mediaKind(for: kind)

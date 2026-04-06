@@ -8,6 +8,7 @@ struct ChatSpaceView: View {
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     var namespace: Namespace.ID
+    private let timelineLayout = TimelineLayout.compressed
 
     var body: some View {
         let state = controller.state
@@ -28,10 +29,8 @@ struct ChatSpaceView: View {
                 tracks: state.orderedTracks,
                 clipsByTrackId: state.clipsByTrackId,
                 mediaById: state.mediaById,
+                layout: timelineLayout,
                 pixelsPerSecond: state.pixelsPerSecond,
-                rulerHeight: 28,
-                trackTopOffset: 32,
-                iconSize: 20,
                 timelineDurationUs: state.calculatedTimelineDurationUs,
                 scrollableDurationUs: state.scrollableDurationUs,
                 currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),
@@ -42,7 +41,7 @@ struct ChatSpaceView: View {
                 onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
                 showAddButton: false
             )
-            .frame(height: 100)
+            .frame(height: timelineLayout.sectionHeight(for: state.orderedTracks))
             .matchedGeometryEffect(id: "timeline", in: namespace)
         }
     }
