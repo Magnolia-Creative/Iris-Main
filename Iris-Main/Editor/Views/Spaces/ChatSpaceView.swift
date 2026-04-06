@@ -1,23 +1,18 @@
 import SwiftUI
 internal import Combine
 
+// MARK: - Canvas (preview + timeline only)
+
 struct ChatSpaceView: View {
     @ObservedObject var controller: TimelineController
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     var namespace: Namespace.ID
 
-    @State private var promptText = ""
-    @State private var selectedClipIds: Set<String> = []
-    @State private var isAgentActive = false
-    @State private var showDiffView = false
-    @FocusState private var isPromptFocused: Bool
-
     var body: some View {
         let state = controller.state
 
         VStack(spacing: 0) {
-            // Compressed preview
             PreviewSection(
                 controller: playbackController ?? PlaybackController(
                     statePublisher: controller.$state.eraseToAnyPublisher(),
@@ -29,7 +24,6 @@ struct ChatSpaceView: View {
             .matchedGeometryEffect(id: "preview", in: namespace)
             .padding(.horizontal, .sp3)
 
-            // Compressed timeline with tappable clips
             TimelineSectionView(
                 tracks: state.orderedTracks,
                 clipsByTrackId: state.clipsByTrackId,
@@ -50,88 +44,93 @@ struct ChatSpaceView: View {
             )
             .frame(height: 100)
             .matchedGeometryEffect(id: "timeline", in: namespace)
+        }
+    }
+}
 
-            // Chat section
-            VStack(spacing: 0) {
-                // Context clips
-                if !selectedClipIds.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: .spacing(.sp2)) {
-                            ForEach(Array(selectedClipIds), id: \.self) { clipId in
-                                if let clip = state.clips.first(where: { $0.clipId == clipId }) {
-                                    clipContextPill(clip: clip, media: state.mediaById[clip.mediaId])
-                                }
+// MARK: - Panel (extends from nav bar)
+
+struct ChatPanelContent: View {
+    @ObservedObject var controller: TimelineController
+
+    @State private var promptText = ""
+    @State private var selectedClipIds: Set<String> = []
+    @FocusState private var isPromptFocused: Bool
+    @State private var showDiffView = false
+
+    var body: some View {
+        let state = controller.state
+
+        VStack(spacing: 0) {
+            if !selectedClipIds.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: .spacing(.sp2)) {
+                        ForEach(Array(selectedClipIds), id: \.self) { clipId in
+                            if let clip = state.clips.first(where: { $0.clipId == clipId }) {
+                                clipContextPill(clip: clip, media: state.mediaById[clip.mediaId])
                             }
                         }
-                        .padding(.horizontal, .sp4)
-                        .padding(.vertical, .sp3)
                     }
-
-                    Divider().background(Color.ds.border)
+                    .padding(.horizontal, .sp2)
+                    .padding(.vertical, .sp2)
                 }
 
-                // Instructions
-                if selectedClipIds.isEmpty && promptText.isEmpty {
-                    VStack(spacing: .spacing(.sp3)) {
-                        Spacer()
-                        Image(systemName: "bubble.left.and.bubble.right")
-                            .font(.system(size: 32))
-                            .foregroundColor(Color.ds.textMuted)
-                        Text("Tap clips in the timeline to add context")
-                            .typography(.body)
-                            .foregroundColor(Color.ds.textMuted)
-                        Text("Then describe what changes you'd like")
-                            .typography(.bodySmall)
-                            .foregroundColor(Color.ds.textMuted)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
-                Spacer()
-
-                // Prompt input
-                HStack(spacing: .spacing(.sp3)) {
-                    // Clip add button
-                    Button {
-                        if let selectedId = state.selectedClipId {
-                            if selectedClipIds.contains(selectedId) {
-                                selectedClipIds.remove(selectedId)
-                            } else {
-                                selectedClipIds.insert(selectedId)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "plus.rectangle.on.rectangle")
-                            .font(.system(size: 18))
-                            .foregroundColor(Color.ds.accentFg)
-                    }
-
-                    TextField("Describe your edit...", text: $promptText, axis: .vertical)
-                        .typographyStyle(.body)
-                        .lineLimit(1...4)
-                        .focused($isPromptFocused)
-                        .padding(.spacing(.sp3))
-                        .background(Color.ds.bg)
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
-                        .overlay(RoundedRectangle(cornerRadius: .spacing(.sp3)).stroke(Color.ds.border, lineWidth: 1))
-
-                    Button { submitPrompt() } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(
-                                promptText.isEmpty ? Color.ds.textMuted : Color.ds.accentFg
-                            )
-                    }
-                    .disabled(promptText.isEmpty)
-                }
-                .padding(.horizontal, .sp4)
-                .padding(.vertical, .sp3)
+                Divider().overlay(Color.ds.border.opacity(0.4))
             }
-            .frame(maxHeight: .infinity)
-            .background(Color.ds.surface)
-            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous))
-            .padding(.horizontal, .sp3)
+
+            if selectedClipIds.isEmpty && promptText.isEmpty {
+                VStack(spacing: .spacing(.sp3)) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 28))
+                        .foregroundColor(Color.ds.textMuted)
+                    Text("Tap clips to add context")
+                        .typography(.body)
+                        .foregroundColor(Color.ds.textMuted)
+                    Text("Then describe your edit")
+                        .typography(.bodySmall)
+                        .foregroundColor(Color.ds.textMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: .spacing(.sp3)) {
+                Button {
+                    if let selectedId = state.selectedClipId {
+                        if selectedClipIds.contains(selectedId) {
+                            selectedClipIds.remove(selectedId)
+                        } else {
+                            selectedClipIds.insert(selectedId)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                        .font(.system(size: 18))
+                        .foregroundColor(Color.ds.accentFg)
+                }
+
+                TextField("Describe your edit...", text: $promptText, axis: .vertical)
+                    .typographyStyle(.body)
+                    .lineLimit(1...4)
+                    .focused($isPromptFocused)
+                    .padding(.spacing(.sp3))
+                    .background(Color.ds.bg.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: .spacing(.sp3))
+                            .stroke(Color.ds.border.opacity(0.5), lineWidth: 1)
+                    )
+
+                Button { submitPrompt() } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(promptText.isEmpty ? Color.ds.textMuted : Color.ds.accentFg)
+                }
+                .disabled(promptText.isEmpty)
+            }
+            .padding(.horizontal, .sp2)
+            .padding(.vertical, .sp2)
         }
         .sheet(isPresented: $showDiffView) {
             ChatDiffView(
@@ -162,7 +161,7 @@ struct ChatSpaceView: View {
         }
         .padding(.horizontal, .sp3)
         .padding(.vertical, .sp2)
-        .background(Color.ds.bg)
+        .background(Color.ds.bg.opacity(0.5))
         .clipShape(Capsule())
         .overlay(Capsule().stroke(Color.ds.accentFg.opacity(0.3), lineWidth: 1))
     }

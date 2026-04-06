@@ -8,16 +8,24 @@ struct EditorContainerView: View {
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
     @Namespace private var editorNamespace
+    @Environment(\.dismiss) private var dismiss
 
     init(timelineId: String) {
         self.timelineId = timelineId
         self._controller = StateObject(wrappedValue: TimelineController(timelineId: timelineId))
     }
 
+    /// Canvas fills for edit/export; panels fill for import/chat.
+    private var canvasExpandsVertically: Bool {
+        activeSpace == .edit || activeSpace == .export
+    }
+
     var body: some View {
         let state = controller.state
 
         VStack(spacing: 0) {
+            editorHeaderBar
+
             Group {
                 switch activeSpace {
                 case .importMedia:
@@ -50,24 +58,32 @@ struct EditorContainerView: View {
                     )
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
 
-            EditorTabBar(activeSpace: $activeSpace)
-                .padding(.bottom, .spacing(.sp2))
+            EditorTabBar(
+                activeSpace: $activeSpace,
+                isClipSelected: state.selectedClipId != nil,
+                onSplitClip: { controller.splitSelectedClip() },
+                onDeleteClip: { controller.deleteSelectedClip() }
+            ) {
+                switch activeSpace {
+                case .importMedia:
+                    ImportPanelContent(controller: controller)
+                case .chat:
+                    ChatPanelContent(controller: controller)
+                case .export:
+                    ExportPanelContent(controller: controller)
+                case .edit:
+                    EmptyView()
+                }
+            }
+            .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
+            .padding(.horizontal, activeSpace != .edit ? .spacing(.sp3) : 0)
+            .padding(.bottom, .spacing(.sp2))
         }
         .background(Color.ds.bg)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                BackButton()
-            }
-            ToolbarItem(placement: .principal) {
-                Text(state.projectTitle)
-                    .typography(.body)
-                    .foregroundColor(Color.ds.text)
-            }
-        }
+        .navigationBarHidden(true)
         .task {
             await controller.loadTimelineData()
             let pc = PlaybackController(
@@ -81,16 +97,32 @@ struct EditorContainerView: View {
             controller.clearSelection()
         }
     }
-}
 
-private struct BackButton: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 16, weight: .semibold))
+    private var editorHeaderBar: some View {
+        ZStack {
+            Text(controller.state.projectTitle)
+                .typography(.body)
                 .foregroundColor(Color.ds.text)
+
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: .spacing(.sp1)) {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 12, weight: .regular))
+                            .frame(width: 12, height: 12)
+                        Text("Home")
+                            .typography(.bodySmall)
+                    }
+                    .foregroundColor(Color.ds.textMuted)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+            }
         }
+        .padding(.horizontal, .spacing(.sp5))
+        .padding(.vertical, .spacing(.sp2))
     }
 }

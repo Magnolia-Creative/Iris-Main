@@ -8,6 +8,8 @@ final class TimelineRenderBridge: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var lastSyncedClipIds: Set<String> = []
     private var lastSeekTime: CFTimeInterval = 0
+    private var scrubEndWorkItem: DispatchWorkItem?
+    private var isUserScrubbing: Bool = false
 
     init() {
         self.engine = RenderEngine()
@@ -33,6 +35,41 @@ final class TimelineRenderBridge: ObservableObject {
                 controller?.updateCurrentTime(us)
             }
         }
+
+        engine.onPlaybackStateChanged = { [weak controller] playing in
+            guard !playing else { return }
+            Task { @MainActor in
+                controller?.setPlaybackState(.idle)
+            }
+        }
+
+        controller.$state
+            .map(\.playbackState)
+            .removeDuplicates()
+            .sink { [weak self] playbackState in
+                guard let self else { return }
+                switch playbackState {
+                case .playing:
+                    self.scrubEndWorkItem?.cancel()
+                    self.isUserScrubbing = false
+                    self.play()
+                case .idle:
+                    self.pause()
+                case .scrubbing:
+                    self.setScrubbing(true)
+                }
+            }
+            .store(in: &cancellables)
+
+        controller.$state
+            .map(\.currentTimeAtCenter)
+            .removeDuplicates()
+            .sink { [weak self] timeUs in
+                guard let self else { return }
+                guard !self.engine.isPlaying else { return }
+                self.seek(to: timeUs)
+            }
+            .store(in: &cancellables)
     }
 
     func syncTimeline(from state: TimelineState) {
@@ -61,16 +98,35 @@ final class TimelineRenderBridge: ObservableObject {
             ? (seconds - engine.currentTime) / max(dt, 0.001)
             : 0
         lastSeekTime = now
+
+        if !isUserScrubbing {
+            isUserScrubbing = true
+            engine.setScrubbing(true)
+        }
+        scrubEndWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, !self.engine.isPlaying else { return }
+            self.isUserScrubbing = false
+            self.lastSeekTime = 0
+            self.engine.setScrubbing(false)
+            self.engine.seek(to: self.engine.currentTime, intent: .scrub(velocity: 0))
+        }
+        scrubEndWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+
         engine.seek(to: seconds, intent: .scrub(velocity: velocity))
     }
 
     func setScrubbing(_ scrubbing: Bool) {
+        scrubEndWorkItem?.cancel()
         if !scrubbing {
             lastSeekTime = 0
+            isUserScrubbing = false
             engine.setScrubbing(false)
             engine.seek(to: engine.currentTime, intent: .scrub(velocity: 0))
         } else {
             lastSeekTime = 0
+            isUserScrubbing = true
             engine.setScrubbing(true)
         }
     }

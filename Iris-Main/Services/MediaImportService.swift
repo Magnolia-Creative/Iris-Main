@@ -120,6 +120,38 @@ class MediaImportService {
         return importedMedia
     }
 
+    func importFileURLsQuick(_ urls: [URL], to mediaLibraryId: String, preferredKind: MediaKind) async throws -> [Media] {
+        var importedMedia: [Media] = []
+        for url in urls {
+            do {
+                let media = try await importFileURLQuick(url, to: mediaLibraryId, preferredKind: preferredKind)
+                importedMedia.append(media)
+            } catch {
+                print("Failed to import file \(url.lastPathComponent): \(error)")
+            }
+        }
+        return importedMedia
+    }
+
+    func generateThumbnailStrip(for media: Media) async -> Media {
+        guard media.kind == .video else { return media }
+        do {
+            guard let url = try await ThumbnailService.shared.loadVideoURL(for: media.assetRefId) else { return media }
+            guard let stripInfo = try await ThumbnailService.shared.generateThumbnailStripIfNeeded(
+                for: media, videoURL: url
+            ) else { return media }
+            var updated = media
+            updated.spec.thumbnailStripPath = stripInfo.path
+            updated.spec.thumbnailStripHeight = stripInfo.height
+            updated.spec.thumbnailStripFrameCount = stripInfo.frameCount
+            updated.updatedAt = Date()
+            try db.update(updated)
+            return updated
+        } catch {
+            return media
+        }
+    }
+
     // MARK: - Private Helpers
 
     private func createAssetReference(from asset: PHAsset) throws -> AssetReference {
@@ -181,6 +213,20 @@ class MediaImportService {
             let durationSeconds = duration.seconds
             return MediaSpec(duration: durationSeconds.isFinite ? durationSeconds : nil)
         }
+    }
+
+    private func importFileURLQuick(_ url: URL, to mediaLibraryId: String, preferredKind: MediaKind) async throws -> Media {
+        let localURL = try copyFileToLibrary(url)
+        let assetRef = try createAssetReference(from: localURL)
+        let spec = try await extractMediaSpec(from: localURL, kind: preferredKind)
+        let media = Media(
+            mediaLibraryId: mediaLibraryId,
+            kind: preferredKind,
+            assetRefId: assetRef.assetRefId,
+            spec: spec
+        )
+        try db.create(media)
+        return media
     }
 
     private func importFileURL(_ url: URL, to mediaLibraryId: String, preferredKind: MediaKind) async throws -> Media {

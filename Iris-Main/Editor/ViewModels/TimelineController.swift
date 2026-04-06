@@ -1,5 +1,6 @@
 import Foundation
 import Photos
+import PhotosUI
 import SwiftUI
 internal import Combine
 
@@ -103,6 +104,46 @@ final class TimelineController: ObservableObject {
         persistClipChanges(before: before, after: state.clips)
     }
 
+    func updateMedia(_ media: Media) {
+        state.mediaById[media.mediaId] = media
+    }
+
+    func importPickerItems(_ items: [PhotosPickerItem], kind: TrackKind) {
+        guard let library = state.mediaLibrary else { return }
+        let preferredKind = state.mediaKind(for: kind)
+        Task {
+            for item in items {
+                guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                let fileManager = FileManager.default
+                let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let importsURL = documentsURL.appendingPathComponent("Imports", isDirectory: true)
+                try? fileManager.createDirectory(at: importsURL, withIntermediateDirectories: true)
+                let fileName = "\(UUID().uuidString).mov"
+                let fileURL = importsURL.appendingPathComponent(fileName)
+                try? data.write(to: fileURL)
+
+                do {
+                    let media = try await importService.importFileURLsQuick(
+                        [fileURL], to: library.id, preferredKind: preferredKind
+                    )
+                    if !media.isEmpty {
+                        await MainActor.run {
+                            ingestMedia(media, kind: kind)
+                        }
+                        for m in media {
+                            Task {
+                                let updated = await importService.generateThumbnailStrip(for: m)
+                                await MainActor.run { updateMedia(updated) }
+                            }
+                        }
+                    }
+                } catch {
+                    print("Failed to import picker item: \(error)")
+                }
+            }
+        }
+    }
+
     func importAssets(_ assets: [PHAsset]) async {
         guard let request = state.pendingImport else { return }
         guard let library = state.mediaLibrary else { return }
@@ -134,11 +175,17 @@ final class TimelineController: ObservableObject {
 
         let preferredKind = state.mediaKind(for: request.kind)
         do {
-            let imported = try await importService.importFileURLs(urls, to: library.id, preferredKind: preferredKind)
+            let imported = try await importService.importFileURLsQuick(urls, to: library.id, preferredKind: preferredKind)
             await MainActor.run {
                 let before = state.clips
                 state.ingestImportedMedia(imported: imported, matching: imported, kind: request.kind)
                 persistClipChanges(before: before, after: state.clips)
+            }
+            for media in imported {
+                Task {
+                    let updated = await importService.generateThumbnailStrip(for: media)
+                    await MainActor.run { updateMedia(updated) }
+                }
             }
         } catch {
             await MainActor.run { state.clearPendingImport() }

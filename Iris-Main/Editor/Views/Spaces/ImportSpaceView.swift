@@ -2,28 +2,18 @@ import SwiftUI
 import PhotosUI
 internal import Combine
 
+// MARK: - Canvas (preview + timeline only)
+
 struct ImportSpaceView: View {
     @ObservedObject var controller: TimelineController
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     var namespace: Namespace.ID
 
-    @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var filterTag: MediaFilterTag = .all
-    @State private var showSemanticSearch = false
-    @StateObject private var semanticVM = SemanticSearchViewModel()
-
-    enum MediaFilterTag: String, CaseIterable {
-        case all = "All"
-        case photos = "Photos"
-        case videos = "Videos"
-    }
-
     var body: some View {
         let state = controller.state
 
         VStack(spacing: 0) {
-            // Compressed preview
             PreviewSection(
                 controller: playbackController ?? PlaybackController(
                     statePublisher: controller.$state.eraseToAnyPublisher(),
@@ -35,7 +25,6 @@ struct ImportSpaceView: View {
             .matchedGeometryEffect(id: "preview", in: namespace)
             .padding(.horizontal, .sp3)
 
-            // Compressed timeline
             TimelineSectionView(
                 tracks: state.orderedTracks,
                 clipsByTrackId: state.clipsByTrackId,
@@ -56,55 +45,71 @@ struct ImportSpaceView: View {
             )
             .frame(height: 100)
             .matchedGeometryEffect(id: "timeline", in: namespace)
+        }
+    }
+}
 
-            // Import panel
-            VStack(spacing: 0) {
-                HStack {
-                    PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 20,
-                                 matching: .any(of: [.videos, .images])) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color.ds.accentFg)
-                    }
+// MARK: - Panel (extends from nav bar)
 
-                    Spacer()
+struct ImportPanelContent: View {
+    @ObservedObject var controller: TimelineController
 
-                    HStack(spacing: .spacing(.sp2)) {
-                        ForEach(MediaFilterTag.allCases, id: \.self) { tag in
-                            Button {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { filterTag = tag }
-                            } label: {
-                                Text(tag.rawValue)
-                                    .typography(.bodySmall)
-                                    .foregroundColor(filterTag == tag ? .white : Color.ds.textMuted)
-                                    .padding(.horizontal, .sp3)
-                                    .padding(.vertical, .sp1)
-                                    .background(filterTag == tag ? Color.ds.accentBg : Color.ds.surface)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var filterTag: MediaFilterTag = .all
+    @State private var showSemanticSearch = false
+    @StateObject private var semanticVM = SemanticSearchViewModel()
+
+    enum MediaFilterTag: String, CaseIterable {
+        case all = "All"
+        case photos = "Photos"
+        case videos = "Videos"
+    }
+
+    var body: some View {
+        let state = controller.state
+
+        VStack(spacing: 0) {
+            HStack {
+                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 20,
+                             matching: .any(of: [.videos, .images])) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Color.ds.accentFg)
+                }
+
+                Spacer()
+
+                HStack(spacing: .spacing(.sp2)) {
+                    ForEach(MediaFilterTag.allCases, id: \.self) { tag in
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { filterTag = tag }
+                        } label: {
+                            Text(tag.rawValue)
+                                .typography(.bodySmall)
+                                .foregroundColor(filterTag == tag ? .white : Color.ds.textMuted)
+                                .padding(.horizontal, .sp3)
+                                .padding(.vertical, .sp1)
+                                .background(filterTag == tag ? Color.ds.accentBg : Color.clear)
+                                .clipShape(Capsule())
                         }
-                    }
-
-                    Spacer()
-
-                    Button { showSemanticSearch.toggle() } label: {
-                        Image(systemName: "sparkle.magnifyingglass")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.ds.accentFg)
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, .sp4)
-                .padding(.vertical, .sp3)
 
-                Divider().background(Color.ds.border)
+                Spacer()
 
-                mediaGrid(state: state)
+                Button { showSemanticSearch.toggle() } label: {
+                    Image(systemName: "sparkle.magnifyingglass")
+                        .font(.system(size: 20))
+                        .foregroundColor(Color.ds.accentFg)
+                }
             }
-            .frame(maxHeight: .infinity)
-            .background(Color.ds.surface)
-            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous))
-            .padding(.horizontal, .sp3)
+            .padding(.horizontal, .sp2)
+            .padding(.bottom, .sp2)
+
+            Divider().overlay(Color.ds.border.opacity(0.4))
+
+            mediaGrid(state: state)
         }
         .onChange(of: selectedPhotos) { _, items in
             importSelectedPhotos(items)
@@ -154,31 +159,9 @@ struct ImportSpaceView: View {
     }
 
     private func importSelectedPhotos(_ items: [PhotosPickerItem]) {
-        guard !items.isEmpty, let library = controller.state.mediaLibrary else { return }
-        Task {
-            var importedMedia: [Media] = []
-            for item in items {
-                if let data = try? await item.loadTransferable(type: Data.self) {
-                    let fileManager = FileManager.default
-                    let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                    let importsURL = documentsURL.appendingPathComponent("Imports", isDirectory: true)
-                    try? fileManager.createDirectory(at: importsURL, withIntermediateDirectories: true)
-                    let fileName = "\(UUID().uuidString).mov"
-                    let fileURL = importsURL.appendingPathComponent(fileName)
-                    try? data.write(to: fileURL)
-                    let media = try await MediaImportService.shared.importFileURLs(
-                        [fileURL], to: library.id, preferredKind: .video
-                    )
-                    importedMedia.append(contentsOf: media)
-                }
-            }
-            if !importedMedia.isEmpty {
-                await MainActor.run {
-                    controller.ingestMedia(importedMedia, kind: .video)
-                }
-            }
-            selectedPhotos = []
-        }
+        guard !items.isEmpty else { return }
+        controller.importPickerItems(items, kind: .video)
+        selectedPhotos = []
     }
 }
 
