@@ -249,6 +249,7 @@ final class SemanticSearchViewModel: ObservableObject {
 
         do {
             let ranges = try await pipeline.search(query: model.trimmedQuery, videos: model.videos)
+            logSearchResults(ranges, query: model.trimmedQuery)
             model.results = ranges.map {
                 SemanticMatchRange(
                     videoID: $0.videoID,
@@ -271,5 +272,25 @@ final class SemanticSearchViewModel: ObservableObject {
         guard !model.videos.isEmpty else { return }
         guard indexedVideoKeys != model.videos.map(\.localKey) || model.indexedFrameCount == 0 else { return }
         await buildIndex()
+    }
+
+    private func logSearchResults(_ ranges: [SemanticRangeCandidate], query: String) {
+        if ranges.isEmpty {
+            print("[SemanticIndex] No results found for query=\"\(query)\"")
+            return
+        }
+
+        for (index, range) in ranges.enumerated() {
+            print(
+                "[SemanticIndex] Result \(index + 1): video=\"\(range.videoName)\" start=\(formatTime(range.startTimeSeconds)) end=\(formatTime(range.endTimeSeconds)) confidence=\(String(format: "%.4f", range.confidence))"
+            )
+        }
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        let mins = total / 60
+        let secs = total % 60
+        return String(format: "%02d:%02d", mins, secs)
     }
 }

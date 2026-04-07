@@ -39,12 +39,14 @@ struct TimelineSectionView: View {
     @State private var isImportedSegmentTargeted = false
     @State private var importedSegmentDropTimeUs: Int64?
     @State private var lastImportedSegmentDebugSummary: String?
+    private let addButtonSize: CGFloat = .spacing(.sp8)
 
     var body: some View {
         GeometryReader { geometry in
             let centerX = geometry.size.width / 2
             let stackHeight = layout.trackStackHeight(for: tracks)
             let timelineWidth = CGFloat(max(0, scrollableDurationUs)) / 1_000_000 * pixelsPerSecond
+            let addButtonTopOffset = addButtonTopOffset(for: tracks)
 
             ZStack(alignment: .topLeading) {
                 ScrollViewReader { proxy in
@@ -221,18 +223,13 @@ struct TimelineSectionView: View {
                 }
 
                 if showAddButton {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            AddClipButton(onSelect: onAddSelection, isMenuOpen: $isAddMenuOpen)
-                                .padding(.trailing, .spacing(.sp6))
-                                .offset(x: isScrollingFast ? .spacing(.sp8) : 0)
-                                .opacity(isScrollingFast ? 0 : 1)
-                                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isScrollingFast)
-                        }
-                        Spacer()
-                    }
+                    AddClipButton(onSelect: onAddSelection, isMenuOpen: $isAddMenuOpen)
+                        .padding(.top, addButtonTopOffset)
+                        .padding(.trailing, .spacing(.sp6))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .offset(x: isScrollingFast ? .spacing(.sp8) : 0)
+                        .opacity(isScrollingFast ? 0 : 1)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isScrollingFast)
                 }
             }
             .overlay {
@@ -386,6 +383,22 @@ struct TimelineSectionView: View {
 
     private func clampScrollTime(_ timeUs: Int64) -> Int64 {
         min(max(0, scrollableDurationUs), max(0, timeUs))
+    }
+
+    private func addButtonTopOffset(for tracks: [Track]) -> CGFloat {
+        let preferredTrackIndex = tracks.firstIndex(where: { $0.kind == .video }) ?? 0
+        let trackCenterY: CGFloat
+
+        if tracks.indices.contains(preferredTrackIndex) {
+            trackCenterY = iconYPosition(for: preferredTrackIndex, in: tracks)
+        } else {
+            trackCenterY = layout.videoTrackHeight / 2
+        }
+
+        return max(
+            0,
+            rulerVerticalOffset + layout.rulerHeight + layout.trackTopOffset + trackCenterY - addButtonSize / 2
+        )
     }
 
     private func resolvedDropTimeUs(dropX: CGFloat, viewportWidth: CGFloat) -> Int64 {
