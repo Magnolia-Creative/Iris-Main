@@ -8,10 +8,19 @@ enum EditorSpace: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var iconName: String {
+    var selectedIconName: String {
+        switch self {
+        case .importMedia: return "square.and.arrow.down.fill"
+        case .edit: return "movieclapper.fill"
+        case .chat: return "bubble.left.and.bubble.right.fill"
+        case .export: return "square.and.arrow.up.fill"
+        }
+    }
+
+    var unselectedIconName: String {
         switch self {
         case .importMedia: return "square.and.arrow.down"
-        case .edit: return "scissors"
+        case .edit: return "movieclapper"
         case .chat: return "bubble.left.and.bubble.right"
         case .export: return "square.and.arrow.up"
         }

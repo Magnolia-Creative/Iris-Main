@@ -85,6 +85,7 @@ struct EditorCanvasView: View {
 
     private func timelineViewContainer(state: TimelineState) -> some View {
         timelineView(state: state, layout: timelineLayout)
+            .padding(.bottom, .spacing(.sp2))
             .animation(nil, value: activeSpace)
             .transaction { transaction in
                 transaction.animation = nil

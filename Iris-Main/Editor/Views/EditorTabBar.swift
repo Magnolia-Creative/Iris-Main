@@ -134,14 +134,10 @@ struct EditorTabBar<SpaceExtension: View>: View {
                         activeSpace = space
                     }
                 } label: {
-                    Image(systemName: space.iconName)
+                    Image(systemName: activeSpace == space ? space.selectedIconName : space.unselectedIconName)
                         .font(.system(size: 21, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(
-                            activeSpace == space
-                                ? Color.white
-                                : Color.white.opacity(0.72)
-                        )
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(Color.white)
                         .frame(width: tabItemWidth, height: tabRowHeight)
                         .background {
                             if activeSpace == space {
