@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1FBF36972F80DBC200086810 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FBF36962F80DBC200086810 /* GRDB */; };
 		9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */ = {isa = PBXBuildFile; productRef = 9A1B2C3D4E5F60718293A002 /* MobileCLIP */; };
 /* End PBXBuildFile section */
 
@@ -69,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1FBF36972F80DBC200086810 /* GRDB in Frameworks */,
 				9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -130,6 +132,7 @@
 			);
 			name = "Iris-Main";
 			packageProductDependencies = (
+				1FBF36962F80DBC200086810 /* GRDB */,
 				9A1B2C3D4E5F60718293A002 /* MobileCLIP */,
 			);
 			productName = "Iris-Main";
@@ -216,6 +219,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
+				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1F77B79A2F64B22C00C813F6 /* Products */;
@@ -612,6 +616,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 		9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "file:///Users/abdur-rahmanrana/irismainpkg/swift-mobileclip";
@@ -623,6 +635,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		1FBF36962F80DBC200086810 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
 		9A1B2C3D4E5F60718293A002 /* MobileCLIP */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */;

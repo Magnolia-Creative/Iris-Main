@@ -140,6 +140,7 @@ final class AssetFrameProvider {
     func cancelRandomAccessDecodes() {
         lock.lock()
         let allPools = Array(pools.values)
+        pools.removeAll()
         lock.unlock()
         for pool in allPools { pool.cancelAll() }
     }

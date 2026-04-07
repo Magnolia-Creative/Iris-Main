@@ -1,5 +1,5 @@
 import AVFoundation
-import Combine
+internal import Combine
 import Foundation
 import simd
 
