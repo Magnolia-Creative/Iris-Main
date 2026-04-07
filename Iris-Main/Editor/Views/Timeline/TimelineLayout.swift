@@ -24,7 +24,7 @@ struct TimelineLayout: Equatable {
         trackTopOffset: 16,
         iconSize: 20,
         trackSpacing: .spacing(.sp1),
-        videoTrackHeight: .spacing(.sp5),
+        videoTrackHeight: .spacing(.sp7),
         audioTrackHeight: .spacing(.sp4),
         overlayTrackHeight: .spacing(.sp4)
     )

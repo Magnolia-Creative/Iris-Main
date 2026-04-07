@@ -287,26 +287,63 @@ struct TimelineState {
         let boundedStart = min(max(0, sourceRange.start), mediaDuration)
         let boundedEnd = min(max(boundedStart, sourceRange.end), mediaDuration)
         let segmentDuration = max(1, boundedEnd - boundedStart)
-        let desiredStartUs = magneticStartTime(
-            desiredStartUs: max(0, timeUs),
-            existingClips: clips.filter { $0.trackId == track.trackId }
-        )
-        let startUs = resolvedStartTime(
-            desiredStartUs: desiredStartUs,
-            durationUs: segmentDuration,
-            existingClips: clips.filter { $0.trackId == track.trackId }
-        )
-        if startUs != desiredStartUs {
-            requestScrollTo(timeUs: startUs)
+        let trackClips = orderedClips(for: track.trackId)
+        let heldAtUs = max(0, timeUs)
+
+        if
+            let insertionDecision = nearestClipStartInsertionDecision(
+                heldAtUs: heldAtUs,
+                clips: trackClips
+            ),
+            insertionDecision.distanceUs <= 500_000,
+            let targetIndex = trackClips.firstIndex(where: { $0.clipId == insertionDecision.clip.clipId })
+        {
+            let insertStartUs = targetIndex > 0 ? trackClips[targetIndex - 1].timelineRange.end : 0
+            var newClip = Clip(
+                trackId: track.trackId,
+                mediaId: media.mediaId,
+                sourceRange: TimeRange(start: boundedStart, end: boundedStart + segmentDuration),
+                timelineRange: TimeRange(start: insertStartUs, end: insertStartUs + segmentDuration)
+            )
+
+            var updatedTrackClips = trackClips
+            updatedTrackClips.insert(newClip, at: targetIndex)
+
+            var cursor = insertStartUs
+            for index in targetIndex..<updatedTrackClips.count {
+                let duration = updatedTrackClips[index].duration
+                updatedTrackClips[index].timelineRange = TimeRange(start: cursor, end: cursor + duration)
+                cursor += duration
+            }
+
+            let existingById = Dictionary(uniqueKeysWithValues: trackClips.map { ($0.clipId, $0) })
+            let now = Date()
+            let finalizedTrackClips = updatedTrackClips.map { clip -> Clip in
+                guard let previous = existingById[clip.clipId] else { return clip }
+                let didChange = previous.timelineRange.start != clip.timelineRange.start
+                    || previous.timelineRange.end != clip.timelineRange.end
+                    || previous.sourceRange.start != clip.sourceRange.start
+                    || previous.sourceRange.end != clip.sourceRange.end
+                var finalClip = clip
+                finalClip.updatedAt = didChange ? now : previous.updatedAt
+                return finalClip
+            }
+
+            clips.removeAll { $0.trackId == track.trackId }
+            clips.append(contentsOf: finalizedTrackClips)
+            requestScrollTo(timeUs: newClip.timelineRange.start)
+            return
         }
 
+        let appendStartUs = trackClips.last?.timelineRange.end ?? 0
         let newClip = Clip(
             trackId: track.trackId,
             mediaId: media.mediaId,
             sourceRange: TimeRange(start: boundedStart, end: boundedStart + segmentDuration),
-            timelineRange: TimeRange(start: startUs, end: startUs + segmentDuration)
+            timelineRange: TimeRange(start: appendStartUs, end: appendStartUs + segmentDuration)
         )
         clips.append(newClip)
+        requestScrollTo(timeUs: appendStartUs)
     }
 
     mutating func addClips(from mediaItems: [Media], kind: TrackKind, startingAt timeUs: Int64) {
@@ -354,6 +391,14 @@ struct TimelineState {
         guard durationUs > 0 else { return clampedStart }
 
         let sortedClips = existingClips.sorted { $0.timelineRange.start < $1.timelineRange.start }
+        if let gapAdjustedStart = resolvedStartWithinContainingGap(
+            desiredStartUs: clampedStart,
+            durationUs: durationUs,
+            existingClips: sortedClips
+        ) {
+            return gapAdjustedStart
+        }
+
         let desiredEnd = clampedStart + durationUs
         let overlapsExisting = sortedClips.contains {
             clampedStart < $0.timelineRange.end && desiredEnd > $0.timelineRange.start
@@ -372,10 +417,65 @@ struct TimelineState {
         return candidateStart
     }
 
+    private func resolvedStartWithinContainingGap(
+        desiredStartUs: Int64,
+        durationUs: Int64,
+        existingClips: [Clip]
+    ) -> Int64? {
+        var gapStart: Int64 = 0
+
+        for clip in existingClips {
+            let gapEnd = clip.timelineRange.start
+            if desiredStartUs >= gapStart, desiredStartUs <= gapEnd {
+                let latestStart = gapEnd - durationUs
+                guard latestStart >= gapStart else { return nil }
+                return min(max(desiredStartUs, gapStart), latestStart)
+            }
+            gapStart = max(gapStart, clip.timelineRange.end)
+        }
+
+        return nil
+    }
+
     func orderedClips(for trackId: String) -> [Clip] {
         clips
             .filter { $0.trackId == trackId }
             .sorted { $0.timelineRange.start < $1.timelineRange.start }
+    }
+
+    func nearestClipStartInsertionDecision(
+        heldAtUs: Int64,
+        clips: [Clip]
+    ) -> (clip: Clip, distanceUs: Int64)? {
+        guard !clips.isEmpty else { return nil }
+
+        var low = 0
+        var high = clips.count
+        while low < high {
+            let mid = (low + high) / 2
+            if clips[mid].timelineRange.start < heldAtUs {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        let candidateIndices = [max(0, low - 1), min(clips.count - 1, low)]
+        let uniqueIndices = Array(Set(candidateIndices)).sorted()
+        guard let nearestIndex = uniqueIndices.min(by: { left, right in
+            let leftDistance = abs(clips[left].timelineRange.start - heldAtUs)
+            let rightDistance = abs(clips[right].timelineRange.start - heldAtUs)
+            if leftDistance == rightDistance {
+                return clips[left].timelineRange.start < clips[right].timelineRange.start
+            }
+            return leftDistance < rightDistance
+        }) else {
+            return nil
+        }
+
+        let nearestClip = clips[nearestIndex]
+        let distanceUs = abs(nearestClip.timelineRange.start - heldAtUs)
+        return (nearestClip, distanceUs)
     }
 
     func packedClips(from orderedClips: [Clip]) -> [Clip] {

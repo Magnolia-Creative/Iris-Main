@@ -11,7 +11,6 @@ struct ImportSpaceView: View {
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     var namespace: Namespace.ID
-    @State private var isTimelineDropTargeted = false
     private let timelineLayout = TimelineLayout.compressed
 
     var body: some View {
@@ -43,30 +42,17 @@ struct ImportSpaceView: View {
                 onAddSelection: { _, _ in },
                 onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
                 onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
+                onDropImportedSegmentAtTime: { item, timeUs in
+                    controller.insertClipSegment(
+                        mediaId: item.mediaId,
+                        sourceRange: item.sourceRange,
+                        at: timeUs
+                    )
+                },
                 showAddButton: false
             )
             .frame(height: timelineLayout.sectionHeight(for: state.orderedTracks))
             .matchedGeometryEffect(id: "timeline", in: namespace)
-            .overlay {
-                RoundedRectangle(cornerRadius: .spacing(.sp3))
-                    .stroke(
-                        isTimelineDropTargeted ? Color.ds.accentFg : Color.clear,
-                        style: StrokeStyle(lineWidth: 2, dash: [8, 6])
-                    )
-                    .padding(.horizontal, .sp3)
-                    .animation(.easeOut(duration: 0.18), value: isTimelineDropTargeted)
-            }
-            .dropDestination(for: ImportedTimelineSegment.self) { items, _ in
-                guard let item = items.first else { return false }
-                controller.insertClipSegment(
-                    mediaId: item.mediaId,
-                    sourceRange: item.sourceRange,
-                    at: controller.state.currentTimeAtCenter
-                )
-                return true
-            } isTargeted: { isTargeted in
-                isTimelineDropTargeted = isTargeted
-            }
         }
     }
 }
@@ -327,11 +313,7 @@ struct ImportPanelContent: View {
         if semanticVM.model.trimmedQuery.isEmpty {
             semanticLibraryGrid(state: state)
         } else if semanticVM.model.isBuildingIndex || semanticVM.model.isSearching, semanticVM.model.results.isEmpty {
-            semanticCenteredState(
-                icon: "sparkle.magnifyingglass",
-                title: semanticVM.model.isBuildingIndex ? "Indexing imported clips..." : "Searching clips...",
-                subtitle: "Results will appear here automatically."
-            )
+            semanticLoadingGrid()
         } else if let searchError = semanticVM.model.searchErrorMessage {
             semanticCenteredState(
                 icon: "exclamationmark.triangle",
@@ -348,6 +330,17 @@ struct ImportPanelContent: View {
             semanticRangeGrid(for: selectedGroup, state: state)
         } else {
             semanticResultGrid(state: state)
+        }
+    }
+
+    private func semanticLoadingGrid() -> some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
+                ForEach(0..<12, id: \.self) { _ in
+                    SemanticLoadingThumbnailCell()
+                }
+            }
+            .padding(.sp3)
         }
     }
 
@@ -613,6 +606,50 @@ private struct SemanticRangeThumbnailCell: View {
 
     private func timeToMicroseconds(_ seconds: Double) -> Int64 {
         Int64((seconds * 1_000_000).rounded())
+    }
+}
+
+private struct SemanticLoadingThumbnailCell: View {
+    @State private var shimmerOffset: CGFloat = -140
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.ds.surface)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.ds.surface.opacity(0.9))
+
+                    LinearGradient(
+                        colors: [
+                            Color.clear,
+                            Color.white.opacity(0.06),
+                            Color.white.opacity(0.22),
+                            Color.white.opacity(0.06),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(width: 90)
+                    .rotationEffect(.degrees(18))
+                    .offset(x: shimmerOffset)
+                    .blendMode(.plusLighter)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.ds.border.opacity(0.6), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .onAppear {
+                shimmerOffset = -140
+                withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+                    shimmerOffset = 140
+                }
+            }
     }
 }
 

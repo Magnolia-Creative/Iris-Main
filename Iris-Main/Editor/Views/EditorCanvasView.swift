@@ -7,7 +7,6 @@ struct EditorCanvasView: View {
     let renderBridge: TimelineRenderBridge
     let activeSpace: EditorSpace
 
-    @State private var isTimelineDropTargeted = false
     private var showsPlaybackControls: Bool {
         activeSpace == .edit || activeSpace == .export
     }
@@ -129,36 +128,18 @@ struct EditorCanvasView: View {
             onAddSelection: addSelection,
             onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
             onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
+            onDropImportedSegmentAtTime: activeSpace == .importMedia ? { item, timeUs in
+                controller.insertClipSegment(
+                    mediaId: item.mediaId,
+                    sourceRange: item.sourceRange,
+                    at: timeUs
+                )
+            } : nil,
             showAddButton: allowsTimelineAdditions,
             rulerVerticalOffset: rulerVerticalOffset
         )
         .frame(height: layout.sectionHeight(for: state.orderedTracks))
         .animation(nil, value: layout.sectionHeight(for: state.orderedTracks))
-        .overlay {
-            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                .stroke(
-                    activeSpace == .importMedia && isTimelineDropTargeted ? Color.ds.accentFg : Color.clear,
-                    style: StrokeStyle(lineWidth: 2, dash: [8, 6])
-                )
-                .padding(.horizontal, .sp3)
-                .animation(.easeOut(duration: 0.18), value: isTimelineDropTargeted)
-        }
-        .dropDestination(for: ImportedTimelineSegment.self) { items, _ in
-            guard activeSpace == .importMedia, let item = items.first else { return false }
-            controller.insertClipSegment(
-                mediaId: item.mediaId,
-                sourceRange: item.sourceRange,
-                at: controller.state.currentTimeAtCenter
-            )
-            return true
-        } isTargeted: { isTargeted in
-            isTimelineDropTargeted = activeSpace == .importMedia && isTargeted
-        }
-        .onChange(of: activeSpace) { _, newSpace in
-            if newSpace != .importMedia {
-                isTimelineDropTargeted = false
-            }
-        }
     }
 
 }

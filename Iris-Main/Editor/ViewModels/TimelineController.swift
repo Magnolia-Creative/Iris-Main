@@ -125,7 +125,25 @@ final class TimelineController: ObservableObject {
     func insertClipSegment(mediaId: String, sourceRange: TimeRange, at timeUs: Int64, kind: TrackKind = .video) {
         guard let media = state.mediaById[mediaId] else { return }
         let before = state.clips
+        EditorDebugTrace.log(
+            "TimelineController",
+            "about to add semantic clip mediaId=\(mediaId) kind=\(kind.rawValue) source=[\(formatDebugTime(sourceRange.start)), \(formatDebugTime(sourceRange.end))] held-at=\(formatDebugTime(timeUs)) existing-clip-count=\(before.count)"
+        )
         state.addClipSegment(of: kind, at: timeUs, media: media, sourceRange: sourceRange)
+        let previousClipIds = Set(before.map(\.clipId))
+        if let insertedClip = state.clips.first(where: { clip in
+            !previousClipIds.contains(clip.clipId)
+        }) {
+            EditorDebugTrace.log(
+                "TimelineController",
+                "semantic clip added clipId=\(insertedClip.clipId) timeline=[\(formatDebugTime(insertedClip.timelineRange.start)), \(formatDebugTime(insertedClip.timelineRange.end))] source=[\(formatDebugTime(insertedClip.sourceRange.start)), \(formatDebugTime(insertedClip.sourceRange.end))]"
+            )
+        } else if let insertedClip = state.clips.last {
+            EditorDebugTrace.log(
+                "TimelineController",
+                "semantic clip add complete fallback-last-clip clipId=\(insertedClip.clipId) timeline=[\(formatDebugTime(insertedClip.timelineRange.start)), \(formatDebugTime(insertedClip.timelineRange.end))]"
+            )
+        }
         persistClipChanges(before: before, after: state.clips)
     }
 
@@ -279,6 +297,10 @@ final class TimelineController: ObservableObject {
             || before.sourceRange.end != after.sourceRange.end
             || before.timelineRange.start != after.timelineRange.start
             || before.timelineRange.end != after.timelineRange.end
+    }
+
+    private func formatDebugTime(_ timeUs: Int64) -> String {
+        String(format: "%.3fs", Double(timeUs) / 1_000_000)
     }
 }
 

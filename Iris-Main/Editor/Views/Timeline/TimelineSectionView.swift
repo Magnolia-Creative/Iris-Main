@@ -1,6 +1,9 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TimelineSectionView: View {
+    fileprivate static let importedSegmentType = UTType(exportedAs: "com.iris.editor.imported-timeline-segment")
+
     let tracks: [Track]
     let clipsByTrackId: [String: [Clip]]
     let mediaById: [String: Media]
@@ -14,6 +17,7 @@ struct TimelineSectionView: View {
     let onAddSelection: (TrackKind, ImportSource) -> Void
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
+    var onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)? = nil
     var showAddButton: Bool = true
     var rulerVerticalOffset: CGFloat = 0
 
@@ -32,6 +36,9 @@ struct TimelineSectionView: View {
     @State private var lastScrollableDurationUs: Int64 = 0
     @State private var isJumpingToTarget: Bool = false
     @State private var jumpResetWorkItem: DispatchWorkItem?
+    @State private var isImportedSegmentTargeted = false
+    @State private var importedSegmentDropTimeUs: Int64?
+    @State private var lastImportedSegmentDebugSummary: String?
 
     var body: some View {
         GeometryReader { geometry in
@@ -228,11 +235,62 @@ struct TimelineSectionView: View {
                     }
                 }
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: .spacing(.sp3))
+                    .stroke(
+                        isImportedSegmentTargeted ? Color.ds.accentFg : Color.clear,
+                        style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                    )
+                    .padding(.horizontal, .sp3)
+                    .animation(.easeOut(duration: 0.18), value: isImportedSegmentTargeted)
+            }
+            .overlay(alignment: .topLeading) {
+                if let insertionGapPreview {
+                    ImportedSegmentInsertionIndicator(color: Color.ds.accentFg, height: stackHeight + layout.trackTopOffset)
+                        .offset(
+                            x: insertionIndicatorX(
+                                for: insertionGapPreview.startUs,
+                                viewportWidth: geometry.size.width
+                            ) - 7,
+                            y: rulerVerticalOffset + layout.rulerHeight
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
+            .onDrop(
+                of: [Self.importedSegmentType],
+                delegate: ImportedSegmentDropDelegate(
+                    isEnabled: onDropImportedSegmentAtTime != nil,
+                    isTargeted: $isImportedSegmentTargeted,
+                    dropTimeUs: $importedSegmentDropTimeUs,
+                    onDropImportedSegmentAtTime: onDropImportedSegmentAtTime,
+                    resolveDropTimeUs: { dropX in
+                        resolvedDropTimeUs(dropX: dropX, viewportWidth: geometry.size.width)
+                    }
+                )
+            )
+        }
+        .onChange(of: isImportedSegmentTargeted) { _, isTargeted in
+            if !isTargeted {
+                importedSegmentDropTimeUs = nil
+                lastImportedSegmentDebugSummary = nil
+            }
+            EditorDebugTrace.log(
+                "TimelineSectionView",
+                "semantic drag target active=\(isTargeted)"
+            )
+            logImportedSegmentDragStateIfNeeded()
+        }
+        .onChange(of: importedSegmentDropTimeUs) { _, _ in
+            logImportedSegmentDragStateIfNeeded()
         }
         .onDisappear {
             scrollActivityWorkItem?.cancel()
             jumpResetWorkItem?.cancel()
             autoScrollTask?.cancel()
+            importedSegmentDropTimeUs = nil
+            isImportedSegmentTargeted = false
+            lastImportedSegmentDebugSummary = nil
         }
         .onAppear { lastScrollableDurationUs = scrollableDurationUs }
         .onChange(of: scrollableDurationUs) { _, newValue in
@@ -329,6 +387,133 @@ struct TimelineSectionView: View {
     private func clampScrollTime(_ timeUs: Int64) -> Int64 {
         min(max(0, scrollableDurationUs), max(0, timeUs))
     }
+
+    private func resolvedDropTimeUs(dropX: CGFloat, viewportWidth: CGFloat) -> Int64 {
+        let centerX = viewportWidth / 2
+        let contentX = max(0, dropX + sharedScrollOffset - centerX)
+        let timeUs = Int64((contentX / pixelsPerSecond) * 1_000_000)
+        return clampScrollTime(timeUs)
+    }
+
+    private var importedSegmentTrackClips: [Clip] {
+        guard let videoTrack = tracks.first(where: { $0.kind == .video }) else {
+            return []
+        }
+
+        return (clipsByTrackId[videoTrack.trackId] ?? [])
+            .sorted { $0.timelineRange.start < $1.timelineRange.start }
+    }
+
+    private func insertionIndicatorX(for timeUs: Int64, viewportWidth: CGFloat) -> CGFloat {
+        let centerX = viewportWidth / 2
+        let contentX = CGFloat(timeUs) / 1_000_000 * pixelsPerSecond
+        return centerX + contentX - sharedScrollOffset
+    }
+
+    private var insertionGapPreview: ImportedSegmentGapPreview? {
+        guard
+            isImportedSegmentTargeted,
+            let snapshot = importedSegmentDebugSnapshot,
+            snapshot.shouldInsertBeforeClip,
+            let nearestClipStartUs = snapshot.nearestClipStartUs
+        else {
+            return nil
+        }
+
+        return ImportedSegmentGapPreview(startUs: nearestClipStartUs)
+    }
+
+    private var importedSegmentDebugSnapshot: ImportedSegmentDropDebugSnapshot? {
+        guard
+            let importedSegmentDropTimeUs
+        else {
+            return nil
+        }
+
+        return importedSegmentDropDebugSnapshot(heldAtUs: importedSegmentDropTimeUs)
+    }
+
+    private func importedSegmentDropDebugSnapshot(
+        heldAtUs: Int64
+    ) -> ImportedSegmentDropDebugSnapshot {
+        let trackClips = importedSegmentTrackClips
+        guard let nearestClip = nearestClipStart(to: heldAtUs, clips: trackClips) else {
+            return ImportedSegmentDropDebugSnapshot(
+                heldAtUs: heldAtUs,
+                nearestClipStartUs: nil,
+                distanceUs: nil,
+                shouldInsertBeforeClip: false,
+                reason: "no-target-clip"
+            )
+        }
+
+        let distanceUs = abs(nearestClip.timelineRange.start - heldAtUs)
+        let shouldInsertBeforeClip = distanceUs <= 500_000
+
+        return ImportedSegmentDropDebugSnapshot(
+            heldAtUs: heldAtUs,
+            nearestClipStartUs: nearestClip.timelineRange.start,
+            distanceUs: distanceUs,
+            shouldInsertBeforeClip: shouldInsertBeforeClip,
+            reason: shouldInsertBeforeClip ? "insert-before-nearest-start" : "append-to-end"
+        )
+    }
+
+    private func nearestClipStart(to heldAtUs: Int64, clips: [Clip]) -> Clip? {
+        guard !clips.isEmpty else { return nil }
+
+        var low = 0
+        var high = clips.count
+        while low < high {
+            let mid = (low + high) / 2
+            if clips[mid].timelineRange.start < heldAtUs {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        let candidateIndices = [max(0, low - 1), min(clips.count - 1, low)]
+        let uniqueIndices = Array(Set(candidateIndices)).sorted()
+        return uniqueIndices.min(by: { left, right in
+            let leftDistance = abs(clips[left].timelineRange.start - heldAtUs)
+            let rightDistance = abs(clips[right].timelineRange.start - heldAtUs)
+            if leftDistance == rightDistance {
+                return clips[left].timelineRange.start < clips[right].timelineRange.start
+            }
+            return leftDistance < rightDistance
+        }).map { clips[$0] }
+    }
+
+    private func logImportedSegmentDragStateIfNeeded() {
+        guard isImportedSegmentTargeted else { return }
+
+        guard let snapshot = importedSegmentDebugSnapshot else {
+            let summary = "semantic drag no-clip-start-target held=\(formatDebugTime(importedSegmentDropTimeUs))"
+            guard summary != lastImportedSegmentDebugSummary else { return }
+            lastImportedSegmentDebugSummary = summary
+            EditorDebugTrace.log("TimelineSectionView", summary)
+            return
+        }
+
+        let summary = [
+            "semantic drag",
+            "held=\(formatDebugTime(snapshot.heldAtUs))",
+            "nearest-start=\(formatDebugTime(snapshot.nearestClipStartUs))",
+            "distance=\(formatDebugTime(snapshot.distanceUs))",
+            "insert-before=\(snapshot.shouldInsertBeforeClip)",
+            "reason=\(snapshot.reason)"
+        ].joined(separator: " ")
+
+        guard summary != lastImportedSegmentDebugSummary else { return }
+        lastImportedSegmentDebugSummary = summary
+        EditorDebugTrace.log("TimelineSectionView", summary)
+    }
+
+    private func formatDebugTime(_ timeUs: Int64?) -> String {
+        guard let timeUs else { return "nil" }
+        return String(format: "%.3fs", Double(timeUs) / 1_000_000)
+    }
 }
 
 private struct ScrollTargetMarkerView: View {
@@ -355,5 +540,94 @@ private struct ScrollTargetMarkerView: View {
             }
         }
         .task(id: targetTimeUs) {}
+    }
+}
+
+private struct ImportedSegmentInsertionIndicator: View {
+    let color: Color
+    let height: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "arrowtriangle.down.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(color)
+
+            Rectangle()
+                .fill(color)
+                .frame(width: 3, height: max(0, height - 10))
+                .shadow(color: color.opacity(0.35), radius: 3)
+        }
+        .frame(width: 14, height: height, alignment: .top)
+    }
+}
+
+private struct ImportedSegmentGapPreview {
+    let startUs: Int64
+}
+
+private struct ImportedSegmentDropDebugSnapshot {
+    let heldAtUs: Int64
+    let nearestClipStartUs: Int64?
+    let distanceUs: Int64?
+    let shouldInsertBeforeClip: Bool
+    let reason: String
+}
+
+private struct ImportedSegmentDropDelegate: DropDelegate {
+    let isEnabled: Bool
+    @Binding var isTargeted: Bool
+    @Binding var dropTimeUs: Int64?
+    let onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)?
+    let resolveDropTimeUs: (CGFloat) -> Int64
+
+    func validateDrop(info: DropInfo) -> Bool {
+        isEnabled && info.hasItemsConforming(to: [TimelineSectionView.importedSegmentType])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard isEnabled else { return }
+        isTargeted = true
+        dropTimeUs = resolveDropTimeUs(info.location.x)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard isEnabled else { return nil }
+        isTargeted = true
+        dropTimeUs = resolveDropTimeUs(info.location.x)
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+        dropTimeUs = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard
+            isEnabled,
+            let onDropImportedSegmentAtTime,
+            let provider = info.itemProviders(for: [TimelineSectionView.importedSegmentType]).first
+        else {
+            isTargeted = false
+            dropTimeUs = nil
+            return false
+        }
+        provider.loadDataRepresentation(forTypeIdentifier: TimelineSectionView.importedSegmentType.identifier) { data, _ in
+            guard
+                let data,
+                let item = try? JSONDecoder().decode(ImportedTimelineSegment.self, from: data)
+            else { return }
+
+            let resolvedTimeUs = resolveDropTimeUs(info.location.x)
+
+            DispatchQueue.main.async {
+                onDropImportedSegmentAtTime(item, resolvedTimeUs)
+            }
+        }
+
+        isTargeted = false
+        dropTimeUs = nil
+        return true
     }
 }
