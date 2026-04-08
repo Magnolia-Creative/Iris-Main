@@ -3,9 +3,11 @@ import PhotosUI
 import SwiftUI
 
 struct ImportView: View {
+    let timelineId: String?
     @StateObject private var viewModel = ImportViewModel()
     @StateObject private var agentViewModel = AgentViewModel()
     @State private var selectedItems: [PhotosPickerItem] = []
+    @State private var editorLaunchDestination: EditorLaunchDestination?
     @State private var isTransitioningToAgent = false
     @State private var isAgentSecondaryContentVisible = false
     @State private var isProcessingPromptTransitionSource = false
@@ -31,6 +33,10 @@ struct ImportView: View {
         Double(ctaFadeExtension / ctaContainerHeight)
     }
 
+    init(timelineId: String? = nil) {
+        self.timelineId = timelineId
+    }
+
     var body: some View {
         ZStack {
             Color.ds.bg
@@ -51,6 +57,12 @@ struct ImportView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $editorLaunchDestination) { destination in
+            EditorContainerView(
+                timelineId: destination.timelineId,
+                initialImportSeed: destination.seed
+            )
+        }
         .onChange(of: selectedItems) { _, newValue in
             Task {
                 await importSelection(from: newValue)
@@ -90,6 +102,17 @@ struct ImportView: View {
                 isAgentSecondaryContentVisible = true
                 isProcessingPromptTransitionSource = false
             }
+        }
+        .onChange(of: agentViewModel.model.pendingEditorSeed) { _, seed in
+            guard let seed else { return }
+            guard let resolvedTimelineID = viewModel.resolveEditorTimelineID(preferredTimelineID: timelineId) else {
+                return
+            }
+
+            editorLaunchDestination = EditorLaunchDestination(
+                timelineId: resolvedTimelineID,
+                seed: seed
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -320,6 +343,23 @@ struct ImportView: View {
         withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) {
             viewModel.beginProcessing()
         }
+    }
+}
+
+private struct EditorLaunchDestination: Identifiable, Hashable {
+    let timelineId: String
+    let seed: ImportedTimelineSeed
+
+    var id: String {
+        timelineId
+    }
+
+    static func == (lhs: EditorLaunchDestination, rhs: EditorLaunchDestination) -> Bool {
+        lhs.timelineId == rhs.timelineId
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(timelineId)
     }
 }
 

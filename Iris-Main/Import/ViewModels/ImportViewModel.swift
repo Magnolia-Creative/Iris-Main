@@ -8,15 +8,18 @@ final class ImportViewModel: ObservableObject {
 
     private let audioExtractionService: AudioExtractionService
     private let uploadService: IngestUploadService
+    private let db: DatabaseManager
 
     init(
         endpoint: URL? = nil,
         audioExtractionService: AudioExtractionService? = nil,
-        uploadService: IngestUploadService? = nil
+        uploadService: IngestUploadService? = nil,
+        db: DatabaseManager? = nil
     ) {
         self.endpoint = endpoint ?? AppConfiguration.ingestEndpoint
         self.audioExtractionService = audioExtractionService ?? AudioExtractionService()
         self.uploadService = uploadService ?? IngestUploadService()
+        self.db = db ?? DatabaseManager.shared
     }
 
     func beginVideoImport() {
@@ -92,6 +95,25 @@ final class ImportViewModel: ObservableObject {
     func showAgentView() {
         guard model.uploadDidComplete else { return }
         model.screen = .agent
+    }
+
+    func resolveEditorTimelineID(preferredTimelineID: String?) -> String? {
+        if let preferredTimelineID {
+            return preferredTimelineID
+        }
+
+        let project = Project(name: "AI Assembly")
+
+        do {
+            try db.create(project)
+            let library = MediaLibrary(projectId: project.projectId)
+            try db.create(library)
+            let timeline = try db.createTimeline(forProjectId: project.projectId)
+            return timeline.timelineId
+        } catch {
+            model.uploadStatusMessage = "Couldn't create a timeline for the assembled edit."
+            return nil
+        }
     }
 
     func startProcessingIfNeeded() async {

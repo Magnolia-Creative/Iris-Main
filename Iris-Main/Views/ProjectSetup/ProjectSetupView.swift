@@ -49,7 +49,7 @@ struct ProjectSetupView: View {
         }
         .navigationDestination(isPresented: $navigateToAgent) {
             if let id = createdTimelineId {
-                ImportView()
+                ImportView(timelineId: id)
             }
         }
     }

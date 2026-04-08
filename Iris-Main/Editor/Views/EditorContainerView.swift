@@ -4,6 +4,7 @@ internal import Combine
 
 struct EditorContainerView: View {
     let timelineId: String
+    let initialImportSeed: ImportedTimelineSeed?
     @StateObject private var controller: TimelineController
     @StateObject private var renderBridge = TimelineRenderBridge()
     @State private var playbackController: PlaybackController?
@@ -11,8 +12,9 @@ struct EditorContainerView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @Environment(\.dismiss) private var dismiss
 
-    init(timelineId: String) {
+    init(timelineId: String, initialImportSeed: ImportedTimelineSeed? = nil) {
         self.timelineId = timelineId
+        self.initialImportSeed = initialImportSeed
         self._controller = StateObject(wrappedValue: TimelineController(timelineId: timelineId))
     }
 
@@ -67,6 +69,9 @@ struct EditorContainerView: View {
         .navigationBarHidden(true)
         .task {
             await controller.loadTimelineData()
+            if let initialImportSeed {
+                await controller.applyInitialImportSeedIfNeeded(initialImportSeed)
+            }
             let pc = PlaybackController(
                 statePublisher: controller.$state.eraseToAnyPublisher(),
                 actions: controller

@@ -9,6 +9,7 @@ final class TimelineController: ObservableObject {
     private let persistence: TimelinePersistence
     private let importService: MediaImportService
     private var persistedTrackIds: Set<String> = []
+    private var hasAppliedInitialImportSeed = false
     private var debouncedSaveTask: Task<Void, Never>?
 
     init(
@@ -45,6 +46,50 @@ final class TimelineController: ObservableObject {
             }
         } catch {
             print("Failed to load timeline data: \(error)")
+        }
+    }
+
+    @MainActor
+    func applyInitialImportSeedIfNeeded(_ seed: ImportedTimelineSeed) async {
+        guard !hasAppliedInitialImportSeed else { return }
+        hasAppliedInitialImportSeed = true
+
+        guard state.clips.isEmpty, state.mediaById.isEmpty else { return }
+        guard let mediaLibrary = state.mediaLibrary else { return }
+
+        do {
+            let importedMedia = try await importService.importFileURLsQuick(
+                seed.sourceVideos.map(\.originalURL),
+                to: mediaLibrary.id,
+                preferredKind: .video
+            )
+            let mediaByLocalKey = Dictionary(uniqueKeysWithValues: zip(seed.sourceVideos, importedMedia).map { pair in
+                (pair.0.localKey, pair.1)
+            })
+
+            let before = state.clips
+            for media in importedMedia {
+                state.mediaById[media.mediaId] = media
+            }
+
+            var cursor: Int64 = 0
+            for segment in seed.segments {
+                guard let media = mediaByLocalKey[segment.sourceLocalKey] else { continue }
+                state.addClipSegment(
+                    of: .video,
+                    at: cursor,
+                    media: media,
+                    sourceRange: segment.sourceRange
+                )
+                cursor += max(segment.sourceRange.duration, 1)
+            }
+
+            state.jumpToStart()
+            persistClipChanges(before: before, after: state.clips)
+            syncSemanticIndexForImportedMedia()
+            generateThumbnailStrips(for: importedMedia)
+        } catch {
+            print("Failed to bootstrap imported timeline: \(error)")
         }
     }
 

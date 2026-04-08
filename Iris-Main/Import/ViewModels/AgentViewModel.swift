@@ -44,6 +44,7 @@ final class AgentViewModel: ObservableObject {
             statusMessage: "Connecting to the editing session.",
             extractionClips: [],
             timelineClips: [],
+            pendingEditorSeed: nil,
             timelineNotes: [],
             feedbackDraft: "",
             sessionID: ingestResponse?.sessionID.rawValue,
@@ -173,6 +174,7 @@ final class AgentViewModel: ObservableObject {
 
             let sourceClip = AgentSourceClip(
                 id: match.descriptor.video.id,
+                localKey: match.descriptor.localKey,
                 displayName: match.descriptor.video.displayName,
                 videoURL: match.descriptor.video.originalURL,
                 durationSeconds: match.descriptor.durationSeconds,
@@ -409,6 +411,7 @@ final class AgentViewModel: ObservableObject {
 
         case .timelineUpdate(let payload):
             model.timelineClips = makeTimelineClips(from: payload.timeline)
+            model.pendingEditorSeed = makeEditorSeed(from: payload.timeline)
             model.timelineNotes = payload.timelineNotes
             model.stage = .assemblingTimeline
             model.errorMessage = nil
@@ -431,6 +434,7 @@ final class AgentViewModel: ObservableObject {
             model.sessionID = payload.sessionID.rawValue
             model.projectID = payload.projectID?.rawValue ?? model.projectID
             model.timelineClips = makeTimelineClips(from: payload.timeline)
+            model.pendingEditorSeed = makeEditorSeed(from: payload.timeline)
             model.stage = .completed
             model.errorMessage = nil
             model.isAwaitingUserInput = false
@@ -702,6 +706,26 @@ final class AgentViewModel: ObservableObject {
         }
     }
 
+    private func makeEditorSeed(from payload: [AgentTimelineEntry]) -> ImportedTimelineSeed? {
+        let segments = payload.compactMap { entry -> ImportedTimelineSeedSegment? in
+            guard let sourceClip = sourceClipsByRemoteID[entry.clipID.rawValue] else {
+                return nil
+            }
+
+            let startTimeUs = microseconds(for: entry.inSec)
+            let endTimeUs = max(microseconds(for: entry.outSec), startTimeUs + 1)
+
+            return ImportedTimelineSeedSegment(
+                sourceLocalKey: sourceClip.localKey,
+                startTimeUs: startTimeUs,
+                endTimeUs: endTimeUs
+            )
+        }
+
+        guard !segments.isEmpty else { return nil }
+        return ImportedTimelineSeed(sourceVideos: sourceVideos, segments: segments)
+    }
+
     private func makeExtractionClip(
         for sourceClip: AgentSourceClip,
         remoteClipID: String,
@@ -740,6 +764,10 @@ final class AgentViewModel: ObservableObject {
         }
 
         return orderedClipIDs
+    }
+
+    private func microseconds(for seconds: Double) -> Int64 {
+        Int64((max(seconds, 0) * 1_000_000).rounded())
     }
 
     private func applyError(_ error: Error) {

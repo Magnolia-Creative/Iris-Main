@@ -6,6 +6,7 @@ struct AgentModel {
     var statusMessage = "Connecting to the editing session."
     var extractionClips: [AgentExtractionClip] = []
     var timelineClips: [AgentTimelineClip] = []
+    var pendingEditorSeed: ImportedTimelineSeed?
     var timelineNotes: [String] = []
     var feedbackDraft = ""
     var sessionID: String?
@@ -38,6 +39,7 @@ enum AgentStage: Equatable {
 
 struct AgentSourceClip: Identifiable, Equatable {
     let id: UUID
+    let localKey: String
     let displayName: String
     let videoURL: URL
     let durationSeconds: Double
