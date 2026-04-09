@@ -4,6 +4,8 @@ import SwiftUI
 
 struct ImportView: View {
     let timelineId: String?
+    let isEmbeddedInParentScrollView: Bool
+    let onScreenChange: ((ImportScreen) -> Void)?
     @StateObject private var viewModel = ImportViewModel()
     @StateObject private var agentViewModel = AgentViewModel()
     @State private var selectedItems: [PhotosPickerItem] = []
@@ -33,8 +35,14 @@ struct ImportView: View {
         Double(ctaFadeExtension / ctaContainerHeight)
     }
 
-    init(timelineId: String? = nil) {
+    init(
+        timelineId: String? = nil,
+        isEmbeddedInParentScrollView: Bool = false,
+        onScreenChange: ((ImportScreen) -> Void)? = nil
+    ) {
         self.timelineId = timelineId
+        self.isEmbeddedInParentScrollView = isEmbeddedInParentScrollView
+        self.onScreenChange = onScreenChange
     }
 
     var body: some View {
@@ -67,6 +75,12 @@ struct ImportView: View {
             Task {
                 await importSelection(from: newValue)
             }
+        }
+        .onAppear {
+            onScreenChange?(viewModel.model.screen)
+        }
+        .onChange(of: viewModel.model.screen) { _, newValue in
+            onScreenChange?(newValue)
         }
         .onChange(of: viewModel.model.uploadDidComplete) { _, didComplete in
             guard didComplete, viewModel.model.screen == .processing else { return }
@@ -139,16 +153,25 @@ struct ImportView: View {
     }
 
     private var editingContent: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: .spacing(.sp9)) {
-                heroSection
-                importSection
-                promptSection
+        Group {
+            if isEmbeddedInParentScrollView {
+                editingContentBody
+            } else {
+                ScrollView(showsIndicators: false) {
+                    editingContentBody
+                }
             }
-            .padding(.horizontal, .sp4)
-            .padding(.top, .sp3)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var editingContentBody: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp9)) {
+            importSection
+            promptSection
+        }
+        .padding(.horizontal, .sp4)
+        .padding(.top, .sp5)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var agentLayer: some View {
@@ -161,22 +184,6 @@ struct ImportView: View {
             promptIsSource: false
         )
         .transition(.identity)
-    }
-
-    private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Color.clear
-                .frame(height: 24)
-
-            Text("Build your edit")
-                .typography(.title)
-                .foregroundStyle(Color.ds.text)
-
-            Text("Import multiple videos, add a prompt, then let Iris compress the audio and upload the batch for editing.")
-                .typography(.body)
-                .foregroundStyle(Color.ds.textMuted)
-                .frame(maxWidth: 320, alignment: .leading)
-        }
     }
 
     private var importSection: some View {
