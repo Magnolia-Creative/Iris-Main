@@ -1,48 +1,23 @@
-import CoreTransferable
-import PhotosUI
+import Photos
 import SwiftUI
 
 struct ImportView: View {
     let timelineId: String?
-    let isEmbeddedInParentScrollView: Bool
-    let onScreenChange: ((ImportScreen) -> Void)?
-    @StateObject private var viewModel = ImportViewModel()
+    @StateObject private var viewModel: ImportBrowserViewModel
     @StateObject private var agentViewModel = AgentViewModel()
-    @State private var selectedItems: [PhotosPickerItem] = []
     @State private var editorLaunchDestination: EditorLaunchDestination?
-    @State private var isTransitioningToAgent = false
-    @State private var isAgentSecondaryContentVisible = false
-    @State private var isProcessingPromptTransitionSource = false
+    @State private var showsAgentView = false
     @FocusState private var isPromptFocused: Bool
     @Namespace private var transitionNamespace
-    private let ctaButtonHeight: CGFloat = 64
-    private let ctaFadeExtension: CGFloat = .spacing(.sp4)
 
     private let gridColumns = Array(
         repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: .spacing(.sp2)),
         count: 3
     )
 
-    private var importedVideoCount: Int {
-        viewModel.model.importedVideoCount
-    }
-
-    private var ctaContainerHeight: CGFloat {
-        ctaButtonHeight + (ctaFadeExtension * 2)
-    }
-
-    private var ctaFadeStop: Double {
-        Double(ctaFadeExtension / ctaContainerHeight)
-    }
-
-    init(
-        timelineId: String? = nil,
-        isEmbeddedInParentScrollView: Bool = false,
-        onScreenChange: ((ImportScreen) -> Void)? = nil
-    ) {
+    init(timelineId: String? = nil) {
         self.timelineId = timelineId
-        self.isEmbeddedInParentScrollView = isEmbeddedInParentScrollView
-        self.onScreenChange = onScreenChange
+        _viewModel = StateObject(wrappedValue: ImportBrowserViewModel(timelineId: timelineId))
     }
 
     var body: some View {
@@ -50,20 +25,18 @@ struct ImportView: View {
             Color.ds.bg
                 .ignoresSafeArea()
 
-            Group {
-                switch viewModel.model.screen {
-                case .editing:
-                    editingContent
-                case .processing, .agent:
-                    flowContent
-                }
+            if showsAgentView {
+                AgentView(
+                    viewModel: agentViewModel,
+                    transitionNamespace: transitionNamespace,
+                    secondaryContentOpacity: 1,
+                    promptIsSource: false
+                )
+            } else {
+                browserContent
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if viewModel.model.screen == .editing {
-                bottomCTA
-            }
-        }
+        .navigationTitle(showsAgentView ? "AutoMake" : "Import")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $editorLaunchDestination) { destination in
             EditorContainerView(
@@ -71,55 +44,28 @@ struct ImportView: View {
                 initialImportSeed: destination.seed
             )
         }
-        .onChange(of: selectedItems) { _, newValue in
-            Task {
-                await importSelection(from: newValue)
-            }
+        .task {
+            await viewModel.loadLibraryIfNeeded()
         }
-        .onAppear {
-            onScreenChange?(viewModel.model.screen)
-        }
-        .onChange(of: viewModel.model.screen) { _, newValue in
-            onScreenChange?(newValue)
-        }
-        .onChange(of: viewModel.model.uploadDidComplete) { _, didComplete in
-            guard didComplete, viewModel.model.screen == .processing else { return }
+        .onChange(of: viewModel.model.isPreparingAgentTransition) { _, shouldPrepare in
+            guard shouldPrepare,
+                  let response = viewModel.model.ingestResponse else { return }
 
             agentViewModel.configure(
                 promptText: viewModel.model.prompt.trimmedText,
-                videos: viewModel.model.videos,
-                ingestResponse: viewModel.model.parsedResponse,
-                ingestEndpoint: viewModel.endpoint
+                videos: viewModel.model.committedVideos,
+                ingestResponse: response,
+                ingestEndpoint: AppConfiguration.agentSessionEndpoint
             )
 
-            Task { @MainActor in
-                isAgentSecondaryContentVisible = false
-                isProcessingPromptTransitionSource = true
-
-                await Task.yield()
-
-                withAnimation(.spring(response: 0.62, dampingFraction: 0.9)) {
-                    isTransitioningToAgent = true
-                }
-
-                try? await Task.sleep(nanoseconds: 160_000_000)
-
-                withAnimation(.easeOut(duration: 0.24)) {
-                    isAgentSecondaryContentVisible = true
-                }
-
-                try? await Task.sleep(nanoseconds: 520_000_000)
-
-                viewModel.showAgentView()
-                try? await Task.sleep(nanoseconds: 40_000_000)
-                isTransitioningToAgent = false
-                isAgentSecondaryContentVisible = true
-                isProcessingPromptTransitionSource = false
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
+                showsAgentView = true
             }
+            viewModel.finishPreparingAgentTransition()
         }
         .onChange(of: agentViewModel.model.pendingEditorSeed) { _, seed in
             guard let seed else { return }
-            guard let resolvedTimelineID = viewModel.resolveEditorTimelineID(preferredTimelineID: timelineId) else {
+            guard let resolvedTimelineID = resolveEditorTimelineID(preferredTimelineID: timelineId) else {
                 return
             }
 
@@ -128,107 +74,149 @@ struct ImportView: View {
                 seed: seed
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var flowContent: some View {
-        ZStack(alignment: .topLeading) {
-            if viewModel.model.screen == .agent || isTransitioningToAgent {
-                agentLayer
-                    .zIndex(0)
-            }
-
-            if viewModel.model.screen == .processing || isTransitioningToAgent {
-                ImportProcessingView(
-                    viewModel: viewModel,
-                    gridColumns: gridColumns,
-                    transitionNamespace: transitionNamespace,
-                    promptIsSource: isProcessingPromptTransitionSource,
-                    showsPrompt: !isTransitioningToAgent,
-                    isTransitioningOut: isTransitioningToAgent
-                )
-                    .zIndex(1)
+        .onDisappear {
+            Task {
+                await agentViewModel.closeIfNeeded()
             }
         }
     }
 
-    private var editingContent: some View {
-        Group {
-            if isEmbeddedInParentScrollView {
-                editingContentBody
-            } else {
-                ScrollView(showsIndicators: false) {
-                    editingContentBody
+    private var browserContent: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: .spacing(.sp6)) {
+                heroSection
+                albumSection
+                assetGridSection
+                selectedClipSection
+                promptSection
+                modeSection
+                footerSection
+            }
+            .padding(.horizontal, .sp4)
+            .padding(.top, .sp4)
+            .padding(.bottom, .sp8)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomCTA
+        }
+    }
+
+    private var heroSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            Text("Build your first cut as you browse")
+                .typography(.title)
+                .foregroundStyle(Color.ds.text)
+
+            Text("Iris starts local embeddings and agent prep as soon as a clip stays selected for a moment, then opens the live session once everything settles.")
+                .typography(.body)
+                .foregroundStyle(Color.ds.textMuted)
+
+            statusPill
+        }
+    }
+
+    private var statusPill: some View {
+        Text(viewModel.model.statusMessage)
+            .typography(.bodySmall)
+            .foregroundStyle(Color.ds.accentFg)
+            .padding(.horizontal, .sp3)
+            .padding(.vertical, .sp2)
+            .background(Color.ds.accentBg.opacity(0.18))
+            .overlay(
+                Capsule()
+                    .stroke(Color.ds.accentFg.opacity(0.35), lineWidth: 1)
+            )
+            .clipShape(Capsule())
+    }
+
+    private var albumSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            sectionHeader(title: "Folders", subtitle: "Switch between your video folders just like the system browser.")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: .spacing(.sp2)) {
+                    ForEach(viewModel.model.albums) { album in
+                        Button {
+                            viewModel.selectAlbum(album.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(album.title)
+                                    .typography(.bodySmall)
+                                Text("\(album.count) clips")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundStyle(viewModel.model.selectedAlbumID == album.id ? Color.ds.accentFg : Color.ds.textMuted)
+                            .padding(.horizontal, .sp3)
+                            .padding(.vertical, .sp2)
+                            .background(
+                                Capsule()
+                                    .fill(viewModel.model.selectedAlbumID == album.id ? Color.ds.accentBg.opacity(0.18) : Color.ds.surface)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        viewModel.model.selectedAlbumID == album.id ? Color.ds.accentFg.opacity(0.35) : Color.ds.border,
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
     }
 
-    private var editingContentBody: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp9)) {
-            importSection
-            promptSection
-        }
-        .padding(.horizontal, .sp4)
-        .padding(.top, .sp5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    private var assetGridSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            sectionHeader(
+                title: "Library",
+                subtitle: "Tap a clip to select it. If it stays selected for 2 seconds, Iris starts working."
+            )
 
-    private var agentLayer: some View {
-        AgentView(
-            viewModel: agentViewModel,
-            transitionNamespace: transitionNamespace,
-            secondaryContentOpacity: isTransitioningToAgent
-                ? (isAgentSecondaryContentVisible ? 1 : 0)
-                : 1,
-            promptIsSource: false
-        )
-        .transition(.identity)
-    }
-
-    private var importSection: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            Text("Import videos")
-                .typography(.heading)
-                .foregroundStyle(Color.ds.text)
-
-            if let importErrorMessage = viewModel.model.importErrorMessage {
-                Text(importErrorMessage)
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.danger)
-            } else if viewModel.model.isImportingVideos {
-                ProgressView("Importing videos...")
-                    .tint(Color.ds.accentFg)
-                    .typographyStyle(.bodySmall)
-            } else {
-                Text(viewModel.model.uploadStatusMessage)
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.textMuted)
+            if let loadErrorMessage = viewModel.model.loadErrorMessage {
+                errorCard(loadErrorMessage)
             }
 
             LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {
-                ForEach(viewModel.model.videos) { video in
-                    ImportedVideoTile(videoURL: video.originalURL)
-                }
-
-                PhotosPicker(
-                    selection: $selectedItems,
-                    maxSelectionCount: 20,
-                    matching: .videos,
-                    photoLibrary: .shared()
-                ) {
-                    AddVideoTile()
+                ForEach(viewModel.model.visibleAssets) { asset in
+                    Button {
+                        viewModel.toggleSelection(for: asset.id)
+                    } label: {
+                        ImportAssetCell(asset: asset)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .matchedGeometryEffect(id: "videos-section", in: transitionNamespace)
+    }
+
+    private var selectedClipSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            sectionHeader(
+                title: "Clip Queue",
+                subtitle: "Committed clips batch together for server processing over 1-second windows."
+            )
+
+            if viewModel.model.clips.isEmpty {
+                emptyState("No clips selected yet.")
+            } else {
+                VStack(spacing: .spacing(.sp2)) {
+                    ForEach(viewModel.model.clips) { clip in
+                        ImportQueueRow(clip: clip) {
+                            Task {
+                                await viewModel.cancelClip(localKey: clip.localKey)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var promptSection: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            Text("Editing prompt")
-                .typography(.heading)
-                .foregroundStyle(Color.ds.text)
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            sectionHeader(title: "Editing Prompt", subtitle: "This prompt is sent once the live session starts.")
 
             PromptCardContainer {
                 ZStack(alignment: .topLeading) {
@@ -255,7 +243,6 @@ struct ImportView: View {
                     }
                 }
             }
-            .importPromptCardTransition(in: transitionNamespace, isSource: true)
 
             if case .invalid(let message) = viewModel.model.prompt.status {
                 Text(message)
@@ -273,82 +260,322 @@ struct ImportView: View {
         }
     }
 
-    private var bottomCTA: some View {
-        ZStack {
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0), location: 0),
-                    .init(color: Color.black.opacity(0.44), location: ctaFadeStop),
-                    .init(color: Color.black.opacity(0.44), location: 1 - ctaFadeStop),
-                    .init(color: Color.black.opacity(0), location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: ctaContainerHeight)
-            .padding(.horizontal, .sp4)
-            .allowsHitTesting(false)
+    private var modeSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            sectionHeader(title: "Processing Mode", subtitle: "Choose what Iris should do as clips become committed.")
 
-            Button(action: startEditing) {
+            FlowLayout(spacing: .spacing(.sp2), lineSpacing: .spacing(.sp2)) {
+                ForEach(ImportProcessingMode.allCases) { mode in
+                    Button {
+                        viewModel.updateProcessingMode(mode)
+                    } label: {
+                        Text(mode.title)
+                            .typography(.bodySmall)
+                            .foregroundStyle(viewModel.model.processingMode == mode ? Color.ds.accentFg : Color.ds.textMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(viewModel.model.processingMode == mode ? Color.ds.accentBg.opacity(0.18) : Color.ds.surface)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        viewModel.model.processingMode == mode ? Color.ds.accentFg.opacity(0.35) : Color.ds.border,
+                                        lineWidth: 1
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var footerSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            sectionHeader(title: "Readiness", subtitle: "Iris waits for every committed request to finish before opening the agent.")
+            VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+                readinessRow("Selected clips", value: "\(viewModel.model.selectedClipCount)")
+                readinessRow("Committed clips", value: "\(viewModel.model.committedClipCount)")
+                readinessRow("Remote session", value: viewModel.model.remoteSession?.sessionName ?? "Waiting")
+                readinessRow("Websocket ready", value: (viewModel.model.ingestResponse?.readyForWebSocket ?? false) ? "Yes" : "No")
+            }
+        }
+    }
+
+    private var bottomCTA: some View {
+        VStack(spacing: .spacing(.sp2)) {
+            if !viewModel.model.processingMode.runsAgentPreprocessing {
+                Text("Enable agent preprocessing to start the live editing session.")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+            }
+
+            Button {
+                isPromptFocused = false
+                viewModel.requestAgentStart()
+            } label: {
                 HStack(spacing: .spacing(.sp2)) {
-                    Text(viewModel.model.isUploading ? "Processing..." : "Start editing")
-                    Image(systemName: viewModel.model.isUploading ? "arrow.up.circle" : "sparkles")
+                    Text(buttonTitle)
+                    Image(systemName: "sparkles")
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
             }
-            .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp4)))
-            .buttonStyle(AnimatedPrimaryButtonStyle(isEnabled: viewModel.model.canStartEditing))
-            .padding(.horizontal, .sp4)
-            .zIndex(1)
+            .buttonStyle(AnimatedPrimaryButtonStyle(isEnabled: viewModel.model.canRequestAgentStart))
+            .disabled(!viewModel.model.canRequestAgentStart)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: ctaContainerHeight)
+        .padding(.horizontal, .sp4)
+        .padding(.top, .sp2)
+        .padding(.bottom, .sp4)
+        .background(.ultraThinMaterial.opacity(0.8))
     }
 
-    private func importSelection(from items: [PhotosPickerItem]) async {
-        guard !items.isEmpty else {
-            await MainActor.run {
-                viewModel.importSelection(from: [])
-            }
-            return
+    private var buttonTitle: String {
+        if viewModel.model.isAwaitingAgentStart {
+            return "Finishing clip prep..."
+        }
+        return "Start editing"
+    }
+
+    private func sectionHeader(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+            Text(title)
+                .typography(.heading)
+                .foregroundStyle(Color.ds.text)
+
+            Text(subtitle)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+        }
+    }
+
+    private func readinessRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+            Spacer()
+            Text(value)
+                .typography(.body)
+                .foregroundStyle(Color.ds.text)
+        }
+        .padding(.horizontal, .sp4)
+        .padding(.vertical, .sp3)
+        .background(Color.ds.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                .stroke(Color.ds.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+
+    private func emptyState(_ message: String) -> some View {
+        Text(message)
+            .typography(.bodySmall)
+            .foregroundStyle(Color.ds.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.sp4)
+            .background(Color.ds.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: .spacing(.sp3))
+                    .stroke(Color.ds.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+
+    private func errorCard(_ message: String) -> some View {
+        Text(message)
+            .typography(.bodySmall)
+            .foregroundStyle(Color.ds.danger)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.sp4)
+            .background(Color.ds.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: .spacing(.sp3))
+                    .stroke(Color.ds.danger.opacity(0.5), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+
+    private func resolveEditorTimelineID(preferredTimelineID: String?) -> String? {
+        if let preferredTimelineID {
+            return preferredTimelineID
         }
 
-        await MainActor.run {
-            viewModel.beginVideoImport()
-        }
-
+        let project = Project(name: "AI Assembly")
         do {
-            var importedVideos: [ImportedVideo] = []
+            try DatabaseManager.shared.create(project)
+            let library = MediaLibrary(projectId: project.projectId)
+            try DatabaseManager.shared.create(library)
+            let timeline = try DatabaseManager.shared.createTimeline(forProjectId: project.projectId)
+            return timeline.timelineId
+        } catch {
+            return nil
+        }
+    }
+}
 
-            for item in items.prefix(20) {
-                let transferable = try await item.loadTransferable(type: VideoPickerTransferable.self)
-                guard let transferable else { continue }
+private struct ImportAssetCell: View {
+    let asset: ImportBrowserAsset
 
-                importedVideos.append(
-                    ImportedVideo(
-                        localURL: transferable.localURL,
-                        displayName: transferable.originalFilename,
-                        localKey: UUID().uuidString
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            ImportAssetThumbnailView(assetLocalIdentifier: asset.id)
+                .frame(height: 148)
+                .overlay(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0), Color.black.opacity(0.65)],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
-            }
 
-            await MainActor.run {
-                viewModel.importSelection(from: importedVideos)
+            VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+                HStack {
+                    Spacer()
+                    if asset.isCommitted {
+                        Text("Live")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.ds.accentFg)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.ds.accentBg.opacity(0.2))
+                            .clipShape(Capsule())
+                    } else if asset.isSelected {
+                        Text("Queued")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.ds.text)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.28))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Spacer()
+
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(asset.displayName)
+                            .typography(.bodySmall)
+                            .foregroundStyle(Color.white)
+                            .lineLimit(2)
+                        Text(asset.durationText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.78))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: asset.isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(asset.isSelected ? Color.ds.accentFg : Color.white.opacity(0.8))
+                }
             }
-        } catch {
-            await MainActor.run {
-                viewModel.completeVideoImport(with: error)
+            .padding(.sp3)
+        }
+        .background(Color.ds.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                .stroke(asset.isSelected ? Color.ds.accentFg : Color.ds.border, lineWidth: asset.isSelected ? 1.5 : 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+}
+
+private struct ImportAssetThumbnailView: View {
+    let assetLocalIdentifier: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                RoundedRectangle(cornerRadius: .spacing(.sp3))
+                    .fill(Color.ds.surface)
+                    .overlay(
+                        Image(systemName: "film")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Color.ds.textMuted)
+                    )
             }
         }
+        .task(id: assetLocalIdentifier) {
+            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalIdentifier], options: nil)
+            guard let asset = fetchResult.firstObject else { return }
+            image = await MediaImportService.shared.requestThumbnail(
+                for: asset,
+                targetSize: CGSize(width: 420, height: 420)
+            )
+        }
+    }
+}
+
+private struct ImportQueueRow: View {
+    let clip: ImportClipProcessingItem
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: .spacing(.sp3)) {
+            RoundedRectangle(cornerRadius: .spacing(.sp2))
+                .fill(Color.ds.accentBg.opacity(0.18))
+                .frame(width: 44, height: 44)
+                .overlay(
+                    Image(systemName: clip.isCommitted ? "film.stack" : "hourglass")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.ds.accentFg)
+                )
+
+            VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+                Text(clip.displayName)
+                    .typography(.body)
+                    .foregroundStyle(Color.ds.text)
+                    .lineLimit(2)
+
+                Text(clip.commitmentStatus)
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+
+                Text("Embeddings: \(clip.embeddingState.description)")
+                    .typography(.bodySmall)
+                    .foregroundStyle(statusColor(for: clip.embeddingState))
+
+                Text("Agent prep: \(clip.uploadState.description)")
+                    .typography(.bodySmall)
+                    .foregroundStyle(statusColor(for: clip.uploadState))
+            }
+
+            Spacer()
+
+            Button("Remove", action: onCancel)
+                .buttonStyle(.plain)
+                .typographyStyle(.bodySmall)
+                .foregroundStyle(Color.ds.danger)
+        }
+        .padding(.sp4)
+        .background(Color.ds.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                .stroke(Color.ds.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
     }
 
-    private func startEditing() {
-        guard viewModel.model.canStartEditing else { return }
-        isPromptFocused = false
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.9)) {
-            viewModel.beginProcessing()
+    private func statusColor(for state: ImportClipWorkState) -> Color {
+        switch state {
+        case .failed:
+            return Color.ds.danger
+        case .succeeded:
+            return Color.ds.accentFg
+        case .queued, .running:
+            return Color.ds.text
+        case .idle, .cancelled:
+            return Color.ds.textMuted
         }
     }
 }
@@ -367,29 +594,6 @@ private struct EditorLaunchDestination: Identifiable, Hashable {
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(timelineId)
-    }
-}
-
-private struct AddVideoTile: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-            Image(systemName: "plus")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.ds.accentFg)
-
-            Text("Add video")
-                .typography(.body)
-                .foregroundStyle(Color.ds.accentFg)
-        }
-        .padding(.sp3)
-        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .frame(height: 136)
-        .background(Color.ds.surface.opacity(0.45))
-        .overlay(
-            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                .stroke(Color.ds.accentFg, lineWidth: 1.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
     }
 }
 
@@ -422,7 +626,7 @@ private struct AnimatedPrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(Color.ds.text)
             .frame(height: 64)
             .background {
-                AnimatedPrimaryButtonBackground()
+                AnimatedPrimaryButtonBackground(opacity: isEnabled ? 1 : 0.35)
             }
             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp4)))
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
@@ -431,6 +635,7 @@ private struct AnimatedPrimaryButtonStyle: ButtonStyle {
 }
 
 private struct AnimatedPrimaryButtonBackground: View {
+    let opacity: Double
     @State private var startedAt = Date.now
     private let cycleDuration = 2.8
 
@@ -443,7 +648,7 @@ private struct AnimatedPrimaryButtonBackground: View {
             )
 
             shape
-                .fill(Color.ds.accentBg)
+                .fill(Color.ds.accentBg.opacity(opacity))
                 .overlay {
                     shape
                         .strokeBorder(Color.white.opacity(0.14), lineWidth: 1.25)
@@ -458,40 +663,6 @@ private struct AnimatedPrimaryButtonBackground: View {
     private func cycleProgress(at date: Date) -> Double {
         let loop = date.timeIntervalSince(startedAt) / cycleDuration
         return loop.truncatingRemainder(dividingBy: 1)
-    }
-}
-
-private struct VideoPickerTransferable: Transferable {
-    let localURL: URL
-    let originalFilename: String
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .mpeg4Movie) { received in
-            try await importReceivedVideo(received)
-        }
-        FileRepresentation(importedContentType: .movie) { received in
-            try await importReceivedVideo(received)
-        }
-    }
-
-    private static func importReceivedVideo(_ received: ReceivedTransferredFile) async throws -> Self {
-        let fileManager = FileManager.default
-        let sourceURL = received.file
-        let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
-        let destinationURL = fileManager.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension(fileExtension)
-
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-
-        try fileManager.copyItem(at: sourceURL, to: destinationURL)
-
-        return Self(
-            localURL: destinationURL,
-            originalFilename: sourceURL.lastPathComponent
-        )
     }
 }
 

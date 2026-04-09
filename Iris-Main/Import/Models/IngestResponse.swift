@@ -49,14 +49,24 @@ struct IngestResponse: Decodable {
     let sessionID: FlexibleIdentifier
     let sessionName: String
     let sessionStatus: String
+    let projectID: FlexibleIdentifier?
+    let projectName: String?
     let uploadedCount: Int
+    let pendingClipCount: Int?
+    let settledClipCount: Int?
+    let readyForWebSocket: Bool?
     let videos: [IngestVideoResponse]
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
         case sessionName = "session_name"
         case sessionStatus = "session_status"
+        case projectID = "project_id"
+        case projectName = "project_name"
         case uploadedCount = "uploaded_count"
+        case pendingClipCount = "pending_clip_count"
+        case settledClipCount = "settled_clip_count"
+        case readyForWebSocket = "ready_for_websocket"
         case videos
     }
 }
@@ -72,6 +82,8 @@ struct IngestVideoResponse: Decodable, Identifiable {
     let mimeType: String
     let fileExtension: String
     let fileSizeBytes: Int?
+    let processingStatus: String?
+    let processingError: String?
     let transcriptSegments: [TranscriptSegment]?
     let transcriptFullText: String?
     let videoReport: VideoReport?
@@ -90,6 +102,8 @@ struct IngestVideoResponse: Decodable, Identifiable {
         case mimeType = "mime_type"
         case fileExtension = "extension"
         case fileSizeBytes = "file_size_bytes"
+        case processingStatus = "processing_status"
+        case processingError = "processing_error"
         case transcriptSegments = "transcript_segments"
         case transcriptFullText = "transcript_full_text"
         case videoReport = "video_report"

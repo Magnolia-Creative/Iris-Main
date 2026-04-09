@@ -38,7 +38,7 @@ enum AgentStage: Equatable {
 }
 
 struct AgentSourceClip: Identifiable, Equatable {
-    let id: UUID
+    let id: String
     let localKey: String
     let displayName: String
     let videoURL: URL
@@ -48,7 +48,7 @@ struct AgentSourceClip: Identifiable, Equatable {
 }
 
 struct AgentExtractionClip: Identifiable, Equatable {
-    let id: UUID
+    let id: String
     let displayName: String
     let videoURL: URL
     let durationSeconds: Double

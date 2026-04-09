@@ -5,7 +5,6 @@ struct ProjectSetupView: View {
     @State private var navigateToEditor = false
     @State private var createdTimelineId: String?
     @State private var introTitle: String
-    @State private var showsHeroInAutoMake = true
 
     enum Screen {
         case chooser
@@ -34,34 +33,26 @@ struct ProjectSetupView: View {
 
     var body: some View {
         ZStack {
-            Color.ds.bg
-                .ignoresSafeArea()
+            switch screen {
+            case .chooser:
+                Color.ds.bg
+                    .ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: .spacing(.sp5)) {
-                    if screen == .chooser || showsHeroInAutoMake {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: .spacing(.sp5)) {
                         heroSection
                             .padding(.horizontal, .sp4)
                             .padding(.top, .sp3)
-                            .transition(.opacity)
+                        chooserContent
                     }
-
-                    ZStack(alignment: .topLeading) {
-                        if screen == .chooser {
-                            chooserContent
-                                .transition(.opacity)
-                        }
-
-                        if screen == .automake {
-                            automakeContent
-                                .transition(.opacity)
-                        }
-                    }
+                    .padding(.bottom, .sp8)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(.bottom, .sp8)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .animation(.easeInOut(duration: 0.4), value: screen == .chooser || showsHeroInAutoMake)
+            case .automake:
+                Color.ds.bg
+                    .ignoresSafeArea()
+
+                automakeContent
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -93,11 +84,7 @@ struct ProjectSetupView: View {
     private var automakeContent: some View {
         Group {
             if let timelineId = createdTimelineId {
-                ImportView(
-                    timelineId: timelineId,
-                    isEmbeddedInParentScrollView: true,
-                    onScreenChange: handleAutoMakeScreenChange
-                )
+                ImportView(timelineId: timelineId)
             } else {
                 Spacer(minLength: 0)
             }
@@ -169,17 +156,7 @@ struct ProjectSetupView: View {
         guard createdTimelineId != nil else { return }
 
         withAnimation(.easeInOut(duration: 0.22)) {
-            showsHeroInAutoMake = true
             screen = .automake
-        }
-    }
-
-    private func handleAutoMakeScreenChange(_ importScreen: ImportScreen) {
-        let shouldShowHero = importScreen == .editing
-        guard showsHeroInAutoMake != shouldShowHero else { return }
-
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showsHeroInAutoMake = shouldShowHero
         }
     }
 

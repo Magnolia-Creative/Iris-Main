@@ -690,7 +690,7 @@ final class AgentViewModel: ObservableObject {
             }
 
             let segmentDurationSeconds = max(entry.outSec - entry.inSec, 0.1)
-            let id = "\(sourceClip.id.uuidString)-\(index)-\(entry.inSec)-\(entry.outSec)"
+            let id = "\(sourceClip.id)-\(index)-\(entry.inSec)-\(entry.outSec)"
 
             return AgentTimelineClip(
                 id: id,

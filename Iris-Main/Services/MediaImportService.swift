@@ -2,6 +2,7 @@ import Foundation
 import Photos
 import UIKit
 import AVFoundation
+import GRDB
 
 class MediaImportService {
     static let shared = MediaImportService()
@@ -37,6 +38,86 @@ class MediaImportService {
         return convertFetchResultToArray(results)
     }
 
+    func fetchVideoAlbums() -> [PHAssetCollection] {
+        var collections: [PHAssetCollection] = []
+        let seenIdentifiers = NSMutableSet()
+
+        func appendCollections(_ fetchResult: PHFetchResult<PHAssetCollection>) {
+            fetchResult.enumerateObjects { collection, _, _ in
+                guard !seenIdentifiers.contains(collection.localIdentifier) else { return }
+                let assets = PHAsset.fetchAssets(in: collection, options: self.videoFetchOptions())
+                guard assets.count > 0 else { return }
+                seenIdentifiers.add(collection.localIdentifier)
+                collections.append(collection)
+            }
+        }
+
+        appendCollections(PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .any, options: nil))
+        appendCollections(PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: nil))
+
+        return collections.sorted {
+            let lhsTitle = $0.localizedTitle ?? ""
+            let rhsTitle = $1.localizedTitle ?? ""
+            return lhsTitle.localizedCaseInsensitiveCompare(rhsTitle) == .orderedAscending
+        }
+    }
+
+    func fetchVideos(in collectionLocalIdentifier: String?) -> [PHAsset] {
+        let options = videoFetchOptions()
+        if let collectionLocalIdentifier,
+           let collection = PHAssetCollection.fetchAssetCollections(
+               withLocalIdentifiers: [collectionLocalIdentifier],
+               options: nil
+           ).firstObject {
+            return convertFetchResultToArray(PHAsset.fetchAssets(in: collection, options: options))
+        }
+
+        return convertFetchResultToArray(PHAsset.fetchAssets(with: .video, options: options))
+    }
+
+    func requestThumbnail(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .fast
+            options.isSynchronous = false
+            options.isNetworkAccessAllowed = true
+
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
+    func exportVideoAssetToTemporaryURL(_ asset: PHAsset) async throws -> URL {
+        let sourceURL = try await requestVideoURL(for: asset)
+        let fileManager = FileManager.default
+        let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+        let destinationURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(fileExtension)
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL
+    }
+
+    func fileSize(for url: URL) -> Int64? {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        if let fileSize = values?.fileSize {
+            return Int64(fileSize)
+        }
+        return nil
+    }
+
     private func fetchAssets(mediaType: PHAssetMediaType, limit: Int?) -> [PHAsset] {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", mediaType.rawValue)
@@ -52,6 +133,40 @@ class MediaImportService {
             assets.append(asset)
         }
         return assets
+    }
+
+    private func videoFetchOptions() -> PHFetchOptions {
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.video.rawValue)
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        return options
+    }
+
+    private func requestVideoURL(for asset: PHAsset) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
+                if let info,
+                   let error = info[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let urlAsset = avAsset as? AVURLAsset else {
+                    continuation.resume(throwing: NSError(
+                        domain: "MediaImportService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "The selected video could not be loaded."]
+                    ))
+                    return
+                }
+
+                continuation.resume(returning: urlAsset.url)
+            }
+        }
     }
 
     // MARK: - Import Media
@@ -201,6 +316,9 @@ class MediaImportService {
     private func importFileURLQuick(_ url: URL, to mediaLibraryId: String, preferredKind: MediaKind) async throws -> Media {
         let localURL = try copyFileToLibrary(url)
         let assetRef = try createAssetReference(from: localURL)
+        if let existingMedia = try existingMedia(in: mediaLibraryId, assetRefId: assetRef.assetRefId) {
+            return existingMedia
+        }
         let spec = try await extractMediaSpec(from: localURL, kind: preferredKind)
         let media = Media(
             mediaLibraryId: mediaLibraryId,
@@ -215,6 +333,9 @@ class MediaImportService {
     private func importFileURL(_ url: URL, to mediaLibraryId: String, preferredKind: MediaKind) async throws -> Media {
         let localURL = try copyFileToLibrary(url)
         let assetRef = try createAssetReference(from: localURL)
+        if let existingMedia = try existingMedia(in: mediaLibraryId, assetRefId: assetRef.assetRefId) {
+            return existingMedia
+        }
         let spec = try await extractMediaSpec(from: localURL, kind: preferredKind)
         let finalMedia = Media(
             mediaLibraryId: mediaLibraryId,
@@ -225,6 +346,15 @@ class MediaImportService {
 
         try db.create(finalMedia)
         return finalMedia
+    }
+
+    private func existingMedia(in mediaLibraryId: String, assetRefId: String) throws -> Media? {
+        try db.dbQueue.read { db in
+            try Media
+                .filter(Media.Columns.mediaLibraryId == mediaLibraryId)
+                .filter(Media.Columns.assetRefId == assetRefId)
+                .fetchOne(db)
+        }
     }
 
     private func copyFileToLibrary(_ url: URL) throws -> URL {
