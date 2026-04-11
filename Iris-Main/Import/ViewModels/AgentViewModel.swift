@@ -209,6 +209,7 @@ final class AgentViewModel: ObservableObject {
             identifiers.append(value)
         }
 
+        appendUnique(responseVideo?.localKey)
         appendUnique(responseVideo?.clipID.rawValue)
 
         if identifiers.isEmpty {
@@ -668,11 +669,11 @@ final class AgentViewModel: ObservableObject {
 
     private func makeTimelineClips(from payload: [AgentTimelineEntry]) -> [AgentTimelineClip] {
         payload.enumerated().map { index, entry in
-            guard let sourceClip = sourceClipsByRemoteID[entry.clipID.rawValue] else {
+            guard let sourceClip = sourceClip(for: entry) else {
                 let knownKeys = sourceClipsByRemoteID.keys.sorted().joined(separator: ", ")
                 let remoteResponseDescription = ingestResponse?.videos.map(describeResponseVideo).joined(separator: " | ") ?? "nil"
                 logger.error(
-                    "Unable to map timeline clip id \(entry.clipID.rawValue, privacy: .public). knownKeys=\(knownKeys, privacy: .public) remoteResponse=\(remoteResponseDescription, privacy: .public)"
+                    "Unable to map timeline clip id \(entry.clipID.rawValue, privacy: .public) localKey=\(entry.localKey ?? "nil", privacy: .public). knownKeys=\(knownKeys, privacy: .public) remoteResponse=\(remoteResponseDescription, privacy: .public)"
                 )
 
                 return AgentTimelineClip(
@@ -707,7 +708,7 @@ final class AgentViewModel: ObservableObject {
 
     private func makeEditorSeed(from payload: [AgentTimelineEntry]) -> ImportedTimelineSeed? {
         let segments = payload.compactMap { entry -> ImportedTimelineSeedSegment? in
-            guard let sourceClip = sourceClipsByRemoteID[entry.clipID.rawValue] else {
+            guard let sourceClip = sourceClip(for: entry) else {
                 return nil
             }
 
@@ -723,6 +724,15 @@ final class AgentViewModel: ObservableObject {
 
         guard !segments.isEmpty else { return nil }
         return ImportedTimelineSeed(sourceVideos: sourceVideos, segments: segments)
+    }
+
+    private func sourceClip(for entry: AgentTimelineEntry) -> AgentSourceClip? {
+        if let localKey = entry.localKey,
+           let localKeyMatch = sourceClipsByRemoteID[localKey] {
+            return localKeyMatch
+        }
+
+        return sourceClipsByRemoteID[entry.clipID.rawValue]
     }
 
     private func makeExtractionClip(
@@ -1003,12 +1013,14 @@ private struct AgentClipRangeEntry: Decodable {
 
 private struct AgentTimelineEntry: Decodable {
     let clipID: FlexibleIdentifier
+    let localKey: String?
     let inSec: Double
     let outSec: Double
     let rationale: String
 
     enum CodingKeys: String, CodingKey {
         case clipID = "clip_id"
+        case localKey = "local_key"
         case inSec = "in_sec"
         case outSec = "out_sec"
         case rationale

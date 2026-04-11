@@ -54,7 +54,7 @@ final class TimelineController: ObservableObject {
         guard !hasAppliedInitialImportSeed else { return }
         hasAppliedInitialImportSeed = true
 
-        guard state.clips.isEmpty, state.mediaById.isEmpty else { return }
+        guard state.clips.isEmpty else { return }
         guard let mediaLibrary = state.mediaLibrary else { return }
 
         do {
