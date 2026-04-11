@@ -209,7 +209,6 @@ final class AgentViewModel: ObservableObject {
             identifiers.append(value)
         }
 
-        appendUnique(responseVideo?.clipMeta?.clipID?.rawValue)
         appendUnique(responseVideo?.clipID.rawValue)
 
         if identifiers.isEmpty {
