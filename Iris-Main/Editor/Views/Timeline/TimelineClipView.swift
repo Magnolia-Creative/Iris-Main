@@ -8,6 +8,7 @@ struct TimelineClipView: View {
     let isDragging: Bool
     let width: CGFloat
     let height: CGFloat
+    var isReviewDimmed = false
     @State private var thumbnail: UIImage?
     @State private var thumbnailStrip: UIImage?
     @State private var waveformImage: UIImage?
@@ -71,7 +72,14 @@ struct TimelineClipView: View {
                 .opacity(isSelected ? 1 : 0)
                 .scaleEffect(isSelected ? 1 : 0.98)
         }
+        .overlay {
+            if isReviewDimmed {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(Color.black.opacity(0.58))
+            }
+        }
         .animation(.spring(response: 0.25, dampingFraction: 0.85), value: isSelected)
+        .animation(.easeOut(duration: 0.2), value: isReviewDimmed)
         .opacity(isDragging ? 0.25 : 1)
         .task(id: thumbnailTaskId) {
             guard trackKind == .video, let media else {

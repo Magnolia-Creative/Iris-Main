@@ -14,6 +14,8 @@ struct TimelineTracksContent: View {
     @Binding var selectedClipId: String?
     let onAutoScroll: (CGFloat) -> Void
     let isUserScrolling: Bool
+    let reviewFocusedClipIds: Set<String>
+    let isReviewInteractionDisabled: Bool
 
     var body: some View {
         VStack(spacing: layout.trackSpacing) {
@@ -30,7 +32,9 @@ struct TimelineTracksContent: View {
                     scrollOffset: scrollOffset,
                     selectedClipId: $selectedClipId,
                     onAutoScroll: onAutoScroll,
-                    isUserScrolling: isUserScrolling
+                    isUserScrolling: isUserScrolling,
+                    reviewFocusedClipIds: reviewFocusedClipIds,
+                    isReviewInteractionDisabled: isReviewInteractionDisabled
                 )
             }
         }

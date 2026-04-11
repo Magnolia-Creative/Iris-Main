@@ -6,11 +6,13 @@ internal import Combine
 
 final class TimelineController: ObservableObject {
     @Published private(set) var state: TimelineState
+    @Published private(set) var cutReview: TimelineCutReviewSession?
     private let persistence: TimelinePersistence
     private let importService: MediaImportService
     private var persistedTrackIds: Set<String> = []
     private var hasAppliedInitialImportSeed = false
     private var debouncedSaveTask: Task<Void, Never>?
+    private var importedMediaBySeedLocalKey: [String: Media] = [:]
 
     init(
         timelineId: String,
@@ -55,42 +57,116 @@ final class TimelineController: ObservableObject {
         hasAppliedInitialImportSeed = true
 
         guard state.clips.isEmpty else { return }
-        guard let mediaLibrary = state.mediaLibrary else { return }
+        await applyImportedTimelineSeed(seed)
+    }
 
-        do {
-            let importedMedia = try await importService.importFileURLsQuick(
-                seed.sourceVideos.map(\.originalURL),
-                to: mediaLibrary.id,
-                preferredKind: .video
-            )
-            let mediaByLocalKey = Dictionary(uniqueKeysWithValues: zip(seed.sourceVideos, importedMedia).map { pair in
-                (pair.0.localKey, pair.1)
-            })
+    @MainActor
+    func applyAgentImportSeed(_ seed: ImportedTimelineSeed) async {
+        await applyImportedTimelineSeed(seed)
+    }
 
-            let before = state.clips
-            for media in importedMedia {
-                state.mediaById[media.mediaId] = media
-            }
+    func startCutReview() {
+        rebuildCutReview(startingAt: 0)
+    }
 
-            var cursor: Int64 = 0
-            for segment in seed.segments {
-                guard let media = mediaByLocalKey[segment.sourceLocalKey] else { continue }
-                state.addClipSegment(
-                    of: .video,
-                    at: cursor,
-                    media: media,
-                    sourceRange: segment.sourceRange
-                )
-                cursor += max(segment.sourceRange.duration, 1)
-            }
+    func finishCutReview() {
+        cutReview = nil
+        state.selectedClipId = nil
+    }
 
-            state.jumpToStart()
-            persistClipChanges(before: before, after: state.clips)
-            syncSemanticIndexForImportedMedia()
-            generateThumbnailStrips(for: importedMedia)
-        } catch {
-            print("Failed to bootstrap imported timeline: \(error)")
+    func approveCurrentCutReview() {
+        guard var cutReview else { return }
+        let nextIndex = cutReview.currentIndex + 1
+        guard nextIndex < cutReview.items.count else {
+            finishCutReview()
+            return
         }
+
+        cutReview.currentIndex = nextIndex
+        cutReview.isRepromptComposerPresented = false
+        cutReview.repromptDraft = ""
+        self.cutReview = cutReview
+        focusCurrentCutReview()
+    }
+
+    func showCutReviewRepromptComposer() {
+        guard var cutReview else { return }
+        cutReview.isRepromptComposerPresented = true
+        self.cutReview = cutReview
+    }
+
+    func hideCutReviewRepromptComposer() {
+        guard var cutReview else { return }
+        cutReview.isRepromptComposerPresented = false
+        cutReview.repromptDraft = ""
+        self.cutReview = cutReview
+    }
+
+    func updateCutReviewRepromptDraft(_ draft: String) {
+        guard var cutReview else { return }
+        cutReview.repromptDraft = draft
+        self.cutReview = cutReview
+    }
+
+    func cancelCurrentCutReview() {
+        guard let activeReview = cutReview, let currentItem = activeReview.currentItem, currentItem.canCancel else {
+            return
+        }
+
+        let trackClips = currentVideoTrackClips()
+        guard
+            let leftIndex = trackClips.firstIndex(where: { $0.clipId == currentItem.leftClipId }),
+            leftIndex + 1 < trackClips.count
+        else {
+            rebuildCutReview(startingAt: activeReview.currentIndex)
+            return
+        }
+
+        let leftClip = trackClips[leftIndex]
+        let rightClip = trackClips[leftIndex + 1]
+        guard rightClip.clipId == currentItem.rightClipId, leftClip.mediaId == rightClip.mediaId else {
+            rebuildCutReview(startingAt: activeReview.currentIndex)
+            return
+        }
+
+        let before = state.clips
+        let mergedSourceRange = TimeRange(
+            start: min(leftClip.sourceRange.start, rightClip.sourceRange.start),
+            end: max(leftClip.sourceRange.end, rightClip.sourceRange.end)
+        )
+        let mergedDuration = max(mergedSourceRange.duration, 1)
+        let now = Date()
+
+        var mergedClip = leftClip
+        mergedClip.sourceRange = mergedSourceRange
+        mergedClip.timelineRange = TimeRange(
+            start: leftClip.timelineRange.start,
+            end: leftClip.timelineRange.start + mergedDuration
+        )
+        mergedClip.updatedAt = now
+
+        var updatedTrackClips = Array(trackClips.prefix(leftIndex))
+        updatedTrackClips.append(mergedClip)
+
+        var cursor = mergedClip.timelineRange.end
+        if leftIndex + 2 <= trackClips.count - 1 {
+            for clip in trackClips[(leftIndex + 2)...] {
+                var shiftedClip = clip
+                let duration = max(shiftedClip.duration, 1)
+                shiftedClip.timelineRange = TimeRange(start: cursor, end: cursor + duration)
+                if shiftedClip.timelineRange.start != clip.timelineRange.start
+                    || shiftedClip.timelineRange.end != clip.timelineRange.end {
+                    shiftedClip.updatedAt = now
+                }
+                updatedTrackClips.append(shiftedClip)
+                cursor += duration
+            }
+        }
+
+        replaceTrackClips(trackId: leftClip.trackId, with: updatedTrackClips)
+        state.selectedClipId = nil
+        persistClipChanges(before: before, after: state.clips)
+        rebuildCutReview(startingAt: activeReview.currentIndex)
     }
 
     func clearSelection() {
@@ -347,6 +423,160 @@ final class TimelineController: ObservableObject {
     private func formatDebugTime(_ timeUs: Int64) -> String {
         String(format: "%.3fs", Double(timeUs) / 1_000_000)
     }
+
+    @MainActor
+    private func applyImportedTimelineSeed(_ seed: ImportedTimelineSeed) async {
+        guard let mediaLibrary = state.mediaLibrary else { return }
+
+        do {
+            let resolution = try await resolveSeedMedia(
+                for: seed.sourceVideos,
+                mediaLibraryID: mediaLibrary.id
+            )
+            let rebuiltClips = rebuildSeedClips(
+                from: seed.segments,
+                mediaByLocalKey: resolution.mediaByLocalKey
+            )
+            guard !rebuiltClips.isEmpty else { return }
+
+            let before = state.clips
+            replaceTrackClips(trackId: rebuiltClips[0].trackId, with: rebuiltClips)
+            state.selectedClipId = nil
+            state.jumpToStart()
+            persistClipChanges(before: before, after: state.clips)
+
+            if !resolution.newlyImportedMedia.isEmpty {
+                syncSemanticIndexForImportedMedia()
+                generateThumbnailStrips(for: resolution.newlyImportedMedia)
+            }
+        } catch {
+            print("Failed to apply imported timeline seed: \(error)")
+        }
+    }
+
+    @MainActor
+    private func resolveSeedMedia(
+        for sourceVideos: [SelectedVideoAsset],
+        mediaLibraryID: String
+    ) async throws -> SeedMediaResolution {
+        let missingVideos = sourceVideos.filter { importedMediaBySeedLocalKey[$0.localKey] == nil }
+        let newlyImportedMedia: [Media]
+
+        if missingVideos.isEmpty {
+            newlyImportedMedia = []
+        } else {
+            newlyImportedMedia = try await importService.importFileURLsQuick(
+                missingVideos.map(\.originalURL),
+                to: mediaLibraryID,
+                preferredKind: .video
+            )
+
+            for (video, media) in zip(missingVideos, newlyImportedMedia) {
+                importedMediaBySeedLocalKey[video.localKey] = media
+                state.mediaById[media.mediaId] = media
+            }
+        }
+
+        let mediaByLocalKey = sourceVideos.reduce(into: [String: Media]()) { result, video in
+            guard let media = importedMediaBySeedLocalKey[video.localKey] else { return }
+            result[video.localKey] = media
+        }
+
+        return SeedMediaResolution(
+            mediaByLocalKey: mediaByLocalKey,
+            newlyImportedMedia: newlyImportedMedia
+        )
+    }
+
+    private func rebuildSeedClips(
+        from segments: [ImportedTimelineSeedSegment],
+        mediaByLocalKey: [String: Media]
+    ) -> [Clip] {
+        let videoTrack = ensureVideoTrack()
+        var cursor: Int64 = 0
+        var rebuiltClips: [Clip] = []
+
+        for segment in segments {
+            guard let media = mediaByLocalKey[segment.sourceLocalKey] else { continue }
+            let duration = max(segment.sourceRange.duration, 1)
+            rebuiltClips.append(
+                Clip(
+                    trackId: videoTrack.trackId,
+                    mediaId: media.mediaId,
+                    sourceRange: segment.sourceRange,
+                    timelineRange: TimeRange(start: cursor, end: cursor + duration)
+                )
+            )
+            cursor += duration
+        }
+
+        return rebuiltClips
+    }
+
+    private func ensureVideoTrack() -> Track {
+        if let existingTrack = state.tracks.first(where: { $0.kind == .video }) {
+            return existingTrack
+        }
+
+        let newTrack = Track(
+            timelineId: state.timelineId,
+            kind: .video,
+            sortIndex: state.tracks.count
+        )
+        state.tracks.append(newTrack)
+        return newTrack
+    }
+
+    private func replaceTrackClips(trackId: String, with updatedTrackClips: [Clip]) {
+        let otherClips = state.clips.filter { $0.trackId != trackId }
+        state.clips = otherClips + updatedTrackClips
+    }
+
+    private func rebuildCutReview(startingAt preferredIndex: Int) {
+        let items = buildCutReviewItems()
+        guard !items.isEmpty else {
+            finishCutReview()
+            return
+        }
+
+        let clampedIndex = min(max(0, preferredIndex), items.count - 1)
+        cutReview = TimelineCutReviewSession(items: items, currentIndex: clampedIndex)
+        focusCurrentCutReview()
+    }
+
+    private func focusCurrentCutReview() {
+        guard let currentItem = cutReview?.currentItem else { return }
+        state.selectedClipId = nil
+        state.currentTimeAtCenter = currentItem.cutTimeUs
+        state.requestScrollTo(timeUs: currentItem.cutTimeUs)
+    }
+
+    private func buildCutReviewItems() -> [TimelineCutReviewItem] {
+        let trackClips = currentVideoTrackClips()
+        guard trackClips.count >= 2 else { return [] }
+
+        return zip(trackClips, trackClips.dropFirst()).map { leftClip, rightClip in
+            TimelineCutReviewItem(
+                leftClipId: leftClip.clipId,
+                rightClipId: rightClip.clipId,
+                leftMediaId: leftClip.mediaId,
+                rightMediaId: rightClip.mediaId,
+                startTimeUs: leftClip.timelineRange.start,
+                cutTimeUs: leftClip.timelineRange.end,
+                endTimeUs: rightClip.timelineRange.end
+            )
+        }
+    }
+
+    private func currentVideoTrackClips() -> [Clip] {
+        guard let videoTrack = state.tracks.first(where: { $0.kind == .video }) else { return [] }
+        return state.orderedClips(for: videoTrack.trackId)
+    }
+}
+
+private struct SeedMediaResolution {
+    let mediaByLocalKey: [String: Media]
+    let newlyImportedMedia: [Media]
 }
 
 @MainActor

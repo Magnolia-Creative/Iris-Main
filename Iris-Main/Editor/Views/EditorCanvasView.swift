@@ -6,6 +6,8 @@ struct EditorCanvasView: View {
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     let activeSpace: EditorSpace
+    var reviewFocusedClipIds: Set<String> = []
+    var isReviewInteractionDisabled = false
 
     private var showsPlaybackControls: Bool {
         activeSpace == .edit || activeSpace == .export
@@ -37,7 +39,7 @@ struct EditorCanvasView: View {
     }
 
     private var allowsTimelineAdditions: Bool {
-        activeSpace == .edit
+        activeSpace == .edit && !isReviewInteractionDisabled
     }
 
     private var rulerVerticalOffset: CGFloat {
@@ -137,7 +139,9 @@ struct EditorCanvasView: View {
                 )
             } : nil,
             showAddButton: allowsTimelineAdditions,
-            rulerVerticalOffset: rulerVerticalOffset
+            rulerVerticalOffset: rulerVerticalOffset,
+            reviewFocusedClipIds: reviewFocusedClipIds,
+            isReviewInteractionDisabled: isReviewInteractionDisabled
         )
         .frame(height: layout.sectionHeight(for: state.orderedTracks))
         .animation(nil, value: layout.sectionHeight(for: state.orderedTracks))

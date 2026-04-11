@@ -25,11 +25,6 @@ struct AgentView: View {
         .task {
             await viewModel.startIfNeeded()
         }
-        .onDisappear {
-            Task {
-                await viewModel.closeIfNeeded()
-            }
-        }
     }
 
     private var secondaryContent: some View {

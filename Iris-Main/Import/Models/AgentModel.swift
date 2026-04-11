@@ -24,6 +24,10 @@ struct AgentModel {
     var canSubmitFeedback: Bool {
         isAwaitingUserInput && isConnected && !isSendingFeedback && !feedbackDraft.trimmedForTransport.isEmpty
     }
+
+    var canLaunchEditorReview: Bool {
+        pendingEditorSeed != nil && isAwaitingUserInput
+    }
 }
 
 enum AgentStage: Equatable {

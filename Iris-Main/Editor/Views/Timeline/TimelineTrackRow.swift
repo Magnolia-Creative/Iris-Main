@@ -13,6 +13,8 @@ struct TimelineTrackRow: View {
     @Binding var selectedClipId: String?
     let onAutoScroll: (CGFloat) -> Void
     let isUserScrolling: Bool
+    let reviewFocusedClipIds: Set<String>
+    let isReviewInteractionDisabled: Bool
 
     private var trackHeight: CGFloat { layout.trackHeight(for: track.kind) }
     private let swapThresholdPx: CGFloat = 75
@@ -62,7 +64,8 @@ struct TimelineTrackRow: View {
                     clip: clip, trackKind: track.kind, media: mediaById[clip.mediaId],
                     isSelected: selectedClipId == clip.clipId,
                     isDragging: dragState?.clipId == clip.clipId,
-                    width: max(clipWidth, 20), height: trackHeight
+                    width: max(clipWidth, 20), height: trackHeight,
+                    isReviewDimmed: !reviewFocusedClipIds.isEmpty && !reviewFocusedClipIds.contains(clip.clipId)
                 )
                 .frame(width: max(clipWidth, 20), height: trackHeight)
                 .contentShape(Rectangle())
@@ -86,7 +89,7 @@ struct TimelineTrackRow: View {
                 .zIndex(dragState?.clipId == clip.clipId || trimState?.clipId == clip.clipId ? 2 : 0)
                 .highPriorityGesture(
                     TapGesture().onEnded {
-                        guard !isUserScrolling else { return }
+                        guard !isUserScrolling, !isReviewInteractionDisabled else { return }
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                             selectedClipId = clip.clipId
                         }
@@ -122,7 +125,7 @@ struct TimelineTrackRow: View {
                             self.previewOrder = nil
                             onAutoScroll(0)
                         },
-                    including: selectedClipId == clip.clipId && !isUserScrolling ? .all : .none
+                    including: selectedClipId == clip.clipId && !isUserScrolling && !isReviewInteractionDisabled ? .all : .none
                 )
             }
         }

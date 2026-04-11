@@ -20,6 +20,8 @@ struct TimelineSectionView: View {
     var onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)? = nil
     var showAddButton: Bool = true
     var rulerVerticalOffset: CGFloat = 0
+    var reviewFocusedClipIds: Set<String> = []
+    var isReviewInteractionDisabled = false
 
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var lastScrollOffsetX: CGFloat = 0
@@ -69,7 +71,9 @@ struct TimelineSectionView: View {
                                     viewportWidth: geometry.size.width, contentWidth: timelineWidth,
                                     scrollOffset: $sharedScrollOffset, selectedClipId: $selectedClipId,
                                     onAutoScroll: updateAutoScroll(direction:),
-                                    isUserScrolling: isUserScrolling
+                                    isUserScrolling: isUserScrolling,
+                                    reviewFocusedClipIds: reviewFocusedClipIds,
+                                    isReviewInteractionDisabled: isReviewInteractionDisabled
                                 )
                                 .padding(.top, layout.trackTopOffset)
                                 .transaction { transaction in

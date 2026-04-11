@@ -56,7 +56,8 @@ struct ImportView: View {
         .navigationDestination(item: $editorLaunchDestination) { destination in
             EditorContainerView(
                 timelineId: destination.timelineId,
-                initialImportSeed: destination.seed
+                initialImportSeed: destination.seed,
+                agentSession: agentViewModel
             )
         }
         .sheet(isPresented: $showsImportSheet) {
@@ -85,8 +86,8 @@ struct ImportView: View {
             }
             viewModel.finishPreparingAgentTransition()
         }
-        .onChange(of: agentViewModel.model.pendingEditorSeed) { _, seed in
-            guard let seed else { return }
+        .onChange(of: agentViewModel.model.canLaunchEditorReview) { _, canLaunchEditorReview in
+            guard canLaunchEditorReview, let seed = agentViewModel.model.pendingEditorSeed else { return }
             guard let resolvedTimelineID = resolveEditorTimelineID(preferredTimelineID: timelineId) else {
                 return
             }
@@ -98,6 +99,7 @@ struct ImportView: View {
         }
         .onDisappear {
             Task {
+                guard editorLaunchDestination == nil else { return }
                 await agentViewModel.closeIfNeeded()
             }
         }
