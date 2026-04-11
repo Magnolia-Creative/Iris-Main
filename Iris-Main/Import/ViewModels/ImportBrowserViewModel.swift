@@ -19,6 +19,8 @@ final class ImportBrowserViewModel: ObservableObject {
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
     private var pendingUploadKeys: Set<String> = []
     private var uploadFlushTask: Task<Void, Never>?
+    private var filenameCache: [String: String] = [:]
+    private var filenameTasks: [String: Task<Void, Never>] = [:]
 
     init(
         timelineId: String?,
@@ -40,6 +42,7 @@ final class ImportBrowserViewModel: ObservableObject {
         uploadFlushTask?.cancel()
         commitmentTasks.values.forEach { $0.cancel() }
         embeddingTasks.values.forEach { $0.cancel() }
+        filenameTasks.values.forEach { $0.cancel() }
     }
 
     func loadLibraryIfNeeded() async {
@@ -119,7 +122,7 @@ final class ImportBrowserViewModel: ObservableObject {
         let clip = ImportClipProcessingItem(
             localKey: localKey,
             assetLocalIdentifier: asset.localIdentifier,
-            displayName: displayName(for: asset),
+            displayName: cachedOrPlaceholderDisplayName(for: asset.localIdentifier),
             originalURL: nil,
             fileSize: nil,
             localMediaID: nil,
@@ -132,6 +135,7 @@ final class ImportBrowserViewModel: ObservableObject {
         )
         model.clips.append(clip)
         refreshVisibleAssetSelectionState()
+        loadOriginalFilenameIfNeeded(for: asset.localIdentifier)
         scheduleCommitment(for: localKey)
         updateStatusAndReadiness()
     }
@@ -216,7 +220,7 @@ final class ImportBrowserViewModel: ObservableObject {
             let activeClip = model.clips.first { $0.assetLocalIdentifier == asset.localIdentifier && $0.isSelected }
             return ImportBrowserAsset(
                 id: asset.localIdentifier,
-                displayName: displayName(for: asset),
+                displayName: cachedOrPlaceholderDisplayName(for: asset.localIdentifier),
                 durationText: formatDuration(asset.duration),
                 createdAt: asset.creationDate,
                 isSelected: activeClip != nil,
@@ -226,25 +230,37 @@ final class ImportBrowserViewModel: ObservableObject {
     }
 
     private func scheduleCommitment(for localKey: String) {
+        print("[ImportBrowser] scheduleCommitment: localKey=\(localKey) (2s timer)")
         commitmentTasks[localKey]?.cancel()
         commitmentTasks[localKey] = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                print("[ImportBrowser] scheduleCommitment: CANCELLED for localKey=\(localKey)")
+                return
+            }
             await self?.commitClip(localKey: localKey)
         }
     }
 
     private func commitClip(localKey: String) async {
         commitmentTasks[localKey] = nil
-        guard let index = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else { return }
-        guard let asset = assetLookup[model.clips[index].assetLocalIdentifier] else { return }
+        guard let index = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else {
+            print("[ImportBrowser] commitClip: no selected clip for localKey=\(localKey)")
+            return
+        }
+        guard let asset = assetLookup[model.clips[index].assetLocalIdentifier] else {
+            print("[ImportBrowser] commitClip: no PHAsset for \(model.clips[index].assetLocalIdentifier)")
+            return
+        }
 
+        print("[ImportBrowser] commitClip: exporting localKey=\(localKey) processingMode=\(model.processingMode)")
         model.clips[index].commitmentStatus = "Exporting clip"
 
         do {
             let localURL = try await mediaImportService.exportVideoAssetToTemporaryURL(asset)
             guard let refreshedIndex = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else {
                 try? FileManager.default.removeItem(at: localURL)
+                print("[ImportBrowser] commitClip: clip deselected during export, discarding")
                 return
             }
 
@@ -252,13 +268,17 @@ final class ImportBrowserViewModel: ObservableObject {
             model.clips[refreshedIndex].fileSize = mediaImportService.fileSize(for: localURL)
             model.clips[refreshedIndex].isCommitted = true
             model.clips[refreshedIndex].commitmentStatus = "Committed"
+            print("[ImportBrowser] commitClip: committed localKey=\(localKey) url=\(localURL.lastPathComponent)")
             refreshVisibleAssetSelectionState()
 
             startEmbeddingIfNeeded(for: localKey)
             if model.processingMode.runsAgentPreprocessing {
                 enqueueClipForUpload(localKey: localKey)
+            } else {
+                print("[ImportBrowser] commitClip: skipping upload – processingMode=\(model.processingMode)")
             }
         } catch {
+            print("[ImportBrowser] commitClip: export FAILED – \(error)")
             model.clips[index].embeddingState = .failed(error.localizedDescription)
             model.clips[index].uploadState = .failed(error.localizedDescription)
             model.clips[index].commitmentStatus = "Export failed"
@@ -329,14 +349,20 @@ final class ImportBrowserViewModel: ObservableObject {
     }
 
     private func enqueueClipForUpload(localKey: String) {
-        guard model.processingMode.runsAgentPreprocessing else { return }
+        guard model.processingMode.runsAgentPreprocessing else {
+            print("[ImportBrowser] enqueueClipForUpload skipped: processingMode does not run agent preprocessing")
+            return
+        }
         guard let index = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected && $0.isCommitted }) else {
+            print("[ImportBrowser] enqueueClipForUpload skipped: no matching selected+committed clip for localKey=\(localKey)")
             return
         }
         if model.clips[index].remoteClipID != nil {
+            print("[ImportBrowser] enqueueClipForUpload skipped: clip already has remoteClipID")
             return
         }
 
+        print("[ImportBrowser] enqueueClipForUpload: queuing localKey=\(localKey)")
         pendingUploadKeys.insert(localKey)
         model.clips[index].uploadState = .queued("Queued for upload")
         scheduleUploadFlushIfNeeded()
@@ -356,10 +382,18 @@ final class ImportBrowserViewModel: ObservableObject {
         uploadFlushTask = nil
         let localKeys = Array(pendingUploadKeys)
         pendingUploadKeys.removeAll()
-        guard !localKeys.isEmpty else { return }
+        guard !localKeys.isEmpty else {
+            print("[ImportBrowser] flushPendingUploads: no pending keys, returning early")
+            return
+        }
+
+        print("[ImportBrowser] flushPendingUploads: flushing \(localKeys.count) clip(s): \(localKeys)")
 
         do {
+            print("[ImportBrowser] flushPendingUploads: ensuring remote session…")
             let remoteSession = try await ensureRemoteSession()
+            print("[ImportBrowser] flushPendingUploads: remote session ready – projectID=\(remoteSession.projectID) sessionID=\(remoteSession.sessionID)")
+
             let selectedVideos = model.clips.compactMap { clip -> SelectedVideoAsset? in
                 guard localKeys.contains(clip.localKey),
                       clip.isSelected,
@@ -375,9 +409,11 @@ final class ImportBrowserViewModel: ObservableObject {
             }
 
             guard !selectedVideos.isEmpty else {
+                print("[ImportBrowser] flushPendingUploads: no matching videos after filtering, returning")
                 updateStatusAndReadiness()
                 return
             }
+            print("[ImportBrowser] flushPendingUploads: \(selectedVideos.count) video(s) matched for upload")
 
             for localKey in selectedVideos.map(\.localKey) {
                 updateClip(localKey: localKey) { clip in
@@ -385,7 +421,9 @@ final class ImportBrowserViewModel: ObservableObject {
                 }
             }
 
+            print("[ImportBrowser] flushPendingUploads: starting audio extraction…")
             let processedAssets = try await extractAudioBatch(from: selectedVideos)
+            print("[ImportBrowser] flushPendingUploads: audio extraction complete – \(processedAssets.count) asset(s)")
 
             for localKey in processedAssets.map(\.localKey) {
                 updateClip(localKey: localKey) { clip in
@@ -393,10 +431,13 @@ final class ImportBrowserViewModel: ObservableObject {
                 }
             }
 
+            print("[ImportBrowser] flushPendingUploads: calling uploadBatch…")
             let response = try await projectClipProcessingService.uploadBatch(processedAssets, to: remoteSession)
+            print("[ImportBrowser] flushPendingUploads: uploadBatch succeeded")
             cleanupProcessedAssets(processedAssets)
             applyServerResponse(response)
         } catch {
+            print("[ImportBrowser] flushPendingUploads: ERROR – \(error)")
             for localKey in localKeys {
                 updateClip(localKey: localKey) { clip in
                     if clip.isSelected {
@@ -472,9 +513,11 @@ final class ImportBrowserViewModel: ObservableObject {
 
     private func ensureRemoteSession() async throws -> RemoteImportSession {
         if let remoteSession = model.remoteSession {
+            print("[ImportBrowser] ensureRemoteSession: reusing existing session \(remoteSession.sessionID)")
             return remoteSession
         }
 
+        print("[ImportBrowser] ensureRemoteSession: creating new session via \(AppConfiguration.agentSessionEndpoint)")
         let response = try await projectClipProcessingService.createRemoteSession(projectName: localProjectName())
         let remoteSession = RemoteImportSession(
             sessionID: response.sessionID.rawValue,
@@ -482,6 +525,7 @@ final class ImportBrowserViewModel: ObservableObject {
             projectID: response.projectID.rawValue,
             projectName: response.projectName
         )
+        print("[ImportBrowser] ensureRemoteSession: created sessionID=\(remoteSession.sessionID) projectID=\(remoteSession.projectID)")
         model.remoteSession = remoteSession
         return remoteSession
     }
@@ -583,8 +627,28 @@ final class ImportBrowserViewModel: ObservableObject {
         return project.name
     }
 
-    private func displayName(for asset: PHAsset) -> String {
-        PHAssetResource.assetResources(for: asset).first?.originalFilename ?? "Clip"
+    private func cachedOrPlaceholderDisplayName(for assetLocalIdentifier: String) -> String {
+        filenameCache[assetLocalIdentifier] ?? "Clip"
+    }
+
+    private func loadOriginalFilenameIfNeeded(for assetLocalIdentifier: String) {
+        guard filenameCache[assetLocalIdentifier] == nil else { return }
+        guard filenameTasks[assetLocalIdentifier] == nil else { return }
+
+        filenameTasks[assetLocalIdentifier] = Task { [weak self] in
+            guard let self else { return }
+            let filename = await mediaImportService.requestOriginalFilename(for: assetLocalIdentifier)
+            guard !Task.isCancelled else { return }
+
+            filenameTasks[assetLocalIdentifier] = nil
+
+            guard let filename, !filename.isEmpty else { return }
+            filenameCache[assetLocalIdentifier] = filename
+
+            for index in model.clips.indices where model.clips[index].assetLocalIdentifier == assetLocalIdentifier {
+                model.clips[index].displayName = filename
+            }
+        }
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {

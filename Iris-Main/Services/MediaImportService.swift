@@ -118,6 +118,14 @@ class MediaImportService {
         return nil
     }
 
+    func requestOriginalFilename(for assetLocalIdentifier: String) async -> String? {
+        await Task.detached(priority: .utility) {
+            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalIdentifier], options: nil)
+            guard let asset = fetchResult.firstObject else { return nil }
+            return PHAssetResource.assetResources(for: asset).first?.originalFilename
+        }.value
+    }
+
     private func fetchAssets(mediaType: PHAssetMediaType, limit: Int?) -> [PHAsset] {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d", mediaType.rawValue)

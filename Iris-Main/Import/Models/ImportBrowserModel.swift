@@ -107,7 +107,7 @@ struct RemoteImportSession: Equatable {
 struct ImportClipProcessingItem: Identifiable, Equatable {
     let localKey: String
     let assetLocalIdentifier: String
-    let displayName: String
+    var displayName: String
     var originalURL: URL?
     var fileSize: Int64?
     var localMediaID: String?
