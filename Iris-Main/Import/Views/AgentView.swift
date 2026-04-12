@@ -81,6 +81,12 @@ struct AgentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
 
+            if !viewModel.model.reasoningNotes.isEmpty {
+                AgentReasoningNotesView(notes: viewModel.model.reasoningNotes)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
             if let errorMessage = viewModel.model.errorMessage {
                 Text(errorMessage)
                     .typography(.bodySmall)
@@ -88,6 +94,7 @@ struct AgentView: View {
             }
         }
         .animation(.spring(response: 0.55, dampingFraction: 0.9), value: viewModel.model.statusMessage)
+        .animation(.spring(response: 0.55, dampingFraction: 0.9), value: viewModel.model.reasoningNotes.count)
     }
 
     @ViewBuilder
@@ -130,6 +137,78 @@ struct AgentView: View {
             }
         }
         .animation(.spring(response: 0.52, dampingFraction: 0.88), value: viewModel.model.timelineClips)
+    }
+}
+
+private struct AgentReasoningNotesView: View {
+    let notes: [AgentReasoningNote]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            ForEach(Array(notes.enumerated()), id: \.element.id) { index, note in
+                AgentReasoningLineView(
+                    note: note,
+                    startDelayNanoseconds: UInt64(index) * 90_000_000
+                )
+            }
+        }
+    }
+}
+
+private struct AgentReasoningLineView: View {
+    let note: AgentReasoningNote
+    let startDelayNanoseconds: UInt64
+
+    @State private var visibleWordCount = 0
+
+    var body: some View {
+        HStack(alignment: .top, spacing: .spacing(.sp2)) {
+            Circle()
+                .fill(Color.ds.textMuted.opacity(0.58))
+                .frame(width: 4, height: 4)
+                .padding(.top, 7)
+
+            Text(revealedText)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task(id: note.id) {
+            await animateReveal()
+        }
+    }
+
+    private var words: [String] {
+        note.text
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+    }
+
+    private var revealedText: String {
+        words.prefix(visibleWordCount).joined(separator: " ")
+    }
+
+    private func animateReveal() async {
+        await MainActor.run {
+            visibleWordCount = 0
+        }
+
+        guard !words.isEmpty else { return }
+
+        if startDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: startDelayNanoseconds)
+        }
+
+        for index in 1...words.count {
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                visibleWordCount = index
+            }
+
+            if index < words.count {
+                try? await Task.sleep(nanoseconds: 32_000_000)
+            }
+        }
     }
 }
 

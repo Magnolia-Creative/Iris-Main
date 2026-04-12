@@ -42,6 +42,7 @@ final class AgentViewModel: ObservableObject {
             promptText: promptText,
             stage: .idle,
             statusMessage: "Starting the editing process.",
+            reasoningNotes: [],
             importedClips: videos.map { video in
                 AgentImportedClip(
                     id: video.localKey,
@@ -407,6 +408,7 @@ final class AgentViewModel: ObservableObject {
             model.projectID = payload.projectID?.rawValue
             model.stage = .connecting
             model.errorMessage = nil
+            clearReasoningNotes()
             setStatusMessage("Reviewing your imported clips.")
 
         case .sessionResumed(let payload):
@@ -414,6 +416,7 @@ final class AgentViewModel: ObservableObject {
             model.stage = .assemblingTimeline
             model.errorMessage = nil
             model.isSendingFeedback = false
+            clearReasoningNotes()
             setStatusMessage("Updating the edit with your latest feedback.")
 
         case .timelineUpdate(let payload):
@@ -458,6 +461,10 @@ final class AgentViewModel: ObservableObject {
             model.sessionID = payload.sessionID.rawValue
             model.errorMessage = nil
             setStatusMessage(payload.statusMessage)
+            applyReasoningNotes(
+                payload.statusDetails?.reasoningNotes,
+                forNode: payload.statusDetails?.node ?? payload.node
+            )
 
             if !handleClipCleanupStatusUpdate(payload), model.isAwaitingUserInput {
                 model.stage = .waitingForFeedback
@@ -485,6 +492,12 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func handleNodeStart(_ event: AgentNodeLifecycleEvent) {
+        if event.node == "decision_agent" {
+            model.reasoningNotes = [
+                AgentReasoningNote(text: "Let me take a look at what you've provided so far.")
+            ]
+        }
+
         guard event.node == "clip_cleanup", let payload = event.payload else { return }
         applyClipCleanupStart(payload, fallbackStatusMessage: payload.statusMessage)
     }
@@ -519,7 +532,7 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func applyClipCleanupStart(
-        _ payload: AgentClipCleanupPayload,
+        _ payload: AgentNodePayload,
         fallbackStatusMessage: String?
     ) {
         let inputClipIDs = orderedUniqueClipIDs(
@@ -570,12 +583,14 @@ final class AgentViewModel: ObservableObject {
     }
 
     private func handleNodeComplete(_ event: AgentNodeLifecycleEvent) {
+        applyReasoningNotes(event.payload?.reasoningNotes, forNode: event.node)
+
         guard event.node == "clip_cleanup", let payload = event.payload else { return }
         applyClipCleanupCompletion(payload, fallbackStatusMessage: payload.statusMessage)
     }
 
     private func applyClipCleanupCompletion(
-        _ payload: AgentClipCleanupPayload,
+        _ payload: AgentNodePayload,
         fallbackStatusMessage: String?
     ) {
         let selectedClipIDs = Set((payload.selectedClipIDs ?? []).map(\.rawValue))
@@ -791,6 +806,24 @@ final class AgentViewModel: ObservableObject {
         let trimmedMessage = message.trimmedForTransport
         guard !trimmedMessage.isEmpty else { return }
         model.statusMessage = userFacingStatusMessage(from: trimmedMessage)
+    }
+
+    private func applyReasoningNotes(_ notes: [String]?, forNode node: String?) {
+        guard node == "decision_agent" else { return }
+
+        let sanitizedNotes = (notes ?? [])
+            .map(\.trimmedForTransport)
+            .filter { !$0.isEmpty }
+        let currentNotes = model.reasoningNotes.map(\.text)
+
+        guard sanitizedNotes != currentNotes else { return }
+
+        model.reasoningNotes = sanitizedNotes.map { AgentReasoningNote(text: $0) }
+    }
+
+    private func clearReasoningNotes() {
+        guard !model.reasoningNotes.isEmpty else { return }
+        model.reasoningNotes = []
     }
 
     private func userFacingStatusMessage(from message: String) -> String {
@@ -1028,12 +1061,13 @@ private struct AgentWaitingForUserEvent: Decodable {
 
 private struct AgentNodeLifecycleEvent: Decodable {
     let node: String
-    let payload: AgentClipCleanupPayload?
+    let payload: AgentNodePayload?
 }
 
-private struct AgentClipCleanupPayload: Decodable {
+private struct AgentNodePayload: Decodable {
     let node: String?
     let statusMessage: String?
+    let reasoningNotes: [String]?
     let inputClips: [AgentInputClip]?
     let inputClipIDs: [FlexibleIdentifier]?
     let clipIDs: [FlexibleIdentifier]?
@@ -1044,6 +1078,7 @@ private struct AgentClipCleanupPayload: Decodable {
     enum CodingKeys: String, CodingKey {
         case node
         case statusMessage = "status_message"
+        case reasoningNotes = "reasoning_notes"
         case inputClips = "input_clips"
         case inputClipIDs = "input_clip_ids"
         case clipIDs = "clip_ids"
@@ -1107,7 +1142,7 @@ private struct AgentStatusUpdateEvent: Decodable {
     let sessionID: FlexibleIdentifier
     let node: String?
     let statusMessage: String
-    let statusDetails: AgentClipCleanupPayload?
+    let statusDetails: AgentNodePayload?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
@@ -1200,7 +1235,7 @@ private extension AgentSocketEvent {
     }
 }
 
-private extension AgentClipCleanupPayload {
+private extension AgentNodePayload {
     var containsInputClipReferences: Bool {
         inputClips != nil || inputClipIDs != nil
     }

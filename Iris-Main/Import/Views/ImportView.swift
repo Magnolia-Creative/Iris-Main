@@ -145,10 +145,6 @@ struct ImportView: View {
                 Text(loadErrorMessage)
                     .typography(.bodySmall)
                     .foregroundStyle(Color.ds.danger)
-            } else {
-                Text(importStatusMessage)
-                    .typography(.bodySmall)
-                    .foregroundStyle(Color.ds.textMuted)
             }
 
             LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {

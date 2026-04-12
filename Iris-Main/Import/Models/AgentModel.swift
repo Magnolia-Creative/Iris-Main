@@ -4,6 +4,7 @@ struct AgentModel {
     var promptText = ""
     var stage: AgentStage = .idle
     var statusMessage = "Starting the editing process."
+    var reasoningNotes: [AgentReasoningNote] = []
     var importedClips: [AgentImportedClip] = []
     var extractionClips: [AgentExtractionClip] = []
     var timelineClips: [AgentTimelineClip] = []
@@ -65,6 +66,11 @@ struct AgentImportedClip: Identifiable, Equatable {
     let id: String
     let displayName: String
     let videoURL: URL
+}
+
+struct AgentReasoningNote: Identifiable, Equatable {
+    let id = UUID()
+    let text: String
 }
 
 struct AgentExtractionClip: Identifiable, Equatable {
