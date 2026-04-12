@@ -286,9 +286,13 @@ struct ImportView: View {
     }
 }
 
-private struct ClipImportSheetView: View {
+struct ClipImportSheetView: View {
     @ObservedObject var viewModel: ImportBrowserViewModel
+    var addButtonTitle = "Add"
+    var addButtonEnabled: Bool? = nil
+    var onAdd: (() async -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var isSubmitting = false
 
     private let gridColumns = Array(
         repeating: GridItem(.flexible(minimum: 0, maximum: .infinity), spacing: 2),
@@ -331,12 +335,12 @@ private struct ClipImportSheetView: View {
             }
 
             ToolbarItem(placement: .confirmationAction) {
-                Button("Add") {
-                    dismiss()
+                Button(isSubmitting ? "Adding..." : addButtonTitle) {
+                    submitSelection()
                 }
                 .foregroundStyle(Color.ds.accentFg)
                 .fontWeight(.semibold)
-                .disabled(viewModel.model.selectedClipCount == 0)
+                .disabled(canSubmit == false)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -384,11 +388,12 @@ private struct ClipImportSheetView: View {
 
             Spacer()
 
-            Button("Add") {
-                dismiss()
+            Button(isSubmitting ? "Adding..." : addButtonTitle) {
+                submitSelection()
             }
             .font(.system(size: 17, weight: .semibold))
             .foregroundStyle(Color.ds.accentFg)
+            .disabled(canSubmit == false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -404,6 +409,29 @@ private struct ClipImportSheetView: View {
             return nil
         }
         return index + 1
+    }
+
+    private var canSubmit: Bool {
+        let baseEnabled = addButtonEnabled ?? (viewModel.model.selectedClipCount > 0)
+        return baseEnabled && !isSubmitting
+    }
+
+    private func submitSelection() {
+        guard canSubmit else { return }
+
+        guard let onAdd else {
+            dismiss()
+            return
+        }
+
+        isSubmitting = true
+        Task {
+            await onAdd()
+            await MainActor.run {
+                isSubmitting = false
+                dismiss()
+            }
+        }
     }
 }
 

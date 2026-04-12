@@ -1,6 +1,5 @@
 import CoreTransferable
 import AVKit
-import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 internal import Combine
@@ -63,8 +62,8 @@ struct ImportSpaceView: View {
 @MainActor
 struct ImportPanelContent: View {
     @ObservedObject var controller: TimelineController
+    let onOpenVideoImport: () -> Void
 
-    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var filterTag: MediaFilterTag = .all
     @State private var isSemanticSearchActive = false
     @State private var selectedSemanticVideoId: String?
@@ -118,9 +117,6 @@ struct ImportPanelContent: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.88), value: previewItem?.heroID)
-        .onChange(of: selectedPhotos) { _, items in
-            importSelectedPhotos(items)
-        }
         .task(id: searchableVideoSignature(for: state)) {
             EditorDebugTrace.log(
                 "ImportPanelContent",
@@ -243,12 +239,12 @@ struct ImportPanelContent: View {
             .padding(.bottom, .sp2)
         } else {
             HStack {
-                PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 20,
-                             matching: .any(of: [.videos, .images])) {
+                Button(action: onOpenVideoImport) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 24))
                         .foregroundColor(Color.ds.accentFg)
                 }
+                .buttonStyle(.plain)
 
                 Spacer()
 
@@ -290,7 +286,7 @@ struct ImportPanelContent: View {
 
     @ViewBuilder
     private func mediaGrid(state: TimelineState) -> some View {
-        let allMedia = Array(state.mediaById.values)
+        let allMedia = Media.deduplicatedForImportPresentation(Array(state.mediaById.values))
         let filtered: [Media] = {
             switch filterTag {
             case .all: return allMedia
@@ -307,7 +303,7 @@ struct ImportPanelContent: View {
                 Text("No media imported yet")
                     .typography(.body)
                     .foregroundColor(Color.ds.text)
-                Text("Tap + to add photos and videos")
+                Text("Tap + to add videos")
                     .typography(.bodySmall)
                     .foregroundColor(Color.ds.textMuted)
             }
@@ -504,9 +500,8 @@ struct ImportPanelContent: View {
     }
 
     private func searchableVideos(from state: TimelineState) -> [Media] {
-        Array(state.mediaById.values)
+        Media.deduplicatedForImportPresentation(Array(state.mediaById.values))
             .filter { $0.kind == .video }
-            .sorted { $0.createdAt < $1.createdAt }
     }
 
     private func searchableVideoSignature(for state: TimelineState) -> String {
@@ -514,12 +509,6 @@ struct ImportPanelContent: View {
             .map(\.mediaId)
             .sorted()
             .joined(separator: "|")
-    }
-
-    private func importSelectedPhotos(_ items: [PhotosPickerItem]) {
-        guard !items.isEmpty else { return }
-        controller.importPickerItems(items, kind: .video)
-        selectedPhotos = []
     }
 
     private func presentPreview(media: Media, range: SemanticMatchRange? = nil) {

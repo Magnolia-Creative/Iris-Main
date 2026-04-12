@@ -51,6 +51,23 @@ struct Media: Codable, Identifiable, FetchableRecord, PersistableRecord {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+
+    var importPresentationDeduplicationKey: String {
+        "\(kind.rawValue)::\(assetRefId)"
+    }
+
+    static func deduplicatedForImportPresentation(_ media: [Media]) -> [Media] {
+        var seenKeys: Set<String> = []
+
+        return media
+            .sorted { lhs, rhs in
+                if lhs.createdAt == rhs.createdAt {
+                    return lhs.mediaId < rhs.mediaId
+                }
+                return lhs.createdAt < rhs.createdAt
+            }
+            .filter { seenKeys.insert($0.importPresentationDeduplicationKey).inserted }
+    }
 }
 
 struct MediaSpec: Codable {

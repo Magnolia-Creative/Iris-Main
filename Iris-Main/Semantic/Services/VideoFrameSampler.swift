@@ -83,45 +83,21 @@ struct VideoFrameSampler {
         }
 
         let timescale = CMTimeScale(NSEC_PER_SEC)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        if let maximumDimension, maximumDimension > 0 {
-            generator.maximumSize = CGSize(width: maximumDimension, height: maximumDimension)
-        }
-        // Allow nearby frame decode when exact timestamp has no keyframe.
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: timescale)
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: timescale)
-
-        var samples: [SampledVideoFrame] = []
+        var targetTimestamps: [Double] = []
         var current = clampedStart
-        var failures = 0
-        var firstFailureDescription: String?
-
         while current <= clampedEnd {
-            // Avoid strict zero-second extraction which often fails on some MP4s.
-            let targetTime = (current == 0) ? min(0.1, clampedEnd) : current
-            let requestedTime = CMTime(seconds: targetTime, preferredTimescale: timescale)
-            do {
-                let image = try generator.copyCGImage(at: requestedTime, actualTime: nil)
-                samples.append(SampledVideoFrame(timestampSeconds: targetTime, image: image))
-            } catch {
-                failures += 1
-                if firstFailureDescription == nil {
-                    firstFailureDescription = error.localizedDescription
-                }
-                print("[SemanticIndex] copyCGImage failed at \(current)s for \(videoURL.lastPathComponent): \(error)")
-            }
+            targetTimestamps.append((current == 0) ? min(0.1, clampedEnd) : current)
             current += stepSeconds
         }
 
-        if samples.isEmpty {
-            let details = firstFailureDescription ?? "Unknown frame extraction failure."
-            throw VideoFrameSamplerError.allFramesFailed(details: details)
-        }
-
-        if failures > 0 {
-            print("[SemanticIndex] sampleFrames partial failures for \(videoURL.lastPathComponent): failures=\(failures) successes=\(samples.count)")
-        }
+        let samples = try await generateFrames(
+            for: asset,
+            videoURL: videoURL,
+            targetTimestamps: targetTimestamps,
+            timescale: timescale,
+            maximumDimension: maximumDimension,
+            logPrefix: "[SemanticIndex] sampleFrames"
+        )
         print("[SemanticIndex] sampleFrames done url=\(videoURL.lastPathComponent) count=\(samples.count)")
         return samples
     }
@@ -161,6 +137,32 @@ struct VideoFrameSampler {
         }
 
         let timescale = CMTimeScale(NSEC_PER_SEC)
+        let targetTimestamps = timestamps.map { timestamp in
+            let clamped = min(max(0, timestamp), videoDuration)
+            return (clamped == 0) ? min(0.1, videoDuration) : clamped
+        }
+        let samples = try await generateFrames(
+            for: asset,
+            videoURL: videoURL,
+            targetTimestamps: targetTimestamps,
+            timescale: timescale,
+            maximumDimension: maximumDimension,
+            logPrefix: "[SemanticIndex] sampleFrames(atTimestamps)"
+        )
+        print("[SemanticIndex] sampleFrames(atTimestamps) done url=\(videoURL.lastPathComponent) count=\(samples.count)")
+        return samples
+    }
+
+    private func generateFrames(
+        for asset: AVURLAsset,
+        videoURL: URL,
+        targetTimestamps: [Double],
+        timescale: CMTimeScale,
+        maximumDimension: CGFloat?,
+        logPrefix: String
+    ) async throws -> [SampledVideoFrame] {
+        try Task.checkCancellation()
+
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         if let maximumDimension, maximumDimension > 0 {
@@ -169,35 +171,73 @@ struct VideoFrameSampler {
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: timescale)
         generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: timescale)
 
-        var samples: [SampledVideoFrame] = []
-        var failures = 0
-        var firstFailureDescription: String?
+        let requestTimes = targetTimestamps.map { CMTime(seconds: $0, preferredTimescale: timescale) }
+        let requestValues = requestTimes.map(NSValue.init(time:))
+        let timeIndexByKey = Dictionary(uniqueKeysWithValues: requestTimes.enumerated().map { index, time in
+            (timeKey(for: time), index)
+        })
 
-        for timestamp in timestamps {
-            let clamped = min(max(0, timestamp), videoDuration)
-            let targetTime = (clamped == 0) ? min(0.1, videoDuration) : clamped
-            let requestedTime = CMTime(seconds: targetTime, preferredTimescale: timescale)
-            do {
-                let image = try generator.copyCGImage(at: requestedTime, actualTime: nil)
-                samples.append(SampledVideoFrame(timestampSeconds: targetTime, image: image))
-            } catch {
-                failures += 1
-                if firstFailureDescription == nil {
-                    firstFailureDescription = error.localizedDescription
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let lock = NSLock()
+                var frames = Array<CGImage?>(repeating: nil, count: requestTimes.count)
+                var failures = 0
+                var firstFailureDescription: String?
+                var completedCount = 0
+                var didResume = false
+
+                generator.generateCGImagesAsynchronously(forTimes: requestValues) { requestedTime, image, _, result, error in
+                    lock.lock()
+                    defer { lock.unlock() }
+
+                    guard !didResume else { return }
+
+                    if let index = timeIndexByKey[self.timeKey(for: requestedTime)] {
+                        switch result {
+                        case .succeeded:
+                            frames[index] = image
+                        case .failed, .cancelled:
+                            failures += 1
+                            if firstFailureDescription == nil {
+                                firstFailureDescription = error?.localizedDescription
+                            }
+                            let targetTime = targetTimestamps[index]
+                            let reason = error?.localizedDescription ?? String(describing: result)
+                            print("\(logPrefix) async frame generation failed at \(targetTime)s for \(videoURL.lastPathComponent): \(reason)")
+                        @unknown default:
+                            failures += 1
+                            if firstFailureDescription == nil {
+                                firstFailureDescription = "Unknown AVAssetImageGenerator result."
+                            }
+                        }
+                    }
+
+                    completedCount += 1
+                    guard completedCount == requestValues.count else { return }
+                    didResume = true
+
+                    let samples = frames.enumerated().compactMap { index, image in
+                        image.map { SampledVideoFrame(timestampSeconds: targetTimestamps[index], image: $0) }
+                    }
+
+                    if samples.isEmpty {
+                        let details = firstFailureDescription ?? "Unknown frame extraction failure."
+                        continuation.resume(throwing: VideoFrameSamplerError.allFramesFailed(details: details))
+                        return
+                    }
+
+                    if failures > 0 {
+                        print("\(logPrefix) partial failures for \(videoURL.lastPathComponent): failures=\(failures) successes=\(samples.count)")
+                    }
+                    continuation.resume(returning: samples)
                 }
-                print("[SemanticIndex] sampleFrames(atTimestamps) copyCGImage failed at \(targetTime)s for \(videoURL.lastPathComponent): \(error)")
             }
+        } onCancel: {
+            generator.cancelAllCGImageGeneration()
         }
+    }
 
-        if samples.isEmpty {
-            let details = firstFailureDescription ?? "Unknown frame extraction failure."
-            throw VideoFrameSamplerError.allFramesFailed(details: details)
-        }
-
-        if failures > 0 {
-            print("[SemanticIndex] sampleFrames(atTimestamps) partial failures for \(videoURL.lastPathComponent): failures=\(failures) successes=\(samples.count)")
-        }
-        print("[SemanticIndex] sampleFrames(atTimestamps) done url=\(videoURL.lastPathComponent) count=\(samples.count)")
-        return samples
+    private func timeKey(for time: CMTime) -> String {
+        "\(time.value):\(time.timescale):\(time.epoch)"
     }
 }

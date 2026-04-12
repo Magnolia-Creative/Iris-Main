@@ -158,6 +158,40 @@ final class ImportBrowserViewModel: ObservableObject {
         model.clips.first(where: { $0.localKey == localKey })
     }
 
+    func finalizeSelectedMediaImports() async -> [Media] {
+        let selectedKeys = model.clips
+            .filter(\.isSelected)
+            .map(\.localKey)
+        guard !selectedKeys.isEmpty else { return [] }
+
+        for localKey in selectedKeys {
+            guard let clip = clip(for: localKey), clip.isCommitted == false else { continue }
+            commitmentTasks[localKey]?.cancel()
+            await commitClip(localKey: localKey)
+        }
+
+        for localKey in selectedKeys {
+            if let task = embeddingTasks[localKey] {
+                await task.value
+            }
+
+            do {
+                try await ensureLocalMediaAvailable(for: localKey)
+            } catch {
+                updateClip(localKey: localKey) { clip in
+                    clip.embeddingState = .failed(error.localizedDescription)
+                }
+            }
+        }
+
+        updateStatusAndReadiness()
+
+        return selectedKeys.compactMap { localKey in
+            guard let mediaID = clip(for: localKey)?.localMediaID else { return nil }
+            return try? db.getMedia(mediaId: mediaID)
+        }
+    }
+
     func cancelClip(localKey: String, removeFromSelection: Bool = true) async {
         commitmentTasks[localKey]?.cancel()
         commitmentTasks[localKey] = nil
@@ -291,7 +325,7 @@ final class ImportBrowserViewModel: ObservableObject {
         guard model.processingMode.runsEmbeddings else { return }
         guard let clipIndex = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else { return }
         guard model.clips[clipIndex].embeddingState.isSucceeded == false else { return }
-        guard let originalURL = model.clips[clipIndex].originalURL else { return }
+        guard model.clips[clipIndex].originalURL != nil else { return }
 
         model.clips[clipIndex].embeddingState = .running("Preparing local embeddings")
 
@@ -299,35 +333,7 @@ final class ImportBrowserViewModel: ObservableObject {
         embeddingTasks[localKey] = Task { [weak self] in
             guard let self else { return }
             do {
-                guard let mediaLibraryID = try self.resolveMediaLibraryID() else {
-                    await MainActor.run {
-                        self.updateClip(localKey: localKey) { clip in
-                            clip.embeddingState = .failed("Could not resolve the local media library.")
-                        }
-                    }
-                    return
-                }
-
-                let imported = try await self.mediaImportService.importFileURLsQuick(
-                    [originalURL],
-                    to: mediaLibraryID,
-                    preferredKind: .video
-                )
-                guard let media = imported.first else {
-                    throw NSError(
-                        domain: "ImportBrowserViewModel",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "The clip could not be added to the local library."]
-                    )
-                }
-
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.localMediaID = media.mediaId
-                        clip.embeddingState = .succeeded("Embeddings queued locally")
-                    }
-                }
-                await self.resyncSemanticIndexIfNeeded()
+                try await self.ensureLocalMediaAvailable(for: localKey)
             } catch is CancellationError {
                 await MainActor.run {
                     self.updateClip(localKey: localKey) { clip in
@@ -544,6 +550,32 @@ final class ImportBrowserViewModel: ObservableObject {
         mutate(&model.clips[index])
     }
 
+    private func ensureLocalMediaAvailable(for localKey: String) async throws {
+        guard let clip = clip(for: localKey), clip.isSelected else { return }
+        if clip.localMediaID != nil { return }
+        guard let originalURL = clip.originalURL else {
+            throw makeLocalLibraryImportError("The selected clip could not be exported locally.")
+        }
+        guard let mediaLibraryID = try resolveMediaLibraryID() else {
+            throw makeLocalLibraryImportError("Could not resolve the local media library.")
+        }
+
+        let imported = try await mediaImportService.importFileURLsQuick(
+            [originalURL],
+            to: mediaLibraryID,
+            preferredKind: .video
+        )
+        guard let media = imported.first else {
+            throw makeLocalLibraryImportError("The clip could not be added to the local library.")
+        }
+
+        updateClip(localKey: localKey) { clip in
+            clip.localMediaID = media.mediaId
+            clip.embeddingState = .succeeded("Embeddings queued locally")
+        }
+        await resyncSemanticIndexIfNeeded()
+    }
+
     private func updateStatusAndReadiness() {
         let selectedCount = model.selectedClipCount
         let committedCount = model.committedClipCount
@@ -662,5 +694,13 @@ final class ImportBrowserViewModel: ObservableObject {
         for asset in assets {
             try? FileManager.default.removeItem(at: asset.audioURL)
         }
+    }
+
+    private func makeLocalLibraryImportError(_ message: String) -> NSError {
+        NSError(
+            domain: "ImportBrowserViewModel",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
     }
 }

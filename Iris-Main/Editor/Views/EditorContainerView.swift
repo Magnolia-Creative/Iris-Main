@@ -11,6 +11,7 @@ struct EditorContainerView: View {
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var editorImportRequest: EditorImportRequest?
     @Namespace private var bottomChromeNamespace
     @Environment(\.dismiss) private var dismiss
     private let hasAgentSession: Bool
@@ -54,6 +55,7 @@ struct EditorContainerView: View {
                 playbackController: playbackController,
                 renderBridge: renderBridge,
                 activeSpace: activeSpace,
+                onAddSelection: handleEditorAddSelection(kind:source:),
                 reviewFocusedClipIds: reviewFocusedClipIds,
                 isReviewInteractionDisabled: isAgentCutReviewActive
             )
@@ -94,7 +96,12 @@ struct EditorContainerView: View {
                         ZStack {
                             switch activeSpace {
                             case .importMedia:
-                                ImportPanelContent(controller: controller)
+                                ImportPanelContent(
+                                    controller: controller,
+                                    onOpenVideoImport: {
+                                        presentEditorImport(.timeline(kind: .video))
+                                    }
+                                )
                                     .transition(.opacity)
                             case .chat:
                                 ChatPanelContent(controller: controller)
@@ -119,6 +126,15 @@ struct EditorContainerView: View {
         }
         .background(Color.ds.bg)
         .navigationBarHidden(true)
+        .sheet(item: $editorImportRequest) { request in
+            NavigationStack {
+                EditorClipImportSheet(timelineId: timelineId) { media in
+                    applyImportedMedia(media, for: request.destination)
+                }
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .task {
             await controller.loadTimelineData()
             if let initialImportSeed {
@@ -277,6 +293,36 @@ struct EditorContainerView: View {
         Task { await controller.importFiles(urls) }
     }
 
+    private func handleEditorAddSelection(kind: TrackKind, source: ImportSource) {
+        guard kind == .video, source == .photos else {
+            controller.handleAddSelection(kind: kind, source: source)
+            return
+        }
+
+        presentEditorImport(.timeline(kind: kind))
+    }
+
+    private func presentEditorImport(_ destination: EditorImportRequest.Destination) {
+        editorImportRequest = EditorImportRequest(destination: destination)
+    }
+
+    @MainActor
+    private func applyImportedMedia(_ media: [Media], for destination: EditorImportRequest.Destination) {
+        guard !media.isEmpty else { return }
+
+        switch destination {
+        case .library:
+            for item in media {
+                controller.updateMedia(item)
+            }
+        case .timeline(let kind):
+            controller.ingestMedia(media, kind: kind)
+        }
+
+        controller.generateThumbnailStrips(for: media)
+        controller.syncSemanticIndexForImportedMedia()
+    }
+
     private func submitCutReviewReprompt() {
         guard hasAgentSession else { return }
         guard let review = controller.cutReview else { return }
@@ -287,6 +333,43 @@ struct EditorContainerView: View {
         agentSessionViewModel.updateFeedbackDraft(prompt)
         Task {
             await agentSessionViewModel.submitFeedback()
+        }
+    }
+}
+
+private struct EditorImportRequest: Identifiable {
+    enum Destination {
+        case library
+        case timeline(kind: TrackKind)
+    }
+
+    let id = UUID()
+    let destination: Destination
+}
+
+private struct EditorClipImportSheet: View {
+    let timelineId: String
+    let onAdd: @MainActor ([Media]) -> Void
+    @StateObject private var viewModel: ImportBrowserViewModel
+
+    init(timelineId: String, onAdd: @escaping @MainActor ([Media]) -> Void) {
+        self.timelineId = timelineId
+        self.onAdd = onAdd
+        _viewModel = StateObject(wrappedValue: ImportBrowserViewModel(timelineId: timelineId))
+    }
+
+    var body: some View {
+        ClipImportSheetView(
+            viewModel: viewModel,
+            onAdd: {
+                let media = await viewModel.finalizeSelectedMediaImports()
+                await MainActor.run {
+                    onAdd(media)
+                }
+            }
+        )
+        .task {
+            viewModel.updateProcessingMode(.embeddingsOnly)
         }
     }
 }

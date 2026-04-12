@@ -37,9 +37,8 @@ private actor SemanticSearchCoordinator {
     }
 
     func resolveSearchableVideos(from media: [Media]) async throws -> [SemanticImportedVideo] {
-        let candidateMedia = media
+        let candidateMedia = Media.deduplicatedForImportPresentation(media)
             .filter { $0.kind == .video }
-            .sorted { $0.createdAt < $1.createdAt }
 
         var importedVideos: [SemanticImportedVideo] = []
         importedVideos.reserveCapacity(candidateMedia.count)
@@ -189,9 +188,8 @@ final class SemanticSearchViewModel: ObservableObject {
 
     func syncImportedMedia(_ media: [Media], autoBuildIndex: Bool) async {
         let syncStart = EditorDebugTrace.mark()
-        let candidateMedia = media
+        let candidateMedia = Media.deduplicatedForImportPresentation(media)
             .filter { $0.kind == .video }
-            .sorted { $0.createdAt < $1.createdAt }
         let nextKeys = candidateMedia.map(\.mediaId)
         let currentKeys = model.videos.map(\.localKey)
 

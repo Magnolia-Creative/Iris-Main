@@ -6,6 +6,7 @@ struct EditorCanvasView: View {
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     let activeSpace: EditorSpace
+    var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
 
@@ -112,7 +113,7 @@ struct EditorCanvasView: View {
         let allowsTimelineAdditions = layout == .expanded
         let addSelection: (TrackKind, ImportSource) -> Void
         if allowsTimelineAdditions {
-            addSelection = controller.handleAddSelection(kind:source:)
+            addSelection = onAddSelection ?? controller.handleAddSelection(kind:source:)
         } else {
             addSelection = { _, _ in }
         }
