@@ -41,7 +41,14 @@ final class AgentViewModel: ObservableObject {
         model = AgentModel(
             promptText: promptText,
             stage: .idle,
-            statusMessage: "Connecting to the editing session.",
+            statusMessage: "Starting the editing process.",
+            importedClips: videos.map { video in
+                AgentImportedClip(
+                    id: video.localKey,
+                    displayName: video.displayName,
+                    videoURL: video.originalURL
+                )
+            },
             extractionClips: [],
             timelineClips: [],
             pendingEditorSeed: nil,
@@ -67,7 +74,7 @@ final class AgentViewModel: ObservableObject {
         model.hasStarted = true
         model.stage = .connecting
         model.errorMessage = nil
-        model.statusMessage = "Preparing clips and opening the live session."
+        setStatusMessage("Starting the editing process.")
 
         do {
             let response = try requireIngestResponse()
@@ -100,7 +107,7 @@ final class AgentViewModel: ObservableObject {
         model.isSendingFeedback = true
         model.errorMessage = nil
         model.stage = .assemblingTimeline
-        model.statusMessage = "Sending your timeline changes back to Iris."
+        setStatusMessage("Updating the edit with your feedback.")
 
         do {
             try await sendMessage(.reprompt(prompt: prompt))
@@ -116,7 +123,7 @@ final class AgentViewModel: ObservableObject {
         model.isSendingFeedback = true
         model.errorMessage = nil
         model.stage = .assemblingTimeline
-        model.statusMessage = "Submitting approval and finalizing the session."
+        setStatusMessage("Finalizing your edit.")
 
         do {
             try await sendMessage(.reprompt(prompt: "approve"))
@@ -400,14 +407,14 @@ final class AgentViewModel: ObservableObject {
             model.projectID = payload.projectID?.rawValue
             model.stage = .connecting
             model.errorMessage = nil
-            model.statusMessage = "Reviewing uploaded clips."
+            setStatusMessage("Reviewing your imported clips.")
 
         case .sessionResumed(let payload):
             model.sessionID = payload.sessionID.rawValue
             model.stage = .assemblingTimeline
             model.errorMessage = nil
             model.isSendingFeedback = false
-            model.statusMessage = "Timeline refinement resumed for iteration \(payload.iterationCount)."
+            setStatusMessage("Updating the edit with your latest feedback.")
 
         case .timelineUpdate(let payload):
             model.timelineClips = makeTimelineClips(from: payload.timeline)
@@ -418,7 +425,7 @@ final class AgentViewModel: ObservableObject {
             model.isSendingFeedback = false
 
             if model.statusMessage.trimmedForTransport.isEmpty {
-                model.statusMessage = "Draft timeline ready for review."
+                setStatusMessage("Your first edit is ready to review.")
             }
 
         case .waitingForUser(let payload):
@@ -428,7 +435,7 @@ final class AgentViewModel: ObservableObject {
             model.errorMessage = nil
             model.isAwaitingUserInput = true
             model.isSendingFeedback = false
-            model.statusMessage = "Draft timeline ready. Approve it or request changes."
+            setStatusMessage("Your first edit is ready. Approve it or ask for changes.")
 
         case .sessionComplete(let payload):
             model.sessionID = payload.sessionID.rawValue
@@ -439,7 +446,7 @@ final class AgentViewModel: ObservableObject {
             model.errorMessage = nil
             model.isAwaitingUserInput = false
             model.isSendingFeedback = false
-            model.statusMessage = "Timeline approved. Session complete."
+            setStatusMessage("Your edit is ready.")
 
         case .nodeStart(let payload):
             handleNodeStart(payload)
@@ -450,7 +457,7 @@ final class AgentViewModel: ObservableObject {
         case .statusUpdate(let payload):
             model.sessionID = payload.sessionID.rawValue
             model.errorMessage = nil
-            model.statusMessage = payload.statusMessage
+            setStatusMessage(payload.statusMessage)
 
             if !handleClipCleanupStatusUpdate(payload), model.isAwaitingUserInput {
                 model.stage = .waitingForFeedback
@@ -464,7 +471,7 @@ final class AgentViewModel: ObservableObject {
 
             if model.stage != .completed {
                 model.stage = .closed
-                model.statusMessage = "Session closed."
+                setStatusMessage("The editing session has ended.")
             }
 
         case .error(let payload):
@@ -490,7 +497,7 @@ final class AgentViewModel: ObservableObject {
             model.stage = .extractingClips
 
             if !event.statusMessage.trimmedForTransport.isEmpty {
-                model.statusMessage = event.statusMessage
+                setStatusMessage(event.statusMessage)
             }
 
             return true
@@ -504,7 +511,7 @@ final class AgentViewModel: ObservableObject {
             model.stage = .extractingClips
 
             if !event.statusMessage.trimmedForTransport.isEmpty {
-                model.statusMessage = event.statusMessage
+                setStatusMessage(event.statusMessage)
             }
         }
 
@@ -558,7 +565,7 @@ final class AgentViewModel: ObservableObject {
 
         if let statusMessage = (payload.statusMessage ?? fallbackStatusMessage),
            !statusMessage.trimmedForTransport.isEmpty {
-            model.statusMessage = statusMessage
+            setStatusMessage(statusMessage)
         }
     }
 
@@ -663,7 +670,7 @@ final class AgentViewModel: ObservableObject {
 
         if let statusMessage = (payload.statusMessage ?? fallbackStatusMessage),
            !statusMessage.trimmedForTransport.isEmpty {
-            model.statusMessage = statusMessage
+            setStatusMessage(statusMessage)
         }
     }
 
@@ -777,6 +784,75 @@ final class AgentViewModel: ObservableObject {
 
     private func microseconds(for seconds: Double) -> Int64 {
         Int64((max(seconds, 0) * 1_000_000).rounded())
+    }
+
+    private func setStatusMessage(_ message: String?) {
+        guard let message else { return }
+        let trimmedMessage = message.trimmedForTransport
+        guard !trimmedMessage.isEmpty else { return }
+        model.statusMessage = userFacingStatusMessage(from: trimmedMessage)
+    }
+
+    private func userFacingStatusMessage(from message: String) -> String {
+        let normalized = message
+            .lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: ".", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+
+        switch normalized {
+        case "session started",
+             "starting session",
+             "start session",
+             "connecting to the editing session",
+             "preparing clips and opening the live session",
+             "starting the editing process":
+            return "Starting the editing process."
+        case "reviewing uploaded clips",
+             "reviewing your imported clips":
+            return "Reviewing your imported clips."
+        case "sending your timeline changes back to iris",
+             "updating the edit with your feedback":
+            return "Updating the edit with your feedback."
+        case "submitting approval and finalizing the session",
+             "finalizing your edit":
+            return "Finalizing your edit."
+        case "draft timeline ready for review":
+            return "Your first edit is ready to review."
+        case "draft timeline ready approve it or request changes":
+            return "Your first edit is ready. Approve it or ask for changes."
+        case "timeline approved session complete",
+             "session complete":
+            return "Your edit is ready."
+        case "session closed":
+            return "The editing session has ended."
+        default:
+            break
+        }
+
+        if normalized.contains("timeline refinement resumed") {
+            return "Updating the edit with your latest feedback."
+        }
+
+        if normalized.contains("clip cleanup")
+            || normalized.contains("reviewing clips")
+            || normalized.contains("extracting clips") {
+            return "Picking the strongest moments from your clips."
+        }
+
+        if normalized.contains("waiting for user") {
+            return "Your first edit is ready. Approve it or ask for changes."
+        }
+
+        if normalized.contains("building timeline")
+            || normalized.contains("assembling timeline")
+            || normalized.contains("timeline update") {
+            return "Building your first edit."
+        }
+
+        return message
     }
 
     private func applyError(_ error: Error) {

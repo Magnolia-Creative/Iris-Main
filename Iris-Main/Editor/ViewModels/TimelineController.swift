@@ -7,6 +7,7 @@ internal import Combine
 final class TimelineController: ObservableObject {
     @Published private(set) var state: TimelineState
     @Published private(set) var cutReview: TimelineCutReviewSession?
+    private let db: DatabaseManager
     private let persistence: TimelinePersistence
     private let importService: MediaImportService
     private var persistedTrackIds: Set<String> = []
@@ -20,6 +21,7 @@ final class TimelineController: ObservableObject {
         importService: MediaImportService = .shared
     ) {
         self.state = TimelineState(timelineId: timelineId)
+        self.db = db
         self.persistence = TimelinePersistence(db: db)
         self.importService = importService
     }
@@ -460,18 +462,29 @@ final class TimelineController: ObservableObject {
         mediaLibraryID: String
     ) async throws -> SeedMediaResolution {
         let missingVideos = sourceVideos.filter { importedMediaBySeedLocalKey[$0.localKey] == nil }
+        let existingMediaByAssetIdentifier = try existingVideoMediaByAssetIdentifier(in: mediaLibraryID)
+        let videosNeedingImport = missingVideos.filter { video in
+            guard let assetLocalIdentifier = video.assetLocalIdentifier,
+                  let existingMedia = existingMediaByAssetIdentifier[assetLocalIdentifier] else {
+                return true
+            }
+
+            importedMediaBySeedLocalKey[video.localKey] = existingMedia
+            state.mediaById[existingMedia.mediaId] = existingMedia
+            return false
+        }
         let newlyImportedMedia: [Media]
 
-        if missingVideos.isEmpty {
+        if videosNeedingImport.isEmpty {
             newlyImportedMedia = []
         } else {
             newlyImportedMedia = try await importService.importFileURLsQuick(
-                missingVideos.map(\.originalURL),
+                videosNeedingImport.map(\.originalURL),
                 to: mediaLibraryID,
                 preferredKind: .video
             )
 
-            for (video, media) in zip(missingVideos, newlyImportedMedia) {
+            for (video, media) in zip(videosNeedingImport, newlyImportedMedia) {
                 importedMediaBySeedLocalKey[video.localKey] = media
                 state.mediaById[media.mediaId] = media
             }
@@ -511,6 +524,18 @@ final class TimelineController: ObservableObject {
         }
 
         return rebuiltClips
+    }
+
+    private func existingVideoMediaByAssetIdentifier(in mediaLibraryID: String) throws -> [String: Media] {
+        let libraryMedia = try db.getAllMedia(forLibraryId: mediaLibraryID)
+        var mediaByAssetIdentifier: [String: Media] = [:]
+
+        for media in libraryMedia where media.kind == .video {
+            guard let assetReference = try db.getAssetReference(assetRefId: media.assetRefId) else { continue }
+            mediaByAssetIdentifier[assetReference.uri] = media
+        }
+
+        return mediaByAssetIdentifier
     }
 
     private func ensureVideoTrack() -> Track {

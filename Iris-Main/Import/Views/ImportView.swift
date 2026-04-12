@@ -154,6 +154,7 @@ struct ImportView: View {
             LazyVGrid(columns: gridColumns, alignment: .leading, spacing: .spacing(.sp2)) {
                 ForEach(committedClipsWithURLs) { clip in
                     ImportedVideoTile(videoURL: clip.originalURL!)
+                        .importVideoTileTransition(id: clip.localKey, in: transitionNamespace, isSource: true)
                 }
 
                 Button {
@@ -164,7 +165,7 @@ struct ImportView: View {
                 .buttonStyle(.plain)
             }
         }
-        .matchedGeometryEffect(id: "videos-section", in: transitionNamespace)
+        .importVideosSectionTransition(in: transitionNamespace, isSource: true)
     }
 
     private var promptSection: some View {

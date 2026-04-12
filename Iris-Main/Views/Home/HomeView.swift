@@ -57,7 +57,7 @@ struct HomeView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("Start a fresh project or jump back into a recent edit with saved preview covers.")
+                Text("Start a fresh project below.")
                     .typography(.body)
                     .foregroundStyle(Color.white.opacity(0.82))
                     .frame(maxWidth: 320, alignment: .leading)
@@ -89,7 +89,6 @@ struct HomeView: View {
 
     private var recentsSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            sectionHeader(title: "Recents", subtitle: "Your five most recently opened projects.")
 
             if viewModel.recentProjects.isEmpty {
                 emptyStateContent(
@@ -141,7 +140,7 @@ struct HomeView: View {
 
     private var allProjectsSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            sectionHeader(title: "All Projects", subtitle: "Every project in a compact editor-style list.")
+
 
             if let loadErrorMessage = viewModel.loadErrorMessage {
                 emptyStateContent(title: "Projects unavailable", subtitle: loadErrorMessage)

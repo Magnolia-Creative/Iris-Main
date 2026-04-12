@@ -3,7 +3,8 @@ import Foundation
 struct AgentModel {
     var promptText = ""
     var stage: AgentStage = .idle
-    var statusMessage = "Connecting to the editing session."
+    var statusMessage = "Starting the editing process."
+    var importedClips: [AgentImportedClip] = []
     var extractionClips: [AgentExtractionClip] = []
     var timelineClips: [AgentTimelineClip] = []
     var pendingEditorSeed: ImportedTimelineSeed?
@@ -28,6 +29,15 @@ struct AgentModel {
     var canLaunchEditorReview: Bool {
         pendingEditorSeed != nil && isAwaitingUserInput
     }
+
+    var showsAnimatedStatusSweep: Bool {
+        switch stage {
+        case .connecting, .extractingClips, .assemblingTimeline:
+            return true
+        case .idle, .waitingForFeedback, .completed, .error, .closed:
+            return false
+        }
+    }
 }
 
 enum AgentStage: Equatable {
@@ -49,6 +59,12 @@ struct AgentSourceClip: Identifiable, Equatable {
     let durationSeconds: Double
     let order: Int
     let remoteIdentifiers: [String]
+}
+
+struct AgentImportedClip: Identifiable, Equatable {
+    let id: String
+    let displayName: String
+    let videoURL: URL
 }
 
 struct AgentExtractionClip: Identifiable, Equatable {

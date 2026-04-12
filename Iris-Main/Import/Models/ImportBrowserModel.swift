@@ -154,6 +154,7 @@ struct ImportBrowserModel {
             guard clip.isCommitted, clip.isSelected, let originalURL = clip.originalURL else { return nil }
             return SelectedVideoAsset(
                 localKey: clip.localKey,
+                assetLocalIdentifier: clip.assetLocalIdentifier,
                 originalURL: originalURL,
                 displayName: clip.displayName,
                 fileSize: clip.fileSize,

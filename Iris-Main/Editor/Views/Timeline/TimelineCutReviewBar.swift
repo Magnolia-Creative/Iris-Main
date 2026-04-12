@@ -23,7 +23,7 @@ struct TimelineCutReviewBar: View {
 
                 Button(action: onApproveAll) {
                     Text(isSending ? "Submitting..." : "Approve All")
-                        .typography(.heading)
+                        .typography(.action)
                         .foregroundStyle(Color.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, .spacing(.sp3))
