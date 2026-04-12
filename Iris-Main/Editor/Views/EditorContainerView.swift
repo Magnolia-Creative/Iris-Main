@@ -11,6 +11,7 @@ struct EditorContainerView: View {
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @Namespace private var bottomChromeNamespace
     @Environment(\.dismiss) private var dismiss
     private let hasAgentSession: Bool
 
@@ -59,55 +60,62 @@ struct EditorContainerView: View {
             .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
 
-            if isAgentCutReviewActive, let cutReview = controller.cutReview {
-                TimelineCutReviewBar(
-                    review: cutReview,
-                    isSending: agentSessionViewModel.model.isSendingFeedback,
-                    onApprove: { controller.approveCurrentCutReview() },
-                    onApproveAll: {
-                        controller.finishCutReview()
-                        Task {
-                            await agentSessionViewModel.approveTimeline()
+            ZStack(alignment: .bottom) {
+                if isAgentCutReviewActive, let cutReview = controller.cutReview {
+                    TimelineCutReviewBar(
+                        review: cutReview,
+                        isSending: agentSessionViewModel.model.isSendingFeedback,
+                        onApprove: { controller.approveCurrentCutReview() },
+                        onApproveAll: {
+                            controller.finishCutReview()
+                            Task {
+                                await agentSessionViewModel.approveTimeline()
+                            }
+                        },
+                        onCancelCut: cutReview.currentItem?.canCancel == true
+                            ? { controller.cancelCurrentCutReview() }
+                            : nil,
+                        onShowRepromptComposer: { controller.showCutReviewRepromptComposer() },
+                        onHideRepromptComposer: { controller.hideCutReviewRepromptComposer() },
+                        onRepromptTextChange: controller.updateCutReviewRepromptDraft(_:),
+                        onSubmitReprompt: submitCutReviewReprompt
+                    )
+                    .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
+                    .transition(.opacity)
+                    .padding(.horizontal, .spacing(.sp3))
+                    .padding(.bottom, .spacing(.sp3))
+                } else {
+                    EditorTabBar(
+                        activeSpace: $activeSpace,
+                        isClipSelected: state.selectedClipId != nil,
+                        onSplitClip: { controller.splitSelectedClip() },
+                        onDeleteClip: { controller.deleteSelectedClip() }
+                    ) {
+                        ZStack {
+                            switch activeSpace {
+                            case .importMedia:
+                                ImportPanelContent(controller: controller)
+                                    .transition(.opacity)
+                            case .chat:
+                                ChatPanelContent(controller: controller)
+                                    .transition(.opacity)
+                            case .export:
+                                ExportPanelContent(controller: controller)
+                                    .transition(.opacity)
+                            case .edit:
+                                EmptyView()
+                            }
                         }
-                    },
-                    onCancelCut: cutReview.currentItem?.canCancel == true
-                        ? { controller.cancelCurrentCutReview() }
-                        : nil,
-                    onShowRepromptComposer: { controller.showCutReviewRepromptComposer() },
-                    onHideRepromptComposer: { controller.hideCutReviewRepromptComposer() },
-                    onRepromptTextChange: controller.updateCutReviewRepromptDraft(_:),
-                    onSubmitReprompt: submitCutReviewReprompt
-                )
-                .padding(.horizontal, .spacing(.sp3))
-                .padding(.bottom, .spacing(.sp3))
-            } else {
-                EditorTabBar(
-                    activeSpace: $activeSpace,
-                    isClipSelected: state.selectedClipId != nil,
-                    onSplitClip: { controller.splitSelectedClip() },
-                    onDeleteClip: { controller.deleteSelectedClip() }
-                ) {
-                    ZStack {
-                        switch activeSpace {
-                        case .importMedia:
-                            ImportPanelContent(controller: controller)
-                                .transition(.opacity)
-                        case .chat:
-                            ChatPanelContent(controller: controller)
-                                .transition(.opacity)
-                        case .export:
-                            ExportPanelContent(controller: controller)
-                                .transition(.opacity)
-                        case .edit:
-                            EmptyView()
-                        }
+                        .animation(.easeInOut(duration: 0.2), value: activeSpace)
                     }
-                    .animation(.easeInOut(duration: 0.2), value: activeSpace)
+                    .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
+                    .transition(.opacity)
+                    .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
+                    .padding(.horizontal, activeSpace != .edit ? .spacing(.sp3) : 0)
+                    .padding(.bottom, .spacing(.sp2))
                 }
-                .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
-                .padding(.horizontal, activeSpace != .edit ? .spacing(.sp3) : 0)
-                .padding(.bottom, .spacing(.sp2))
             }
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isAgentCutReviewActive)
         }
         .background(Color.ds.bg)
         .navigationBarHidden(true)
@@ -223,18 +231,10 @@ struct EditorContainerView: View {
     }
 
     private var cutReviewHeaderBar: some View {
-        let currentItem = controller.cutReview?.currentItem
-
         return ZStack {
-            VStack(spacing: 2) {
-                Text("Review Agent Timeline")
-                    .typography(.body)
-                    .foregroundColor(Color.ds.text)
-
-                Text(controller.cutReview?.progressLabel ?? "Review")
-                    .typography(.bodySmall)
-                    .foregroundColor(Color.ds.textMuted)
-            }
+            Text("Review Changes")
+                .typography(.body)
+                .foregroundColor(Color.ds.text)
 
             HStack {
                 Button {
@@ -253,10 +253,8 @@ struct EditorContainerView: View {
 
                 Spacer()
 
-                if let currentItem {
-                    Text(
-                        "\(TimeFormatter.formatTime(currentItem.startTimeUs)) - \(TimeFormatter.formatTime(currentItem.endTimeUs))"
-                    )
+                if let cutReview = controller.cutReview {
+                    Text("Cut \(cutReview.currentIndex + 1)/\(cutReview.items.count)")
                     .typography(.bodySmall)
                     .foregroundColor(Color.ds.textMuted)
                 }

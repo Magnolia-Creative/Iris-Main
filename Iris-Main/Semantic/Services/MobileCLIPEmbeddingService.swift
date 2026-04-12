@@ -155,7 +155,7 @@ actor MobileCLIPEmbeddingPool: MobileCLIPEmbeddingProviding {
     private var nextServiceIndex = 0
 
     init(
-        poolSize: Int = max(1, min(4, ProcessInfo.processInfo.activeProcessorCount / 2)),
+        poolSize: Int = max(1, min(2, ProcessInfo.processInfo.activeProcessorCount / 4)),
         encoderURIString: String = AppConfiguration.semanticMobileCLIPEncoderURI
     ) {
         let normalizedPoolSize = max(1, poolSize)

@@ -7,12 +7,26 @@ struct SemanticSearchConstants {
     static let chunkTopK = 10
     static let resultsLimit = 3
     static let rangeMergeGapSeconds = 0.6
-    static let frameEmbeddingConcurrency = 4
     static let indexingFrameMaximumDimension: CGFloat = 320
 
     static var chunkStrideSeconds: Double {
         max(0.1, chunkDurationSeconds - chunkOverlapSeconds)
     }
+}
+
+struct SemanticIndexBuildOptions {
+    let frameEmbeddingConcurrency: Int
+    let embeddingPriority: TaskPriority
+
+    static let interactive = SemanticIndexBuildOptions(
+        frameEmbeddingConcurrency: 2,
+        embeddingPriority: .utility
+    )
+
+    static let backgroundImport = SemanticIndexBuildOptions(
+        frameEmbeddingConcurrency: 1,
+        embeddingPriority: .background
+    )
 }
 
 struct VideoChunkPoint: Hashable {
@@ -104,9 +118,11 @@ final class SemanticSearchPipeline {
 
     private func embedFrames(
         _ frames: [SampledVideoFrame],
-        maxConcurrency: Int
+        maxConcurrency: Int,
+        priority: TaskPriority
     ) async throws -> [(frame: SampledVideoFrame, embedding: [Float])] {
         guard !frames.isEmpty else { return [] }
+        try Task.checkCancellation()
 
         let boundedConcurrency = max(1, maxConcurrency)
         var frameIterator = frames.makeIterator()
@@ -117,17 +133,21 @@ final class SemanticSearchPipeline {
             let initialTaskCount = min(boundedConcurrency, frames.count)
             for _ in 0..<initialTaskCount {
                 guard let frame = frameIterator.next() else { break }
-                group.addTask {
+                group.addTask(priority: priority) {
+                    try Task.checkCancellation()
                     let embedding = try await self.embeddingService.imageEmbedding(for: frame.image)
                     return (frame, embedding)
                 }
             }
 
             while let completed = try await group.next() {
+                try Task.checkCancellation()
                 results.append((frame: completed.0, embedding: completed.1))
+                await Task.yield()
 
                 if let frame = frameIterator.next() {
-                    group.addTask {
+                    group.addTask(priority: priority) {
+                        try Task.checkCancellation()
                         let embedding = try await self.embeddingService.imageEmbedding(for: frame.image)
                         return (frame, embedding)
                     }
@@ -145,7 +165,8 @@ final class SemanticSearchPipeline {
 
     func buildChunkIndex(
         videos: [SemanticImportedVideo],
-        onProgress: @escaping @Sendable (String) async -> Void
+        onProgress: @escaping @Sendable (String) async -> Void,
+        options: SemanticIndexBuildOptions = .interactive
     ) async throws {
         let buildStart = Date()
         reset()
@@ -156,6 +177,7 @@ final class SemanticSearchPipeline {
         var totalChunks = 0
 
         for (videoIndex, video) in videos.enumerated() {
+            try Task.checkCancellation()
             let videoStart = Date()
             print("[SemanticIndex] Building chunks for video \(videoIndex + 1)/\(videos.count): \(video.displayName), duration=\(video.durationSeconds)s")
             await onProgress("Indexing \(video.displayName) (\(videoIndex + 1)/\(videos.count))...")
@@ -177,8 +199,11 @@ final class SemanticSearchPipeline {
 
             let embeddedFrames = try await embedFrames(
                 availableChunks.map(\.frame),
-                maxConcurrency: SemanticSearchConstants.frameEmbeddingConcurrency
+                maxConcurrency: options.frameEmbeddingConcurrency,
+                priority: options.embeddingPriority
             )
+            try Task.checkCancellation()
+            await Task.yield()
 
             let chunkByCenter = Dictionary(uniqueKeysWithValues: availableChunks.map { ($0.chunk.centerTimeSeconds, $0.chunk) })
             for item in embeddedFrames {

@@ -1,5 +1,5 @@
 {
-  "originHash" : "eb09ca702e703f508f07e34f3fa8721be3cac8b992d6b27ab423926c400c6eff",
+  "originHash" : "63495a4de07b837e450112bb13beee02630c2be137a906ac9f71f9a3f87953a5",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "0b53365d87cb79aed6e9c509f947eb96ba0d3da6",
         "version" : "2.2.1"
+      }
+    },
+    {
+      "identity" : "inject",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzysztofzablocki/Inject.git",
+      "state" : {
+        "revision" : "728c56639ecb3df441d51d5bc6747329afabcfc9",
+        "version" : "1.5.2"
       }
     },
     {

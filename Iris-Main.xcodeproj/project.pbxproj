@@ -220,6 +220,7 @@
 			packageReferences = (
 				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
 				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
+				1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1F77B79A2F64B22C00C813F6 /* Products */;
@@ -622,6 +623,14 @@
 			requirement = {
 				branch = master;
 				kind = branch;
+			};
+		};
+		1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzysztofzablocki/Inject.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.2;
 			};
 		};
 		9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */ = {

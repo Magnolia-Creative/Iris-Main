@@ -1,15 +1,98 @@
 internal import Combine
 import Foundation
 
+private actor SemanticSearchCoordinator {
+    private let frameSampler: VideoFrameSampler
+    private let pipeline: SemanticSearchPipeline
+    private let thumbnailService: ThumbnailService
+
+    init(
+        frameSampler: VideoFrameSampler = VideoFrameSampler(),
+        pipeline: SemanticSearchPipeline = SemanticSearchPipeline(),
+        thumbnailService: ThumbnailService = .shared
+    ) {
+        self.frameSampler = frameSampler
+        self.pipeline = pipeline
+        self.thumbnailService = thumbnailService
+    }
+
+    func resolveImportedVideos(_ importedVideos: [ImportedSemanticVideo]) async throws -> [SemanticImportedVideo] {
+        var resolvedVideos: [SemanticImportedVideo] = []
+        resolvedVideos.reserveCapacity(importedVideos.count)
+
+        for imported in importedVideos {
+            try Task.checkCancellation()
+            let duration = try await frameSampler.loadDurationSeconds(videoURL: imported.localURL)
+            resolvedVideos.append(
+                SemanticImportedVideo(
+                    localKey: imported.localKey,
+                    fileURL: imported.localURL,
+                    displayName: imported.displayName,
+                    durationSeconds: duration
+                )
+            )
+        }
+
+        return resolvedVideos
+    }
+
+    func resolveSearchableVideos(from media: [Media]) async throws -> [SemanticImportedVideo] {
+        let candidateMedia = media
+            .filter { $0.kind == .video }
+            .sorted { $0.createdAt < $1.createdAt }
+
+        var importedVideos: [SemanticImportedVideo] = []
+        importedVideos.reserveCapacity(candidateMedia.count)
+
+        for item in candidateMedia {
+            try Task.checkCancellation()
+            guard let fileURL = try await thumbnailService.loadVideoURL(for: item.assetRefId) else { continue }
+
+            let duration: Double
+            if let existingDuration = item.spec.duration {
+                duration = existingDuration
+            } else {
+                duration = (try? await frameSampler.loadDurationSeconds(videoURL: fileURL)) ?? 0
+            }
+
+            importedVideos.append(
+                SemanticImportedVideo(
+                    localKey: item.mediaId,
+                    fileURL: fileURL,
+                    displayName: fileURL.lastPathComponent,
+                    durationSeconds: duration
+                )
+            )
+        }
+
+        return importedVideos
+    }
+
+    func reset() {
+        pipeline.reset()
+    }
+
+    func buildIndex(
+        videos: [SemanticImportedVideo],
+        onProgress: @escaping @Sendable (String) async -> Void,
+        options: SemanticIndexBuildOptions
+    ) async throws -> Int {
+        try await pipeline.buildChunkIndex(videos: videos, onProgress: onProgress, options: options)
+        return pipeline.indexedFrameCount
+    }
+
+    func search(query: String, videos: [SemanticImportedVideo]) async throws -> [SemanticRangeCandidate] {
+        try await pipeline.search(query: query, videos: videos)
+    }
+}
+
 @MainActor
 final class SemanticSearchViewModel: ObservableObject {
     static let shared = SemanticSearchViewModel()
 
     @Published private(set) var model = SemanticSearchModel()
 
-    private let frameSampler: VideoFrameSampler
-    private let pipeline: SemanticSearchPipeline
-    private let thumbnailService: ThumbnailService
+    private let coordinator: SemanticSearchCoordinator
     private var liveSearchTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
     private var indexedVideoKeys: [String] = []
@@ -19,9 +102,11 @@ final class SemanticSearchViewModel: ObservableObject {
         pipeline: SemanticSearchPipeline? = nil,
         thumbnailService: ThumbnailService? = nil
     ) {
-        self.frameSampler = frameSampler ?? VideoFrameSampler()
-        self.pipeline = pipeline ?? SemanticSearchPipeline()
-        self.thumbnailService = thumbnailService ?? .shared
+        self.coordinator = SemanticSearchCoordinator(
+            frameSampler: frameSampler ?? VideoFrameSampler(),
+            pipeline: pipeline ?? SemanticSearchPipeline(),
+            thumbnailService: thumbnailService ?? .shared
+        )
     }
 
     func beginVideoImport() {
@@ -31,30 +116,26 @@ final class SemanticSearchViewModel: ObservableObject {
 
     func importSelection(from importedVideos: [ImportedSemanticVideo]) {
         guard !importedVideos.isEmpty else {
+            liveSearchTask?.cancel()
+            syncTask?.cancel()
             model.videos = []
             model.results = []
             model.indexedFrameCount = 0
             model.statusMessage = "Import videos to build a chunk index."
             model.isImportingVideos = false
             model.importErrorMessage = nil
-            pipeline.reset()
+            Task(priority: .utility) { [coordinator] in
+                await coordinator.reset()
+            }
             return
         }
 
-        Task {
+        Task(priority: .utility) { [weak self, coordinator] in
+            guard let self else { return }
             do {
-                var nextVideos: [SemanticImportedVideo] = []
-                for imported in importedVideos {
-                    let duration = try await frameSampler.loadDurationSeconds(videoURL: imported.localURL)
-                    nextVideos.append(
-                        SemanticImportedVideo(
-                            localKey: imported.localKey,
-                            fileURL: imported.localURL,
-                            displayName: imported.displayName,
-                            durationSeconds: duration
-                        )
-                    )
-                }
+                let nextVideos = try await coordinator.resolveImportedVideos(importedVideos)
+                guard !Task.isCancelled else { return }
+                await coordinator.reset()
 
                 model.videos = nextVideos
                 model.results = []
@@ -63,15 +144,16 @@ final class SemanticSearchViewModel: ObservableObject {
                 model.importErrorMessage = nil
                 model.searchErrorMessage = nil
                 model.isImportingVideos = false
-                pipeline.reset()
+            } catch is CancellationError {
+                return
             } catch {
+                await coordinator.reset()
                 model.videos = []
                 model.results = []
                 model.indexedFrameCount = 0
                 model.importErrorMessage = error.localizedDescription
                 model.statusMessage = "Could not load imported videos."
                 model.isImportingVideos = false
-                pipeline.reset()
             }
         }
     }
@@ -99,7 +181,7 @@ final class SemanticSearchViewModel: ObservableObject {
             "SemanticSearchViewModel",
             "queue imported media sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
         )
-        syncTask = Task(priority: .utility) { [weak self] in
+        syncTask = Task(priority: .background) { [weak self] in
             guard let self else { return }
             await self.syncImportedMedia(media, autoBuildIndex: autoBuildIndex)
         }
@@ -124,7 +206,7 @@ final class SemanticSearchViewModel: ObservableObject {
                 "sync skipped unchangedVideos count=\(candidateMedia.count) \(EditorDebugTrace.elapsedMessage(since: syncStart))"
             )
             if autoBuildIndex {
-                await buildIndexIfNeeded()
+                await buildIndexIfNeeded(options: .backgroundImport)
                 if !model.trimmedQuery.isEmpty {
                     await runSearch()
                 }
@@ -132,25 +214,21 @@ final class SemanticSearchViewModel: ObservableObject {
             return
         }
 
-        var importedVideos: [SemanticImportedVideo] = []
-        importedVideos.reserveCapacity(candidateMedia.count)
-
-        for item in candidateMedia {
-            guard let fileURL = try? await thumbnailService.loadVideoURL(for: item.assetRefId) else { continue }
-            let duration: Double
-            if let existingDuration = item.spec.duration {
-                duration = existingDuration
-            } else {
-                duration = (try? await frameSampler.loadDurationSeconds(videoURL: fileURL)) ?? 0
-            }
-            importedVideos.append(
-                SemanticImportedVideo(
-                    localKey: item.mediaId,
-                    fileURL: fileURL,
-                    displayName: fileURL.lastPathComponent,
-                    durationSeconds: duration
-                )
-            )
+        let importedVideos: [SemanticImportedVideo]
+        do {
+            importedVideos = try await coordinator.resolveSearchableVideos(from: candidateMedia)
+        } catch is CancellationError {
+            return
+        } catch {
+            model.videos = []
+            model.results = []
+            model.searchErrorMessage = error.localizedDescription
+            model.importErrorMessage = error.localizedDescription
+            model.indexedFrameCount = 0
+            indexedVideoKeys = []
+            model.statusMessage = "Could not prepare videos for semantic search."
+            await coordinator.reset()
+            return
         }
 
         liveSearchTask?.cancel()
@@ -160,7 +238,7 @@ final class SemanticSearchViewModel: ObservableObject {
         model.importErrorMessage = nil
         model.indexedFrameCount = 0
         indexedVideoKeys = []
-        pipeline.reset()
+        await coordinator.reset()
 
         if importedVideos.isEmpty {
             model.statusMessage = "Import videos to search them semantically."
@@ -176,7 +254,7 @@ final class SemanticSearchViewModel: ObservableObject {
             : "Tap search to build an index for imported clips."
 
         if autoBuildIndex {
-            await buildIndexIfNeeded()
+            await buildIndexIfNeeded(options: .backgroundImport)
             if !model.trimmedQuery.isEmpty {
                 await runSearch()
             }
@@ -205,29 +283,42 @@ final class SemanticSearchViewModel: ObservableObject {
         liveSearchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled, let self else { return }
-            await self.buildIndexIfNeeded()
+            await self.buildIndexIfNeeded(options: .interactive)
             guard !Task.isCancelled else { return }
             await self.runSearch()
         }
     }
 
     func buildIndex() async {
+        await buildIndex(options: .interactive)
+    }
+
+    private func buildIndex(options: SemanticIndexBuildOptions) async {
         guard model.canBuildIndex else { return }
-        print("[SemanticIndex] Starting chunk index build for \(model.videos.count) video(s)")
+        let videos = model.videos
+        let requestedVideoKeys = videos.map(\.localKey)
+        print("[SemanticIndex] Starting chunk index build for \(videos.count) video(s)")
         model.isBuildingIndex = true
         model.searchErrorMessage = nil
         model.results = []
 
         do {
-            try await pipeline.buildChunkIndex(videos: model.videos) { message in
+            let indexedFrameCount = try await coordinator.buildIndex(videos: videos, onProgress: { message in
                 await MainActor.run {
                     self.model.statusMessage = message
                 }
+            }, options: options)
+            guard requestedVideoKeys == model.videos.map(\.localKey) else {
+                model.isBuildingIndex = false
+                return
             }
-            model.indexedFrameCount = pipeline.indexedFrameCount
-            indexedVideoKeys = model.videos.map(\.localKey)
+            model.indexedFrameCount = indexedFrameCount
+            indexedVideoKeys = requestedVideoKeys
             model.statusMessage = "Index built. Enter a query to find clip ranges."
             print("[SemanticIndex] Index build succeeded. indexedFrameCount=\(model.indexedFrameCount)")
+        } catch is CancellationError {
+            model.isBuildingIndex = false
+            return
         } catch {
             print("[SemanticIndex] Index build failed with error: \(error)")
             print("[SemanticIndex] Error description: \(error.localizedDescription)")
@@ -242,14 +333,21 @@ final class SemanticSearchViewModel: ObservableObject {
 
     func runSearch() async {
         guard model.canSearch else { return }
+        let query = model.trimmedQuery
+        let videos = model.videos
+        let requestedVideoKeys = videos.map(\.localKey)
         model.isSearching = true
         model.searchErrorMessage = nil
         model.results = []
         model.statusMessage = "Searching likely ranges..."
 
         do {
-            let ranges = try await pipeline.search(query: model.trimmedQuery, videos: model.videos)
-            logSearchResults(ranges, query: model.trimmedQuery)
+            let ranges = try await coordinator.search(query: query, videos: videos)
+            guard query == model.trimmedQuery, requestedVideoKeys == model.videos.map(\.localKey) else {
+                model.isSearching = false
+                return
+            }
+            logSearchResults(ranges, query: query)
             model.results = ranges.map {
                 SemanticMatchRange(
                     videoID: $0.videoID,
@@ -260,6 +358,9 @@ final class SemanticSearchViewModel: ObservableObject {
                 )
             }
             model.statusMessage = ranges.isEmpty ? "No matching ranges found." : "Found \(ranges.count) likely range(s)."
+        } catch is CancellationError {
+            model.isSearching = false
+            return
         } catch {
             model.searchErrorMessage = error.localizedDescription
             model.statusMessage = "Search failed."
@@ -269,9 +370,13 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     private func buildIndexIfNeeded() async {
+        await buildIndexIfNeeded(options: .interactive)
+    }
+
+    private func buildIndexIfNeeded(options: SemanticIndexBuildOptions) async {
         guard !model.videos.isEmpty else { return }
         guard indexedVideoKeys != model.videos.map(\.localKey) || model.indexedFrameCount == 0 else { return }
-        await buildIndex()
+        await buildIndex(options: options)
     }
 
     private func logSearchResults(_ ranges: [SemanticRangeCandidate], query: String) {
