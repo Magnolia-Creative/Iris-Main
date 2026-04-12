@@ -34,6 +34,8 @@ final class RenderEngine: NSObject {
     private var lastMetricsBroadcast: CFTimeInterval = 0
     private var lastMissPrefetchTime: CFTimeInterval = 0
     private var lastCacheLookupLogTime: CFTimeInterval = 0
+    private var playbackStartHostTime: CFTimeInterval?
+    private var playbackStartTimelineTime: Double = 0
     private weak var mtkView: MTKView?
     private var prefetchTask: Task<Void, Never>?
     private var activePrefetchTasks: [Int: Task<Void, Never>] = [:]
@@ -83,8 +85,11 @@ final class RenderEngine: NSObject {
         lastRenderedTextures.removeAll()
         inFlightKeys.removeAll()
         currentTime = 0
+        playbackStartHostTime = nil
+        playbackStartTimelineTime = 0
         audioController.configure(timeline: timeline, currentTime: currentTime)
         if isPlaying {
+            startPlaybackClock(at: currentTime)
             audioController.play(at: currentTime)
         }
         needsRedraw = true
@@ -95,6 +100,7 @@ final class RenderEngine: NSObject {
         self.timeline = timeline
         audioController.configure(timeline: timeline, currentTime: currentTime)
         if isPlaying {
+            startPlaybackClock(at: currentTime)
             audioController.play(at: currentTime)
         }
         requestRedraw()
@@ -143,7 +149,7 @@ final class RenderEngine: NSObject {
             currentTime = 0
         }
         isPlaying = true
-        lastDrawTime = CACurrentMediaTime()
+        startPlaybackClock(at: currentTime)
         needsRedraw = true
         refreshDrawingMode()
         audioController.play(at: currentTime)
@@ -153,6 +159,7 @@ final class RenderEngine: NSObject {
 
     func pause() {
         guard isPlaying else { return }
+        stopPlaybackClock(at: CACurrentMediaTime())
         isPlaying = false
         refreshDrawingMode()
         audioController.pause()
@@ -209,6 +216,7 @@ final class RenderEngine: NSObject {
         if isScrubbing {
             audioController.pause()
         } else if isPlaying {
+            startPlaybackClock(at: currentTime)
             audioController.play(at: currentTime)
         } else {
             audioController.seek(to: currentTime)
@@ -254,10 +262,31 @@ final class RenderEngine: NSObject {
             audioController.pause()
             assetProvider.resetSequentialReaders()
         } else if isPlaying {
+            startPlaybackClock(at: currentTime)
             audioController.play(at: currentTime)
         } else {
             audioController.seek(to: currentTime)
         }
+    }
+
+    private func startPlaybackClock(at timelineTime: Double, hostTime: CFTimeInterval = CACurrentMediaTime()) {
+        playbackStartTimelineTime = max(0, min(timelineTime, timeline.duration))
+        playbackStartHostTime = hostTime
+        lastDrawTime = hostTime
+    }
+
+    private func syncPlaybackClock(at hostTime: CFTimeInterval = CACurrentMediaTime()) {
+        guard let playbackStartHostTime else { return }
+        let elapsed = max(0, hostTime - playbackStartHostTime)
+        currentTime = min(playbackStartTimelineTime + elapsed, timeline.duration)
+        lastDrawTime = hostTime
+    }
+
+    private func stopPlaybackClock(at hostTime: CFTimeInterval = CACurrentMediaTime()) {
+        syncPlaybackClock(at: hostTime)
+        playbackStartTimelineTime = currentTime
+        playbackStartHostTime = nil
+        lastDrawTime = 0
     }
 
     func loadAssetDuration(for url: URL) async throws -> Double {
@@ -867,17 +896,10 @@ extension RenderEngine: MTKViewDelegate {
     func draw(in view: MTKView) {
         if isPlaying {
             let now = CACurrentMediaTime()
-            let delta = lastDrawTime > 0 ? now - lastDrawTime : 0
-            lastDrawTime = now
-
-            if audioController.isDrivingPlaybackClock, let audioTime = audioController.playbackTime {
-                currentTime = min(audioTime, timeline.duration)
-            } else {
-                currentTime = min(currentTime + delta, timeline.duration)
-            }
+            syncPlaybackClock(at: now)
 
             if currentTime >= timeline.duration {
-                currentTime = timeline.duration
+                stopPlaybackClock(at: now)
                 isPlaying = false
                 refreshDrawingMode()
                 audioController.pause()

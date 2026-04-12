@@ -14,6 +14,7 @@ struct TimelineSectionView: View {
     @Binding var currentTimeAtCenter: Int64
     @Binding var scrollTargetTimeUs: Int64?
     @Binding var selectedClipId: String?
+    var playbackState: TimelineState.PlaybackState = .idle
     let onAddSelection: (TrackKind, ImportSource) -> Void
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
@@ -84,7 +85,7 @@ struct TimelineSectionView: View {
                             .padding(.trailing, centerX)
 
                             ScrollTargetMarkerView(
-                                targetTimeUs: scrollTargetTimeUs,
+                                targetTimeUs: activeScrollTargetTimeUs,
                                 pixelsPerSecond: pixelsPerSecond,
                                 centerX: centerX
                             )
@@ -102,7 +103,7 @@ struct TimelineSectionView: View {
                             return
                         }
                         let now = Date()
-                        if !isAutoScrolling, scrollTargetTimeUs != nil {
+                        if !isProgrammaticScrolling, scrollTargetTimeUs != nil {
                             scrollTargetTimeUs = nil
                         }
                         let minInterval: TimeInterval = 1.0 / 120
@@ -115,7 +116,7 @@ struct TimelineSectionView: View {
                         let deltaX = x - lastScrollOffsetX
                         let deltaT = now.timeIntervalSince(lastScrollTime)
                         if deltaT > 0 {
-                            if !isAutoScrolling { markUserScrolling() }
+                            if !isProgrammaticScrolling { markUserScrolling() }
                             let velocity = abs(deltaX) / deltaT
                             if velocity > 450 && !isScrollingFast {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isScrollingFast = true }
@@ -142,6 +143,18 @@ struct TimelineSectionView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                                 proxy.scrollTo(ScrollTargetMarkerView.markerId, anchor: .center)
                             }
+                        }
+                    }
+                    .onChange(of: currentTimeAtCenter) { _, _ in
+                        guard playbackState == .playing else { return }
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(ScrollTargetMarkerView.markerId, anchor: .center)
+                        }
+                    }
+                    .onChange(of: playbackState) { _, newState in
+                        guard newState == .playing else { return }
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(ScrollTargetMarkerView.markerId, anchor: .center)
                         }
                     }
                 }
@@ -387,6 +400,17 @@ struct TimelineSectionView: View {
 
     private func clampScrollTime(_ timeUs: Int64) -> Int64 {
         min(max(0, scrollableDurationUs), max(0, timeUs))
+    }
+
+    private var activeScrollTargetTimeUs: Int64? {
+        if let scrollTargetTimeUs {
+            return clampScrollTime(scrollTargetTimeUs)
+        }
+        return clampScrollTime(currentTimeAtCenter)
+    }
+
+    private var isProgrammaticScrolling: Bool {
+        isAutoScrolling || isJumpingToTarget || playbackState == .playing
     }
 
     private func addButtonTopOffset(for tracks: [Track]) -> CGFloat {

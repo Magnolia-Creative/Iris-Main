@@ -208,12 +208,35 @@ extension DatabaseManager {
                          on: "timeline_actions", columns: ["timeline_id", "created_at"])
         }
 
+        migrator.registerMigration("v3_addProjectPresentationMetadata") { db in
+            try db.alter(table: "projects") { t in
+                t.add(column: "cover_image_path", .text)
+                t.add(column: "last_accessed_at", .datetime)
+            }
+        }
+
         return migrator
     }
 }
 
 // MARK: - Media Query Helpers
 extension DatabaseManager {
+    func getProject(forMediaLibraryId mediaLibraryId: String) throws -> Project? {
+        try dbQueue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT p.*
+                FROM projects p
+                INNER JOIN media_libraries ml ON ml.project_id = p.project_id
+                WHERE ml.media_library_id = ?
+                LIMIT 1
+                """,
+                arguments: [mediaLibraryId]
+            ).map(Project.init(row:))
+        }
+    }
+
     func getMediaLibrary(forProjectId projectId: String) throws -> MediaLibrary? {
         try dbQueue.read { db in
             try MediaLibrary
@@ -332,6 +355,24 @@ extension DatabaseManager {
                 INNER JOIN media_libraries ml ON m.media_library_id = ml.media_library_id
                 WHERE ml.project_id = ?
                 ORDER BY m.created_at ASC
+                LIMIT 1
+                """,
+                arguments: [projectId]
+            ).map(Media.init(row:))
+        }
+    }
+
+    func getPreferredCoverMedia(forProjectId projectId: String) throws -> Media? {
+        try dbQueue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT m.*
+                FROM media m
+                INNER JOIN media_libraries ml ON m.media_library_id = ml.media_library_id
+                WHERE ml.project_id = ?
+                  AND m.kind IN ('photo', 'video')
+                ORDER BY m.created_at DESC
                 LIMIT 1
                 """,
                 arguments: [projectId]

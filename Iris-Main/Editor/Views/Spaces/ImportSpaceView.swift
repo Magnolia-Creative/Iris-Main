@@ -39,6 +39,7 @@ struct ImportSpaceView: View {
                 currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),
                 scrollTargetTimeUs: controller.binding(\.scrollTargetTimeUs),
                 selectedClipId: controller.binding(\.selectedClipId),
+                playbackState: state.playbackState,
                 onAddSelection: { _, _ in },
                 onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
                 onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),

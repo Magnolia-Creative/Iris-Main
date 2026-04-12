@@ -400,7 +400,7 @@ final class AgentViewModel: ObservableObject {
             model.projectID = payload.projectID?.rawValue
             model.stage = .connecting
             model.errorMessage = nil
-            model.statusMessage = "Session started. Reviewing uploaded clips."
+            model.statusMessage = "Reviewing uploaded clips."
 
         case .sessionResumed(let payload):
             model.sessionID = payload.sessionID.rawValue

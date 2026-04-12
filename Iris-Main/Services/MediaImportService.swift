@@ -197,6 +197,13 @@ class MediaImportService {
         )
 
         try db.create(media)
+        if kind != .audio {
+            _ = await ProjectCoverService.shared.ensureCover(
+                forMediaLibraryId: mediaLibraryId,
+                preferredMedia: media
+            )
+        }
+        prewarmTimelineThumbnail(for: media)
         return media
     }
 
@@ -259,6 +266,15 @@ class MediaImportService {
     }
 
     // MARK: - Private Helpers
+
+    private func prewarmTimelineThumbnail(for media: Media) {
+        guard media.kind == .video else { return }
+
+        // Start strip generation during import so timeline assembly can reuse it later.
+        Task(priority: .utility) {
+            _ = await MediaImportService.shared.generateThumbnailStrip(for: media)
+        }
+    }
 
     private func createAssetReference(from asset: PHAsset) throws -> AssetReference {
         let uri = asset.localIdentifier
@@ -325,6 +341,7 @@ class MediaImportService {
         let localURL = try copyFileToLibrary(url)
         let assetRef = try createAssetReference(from: localURL)
         if let existingMedia = try existingMedia(in: mediaLibraryId, assetRefId: assetRef.assetRefId) {
+            prewarmTimelineThumbnail(for: existingMedia)
             return existingMedia
         }
         let spec = try await extractMediaSpec(from: localURL, kind: preferredKind)
@@ -335,6 +352,13 @@ class MediaImportService {
             spec: spec
         )
         try db.create(media)
+        if preferredKind != .audio {
+            _ = await ProjectCoverService.shared.ensureCover(
+                forMediaLibraryId: mediaLibraryId,
+                preferredMedia: media
+            )
+        }
+        prewarmTimelineThumbnail(for: media)
         return media
     }
 
@@ -342,6 +366,7 @@ class MediaImportService {
         let localURL = try copyFileToLibrary(url)
         let assetRef = try createAssetReference(from: localURL)
         if let existingMedia = try existingMedia(in: mediaLibraryId, assetRefId: assetRef.assetRefId) {
+            prewarmTimelineThumbnail(for: existingMedia)
             return existingMedia
         }
         let spec = try await extractMediaSpec(from: localURL, kind: preferredKind)
@@ -353,6 +378,13 @@ class MediaImportService {
         )
 
         try db.create(finalMedia)
+        if preferredKind != .audio {
+            _ = await ProjectCoverService.shared.ensureCover(
+                forMediaLibraryId: mediaLibraryId,
+                preferredMedia: finalMedia
+            )
+        }
+        prewarmTimelineThumbnail(for: finalMedia)
         return finalMedia
     }
 

@@ -382,18 +382,11 @@ struct ClipImportSheetView: View {
 
     private var selectionBar: some View {
         HStack {
+            Spacer()
             Text("\(viewModel.model.selectedClipCount) selected")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.ds.text)
-
             Spacer()
-
-            Button(isSubmitting ? "Adding..." : addButtonTitle) {
-                submitSelection()
-            }
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(Color.ds.accentFg)
-            .disabled(canSubmit == false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
