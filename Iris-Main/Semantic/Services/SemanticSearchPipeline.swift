@@ -5,6 +5,7 @@ struct SemanticSearchConstants {
     static let chunkDurationSeconds = 4.0
     static let chunkOverlapSeconds = 0.5
     static let chunkTopK = 10
+    static let chunkMergeMinimumScore = 0.15
     static let resultsLimit = 3
     static let rangeMergeGapSeconds = 0.6
     static let indexingFrameMaximumDimension: CGFloat = 320
@@ -51,6 +52,13 @@ struct SemanticRangeCandidate {
     let confidence: Double
     let source: SemanticSearchResultSource
     let matchText: String?
+}
+
+struct MergedChunkDebugGroup {
+    let candidate: SemanticRangeCandidate
+    let chunkHits: [VectorSearchHit<VideoChunkPoint>]
+    let averageScore: Double
+    let peakScore: Double
 }
 
 final class SemanticSearchPipeline {
@@ -288,13 +296,44 @@ final class SemanticSearchPipeline {
         guard indexedChunkCount > 0 else { return [] }
 
         let queryVector = try await embeddingService.textEmbedding(for: query)
+        print(
+            "[SemanticIndex] search start query=\"\(query)\" queryDimensions=\(queryVector.count) " +
+            "videos=\(videos.count) indexedChunks=\(indexedChunkCount) chunkTopK=\(SemanticSearchConstants.chunkTopK) " +
+            "mergeMinScore=\(String(format: "%.2f", SemanticSearchConstants.chunkMergeMinimumScore))"
+        )
         let chunkHits = chunkIndex.topK(query: queryVector, limit: SemanticSearchConstants.chunkTopK)
-        guard !chunkHits.isEmpty else { return [] }
+        guard !chunkHits.isEmpty else {
+            print("[SemanticIndex] search query=\"\(query)\" produced no chunk hits")
+            return []
+        }
+        logChunkHits(chunkHits, query: query)
 
-        let candidates = TemporalRangeScorer.mergeChunkHits(
-            chunkHits,
+        let mergeEligibleChunkHits = chunkHits.filter { $0.score > SemanticSearchConstants.chunkMergeMinimumScore }
+        if mergeEligibleChunkHits.count != chunkHits.count {
+            print(
+                "[SemanticIndex] merge eligibility query=\"\(query)\" eligible=\(mergeEligibleChunkHits.count) " +
+                "excluded=\(chunkHits.count - mergeEligibleChunkHits.count) threshold=\(String(format: "%.2f", SemanticSearchConstants.chunkMergeMinimumScore))"
+            )
+        }
+        guard !mergeEligibleChunkHits.isEmpty else {
+            print(
+                "[SemanticIndex] search query=\"\(query)\" produced no merge-eligible chunk hits " +
+                "threshold=\(String(format: "%.2f", SemanticSearchConstants.chunkMergeMinimumScore))"
+            )
+            return []
+        }
+
+        let mergedGroups = TemporalRangeScorer.mergeChunkHitGroups(
+            mergeEligibleChunkHits,
+            maxGapSeconds: SemanticSearchConstants.rangeMergeGapSeconds,
+            minimumScore: SemanticSearchConstants.chunkMergeMinimumScore
+        )
+        logMergedChunkGroups(
+            mergedGroups,
+            query: query,
             maxGapSeconds: SemanticSearchConstants.rangeMergeGapSeconds
         )
+        let candidates = mergedGroups.map(\.candidate)
 
         let searchElapsed = Date().timeIntervalSince(searchStart)
         print("[SemanticIndex] Search completed. chunkHits=\(chunkHits.count) candidates=\(candidates.count) elapsed=\(String(format: "%.2f", searchElapsed))s")
@@ -303,17 +342,84 @@ final class SemanticSearchPipeline {
             .sorted { $0.confidence > $1.confidence }
             .map { $0 }
     }
+
+    private func logChunkHits(_ hits: [VectorSearchHit<VideoChunkPoint>], query: String) {
+        for (index, hit) in hits.enumerated() {
+            let chunk = hit.payload
+            print(
+                "[SemanticIndex] Chunk hit \(index + 1)/\(hits.count) query=\"\(query)\" " +
+                "video=\"\(chunk.videoName)\" window=\(formatSemanticTimestamp(chunk.startTimeSeconds))-\(formatSemanticTimestamp(chunk.endTimeSeconds)) " +
+                "center=\(formatSemanticTimestamp(chunk.centerTimeSeconds)) score=\(String(format: "%.4f", hit.score)) " +
+                "mergeEligible=\(hit.score > SemanticSearchConstants.chunkMergeMinimumScore)"
+            )
+        }
+    }
+
+    private func logMergedChunkGroups(
+        _ groups: [MergedChunkDebugGroup],
+        query: String,
+        maxGapSeconds: Double
+    ) {
+        let rankedGroups = groups.sorted { lhs, rhs in
+            if lhs.candidate.confidence == rhs.candidate.confidence {
+                return lhs.candidate.startTimeSeconds < rhs.candidate.startTimeSeconds
+            }
+            return lhs.candidate.confidence > rhs.candidate.confidence
+        }
+
+        for (index, group) in rankedGroups.enumerated() {
+            let candidate = group.candidate
+            print(
+                "[SemanticIndex] Merged range \(index + 1)/\(rankedGroups.count) query=\"\(query)\" " +
+                "video=\"\(candidate.videoName)\" window=\(formatSemanticTimestamp(candidate.startTimeSeconds))-\(formatSemanticTimestamp(candidate.endTimeSeconds)) " +
+                "confidence=\(String(format: "%.4f", candidate.confidence)) chunks=\(group.chunkHits.count) " +
+                "avgScore=\(String(format: "%.4f", group.averageScore)) peakScore=\(String(format: "%.4f", group.peakScore)) " +
+                "gapThreshold=\(String(format: "%.2f", maxGapSeconds))s"
+            )
+
+            let stitchPath = group.chunkHits.enumerated().map { memberIndex, hit in
+                let gapDescription: String
+                if memberIndex == 0 {
+                    gapDescription = "seed"
+                } else {
+                    let previousHit = group.chunkHits[memberIndex - 1]
+                    let gap = hit.payload.startTimeSeconds - previousHit.payload.endTimeSeconds
+                    gapDescription = String(format: "gap=%+.2fs", gap)
+                }
+
+                return
+                    "#\(memberIndex + 1) " +
+                    "\(formatSemanticTimestamp(hit.payload.startTimeSeconds))-\(formatSemanticTimestamp(hit.payload.endTimeSeconds)) " +
+                    "score=\(String(format: "%.4f", hit.score)) \(gapDescription)"
+            }
+            .joined(separator: " | ")
+
+            print("[SemanticIndex] Merged range \(index + 1) stitch path: \(stitchPath)")
+        }
+    }
 }
 
 enum TemporalRangeScorer {
     static func mergeChunkHits(
         _ hits: [VectorSearchHit<VideoChunkPoint>],
-        maxGapSeconds: Double
+        maxGapSeconds: Double,
+        minimumScore: Double = -.infinity
     ) -> [SemanticRangeCandidate] {
+        mergeChunkHitGroups(hits, maxGapSeconds: maxGapSeconds, minimumScore: minimumScore).map(\.candidate)
+    }
+
+    static func mergeChunkHitGroups(
+        _ hits: [VectorSearchHit<VideoChunkPoint>],
+        maxGapSeconds: Double,
+        minimumScore: Double = -.infinity
+    ) -> [MergedChunkDebugGroup] {
         guard !hits.isEmpty else { return [] }
 
-        let grouped = Dictionary(grouping: hits, by: { $0.payload.videoID })
-        var merged: [SemanticRangeCandidate] = []
+        let eligibleHits = hits.filter { $0.score > minimumScore }
+        guard !eligibleHits.isEmpty else { return [] }
+
+        let grouped = Dictionary(grouping: eligibleHits, by: { $0.payload.videoID })
+        var merged: [MergedChunkDebugGroup] = []
 
         for videoHits in grouped.values {
             let sorted = videoHits.sorted { $0.payload.startTimeSeconds < $1.payload.startTimeSeconds }
@@ -326,6 +432,7 @@ enum TemporalRangeScorer {
             var peak = first.score
             let videoName = first.payload.videoName
             let videoID = first.payload.videoID
+            var chunkHits = [first]
 
             for current in sorted.dropFirst() {
                 let gap = current.payload.startTimeSeconds - rangeEnd
@@ -334,17 +441,18 @@ enum TemporalRangeScorer {
                     scoreSum += current.score
                     scoreCount += 1
                     peak = max(peak, current.score)
+                    chunkHits.append(current)
                 } else {
-                    let confidence = ((scoreSum / Double(scoreCount)) * 0.65) + (peak * 0.35)
                     merged.append(
-                        SemanticRangeCandidate(
+                        buildMergedChunkDebugGroup(
                             videoID: videoID,
                             videoName: videoName,
                             startTimeSeconds: rangeStart,
                             endTimeSeconds: rangeEnd,
-                            confidence: confidence,
-                            source: .visual,
-                            matchText: nil
+                            chunkHits: chunkHits,
+                            scoreSum: scoreSum,
+                            scoreCount: scoreCount,
+                            peakScore: peak
                         )
                     )
                     rangeStart = current.payload.startTimeSeconds
@@ -352,23 +460,59 @@ enum TemporalRangeScorer {
                     scoreSum = current.score
                     scoreCount = 1
                     peak = current.score
+                    chunkHits = [current]
                 }
             }
 
-            let lastConfidence = ((scoreSum / Double(scoreCount)) * 0.65) + (peak * 0.35)
             merged.append(
-                SemanticRangeCandidate(
+                buildMergedChunkDebugGroup(
                     videoID: videoID,
                     videoName: videoName,
                     startTimeSeconds: rangeStart,
                     endTimeSeconds: rangeEnd,
-                    confidence: lastConfidence,
-                    source: .visual,
-                    matchText: nil
+                    chunkHits: chunkHits,
+                    scoreSum: scoreSum,
+                    scoreCount: scoreCount,
+                    peakScore: peak
                 )
             )
         }
 
         return merged
     }
+
+    private static func buildMergedChunkDebugGroup(
+        videoID: SemanticImportedVideo.ID,
+        videoName: String,
+        startTimeSeconds: Double,
+        endTimeSeconds: Double,
+        chunkHits: [VectorSearchHit<VideoChunkPoint>],
+        scoreSum: Double,
+        scoreCount: Int,
+        peakScore: Double
+    ) -> MergedChunkDebugGroup {
+        let averageScore = scoreSum / Double(max(scoreCount, 1))
+        let confidence = (averageScore * 0.65) + (peakScore * 0.35)
+        return MergedChunkDebugGroup(
+            candidate: SemanticRangeCandidate(
+                videoID: videoID,
+                videoName: videoName,
+                startTimeSeconds: startTimeSeconds,
+                endTimeSeconds: endTimeSeconds,
+                confidence: confidence,
+                source: .visual,
+                matchText: nil
+            ),
+            chunkHits: chunkHits,
+            averageScore: averageScore,
+            peakScore: peakScore
+        )
+    }
+}
+
+private func formatSemanticTimestamp(_ seconds: Double) -> String {
+    let clampedSeconds = max(0.0, seconds)
+    let totalMinutes = Int(clampedSeconds) / 60
+    let remainingSeconds = clampedSeconds - Double(totalMinutes * 60)
+    return String(format: "%02d:%05.2f", totalMinutes, remainingSeconds)
 }

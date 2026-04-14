@@ -190,10 +190,6 @@ final class ImportBrowserViewModel: ObservableObject {
         }
 
         for localKey in selectedKeys {
-            if let task = embeddingTasks[localKey] {
-                await task.value
-            }
-
             do {
                 _ = try await ensureLocalMediaAvailable(for: localKey)
             } catch {
