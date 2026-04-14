@@ -92,12 +92,12 @@ private enum TranscriptSearchScorer {
 }
 
 private actor SemanticSearchCoordinator {
-    private let frameSampler: VideoFrameSampler
+    private let frameSampler: any VideoFrameSampling
     private let pipeline: SemanticSearchPipeline
     private let thumbnailService: ThumbnailService
 
     init(
-        frameSampler: VideoFrameSampler = VideoFrameSampler(),
+        frameSampler: any VideoFrameSampling = VideoFrameSampler(),
         pipeline: SemanticSearchPipeline = SemanticSearchPipeline(),
         thumbnailService: ThumbnailService = .shared
     ) {
@@ -120,6 +120,8 @@ private actor SemanticSearchCoordinator {
                     displayName: imported.displayName,
                     durationSeconds: duration,
                     transcriptSentences: [],
+                    visualContentSignature: imported.localKey,
+                    transcriptContentSignature: "",
                     contentSignature: imported.localKey
                 )
             )
@@ -153,6 +155,12 @@ private actor SemanticSearchCoordinator {
                     displayName: fileURL.lastPathComponent,
                     durationSeconds: duration,
                     transcriptSentences: item.spec.transcriptSentences ?? [],
+                    visualContentSignature: [
+                        item.semanticSearchVisualSignature,
+                        fileURL.path,
+                        String(format: "%.3f", duration)
+                    ].joined(separator: "::"),
+                    transcriptContentSignature: item.semanticSearchTranscriptSignature,
                     contentSignature: item.semanticSearchContentSignature
                 )
             )
@@ -167,11 +175,16 @@ private actor SemanticSearchCoordinator {
 
     func buildIndex(
         videos: [SemanticImportedVideo],
+        invalidatedVideoIDs: Set<String>,
         onProgress: @escaping @Sendable (String) async -> Void,
         options: SemanticIndexBuildOptions
-    ) async throws -> Int {
-        try await pipeline.buildChunkIndex(videos: videos, onProgress: onProgress, options: options)
-        return pipeline.indexedFrameCount
+    ) async throws -> SemanticVisualIndexState {
+        try await pipeline.buildChunkIndex(
+            videos: videos,
+            invalidatedVideoIDs: invalidatedVideoIDs,
+            onProgress: onProgress,
+            options: options
+        )
     }
 
     func search(query: String, videos: [SemanticImportedVideo]) async throws -> [SemanticRangeCandidate] {
@@ -181,6 +194,10 @@ private actor SemanticSearchCoordinator {
     func prewarmEmbeddingServices() async {
         await pipeline.prewarmEmbeddingServices()
     }
+
+    func indexedVideoSignatures() -> [String: String] {
+        pipeline.indexedVideoSignatures
+    }
 }
 
 @MainActor
@@ -189,19 +206,39 @@ final class SemanticSearchViewModel: ObservableObject {
 
     @Published private(set) var model = SemanticSearchModel()
 
+    private struct PendingSyncRequest {
+        let id: Int
+        let media: [Media]
+        let autoBuildIndex: Bool
+    }
+
+    private struct PendingBuildRequest {
+        let id: Int
+        let videos: [SemanticImportedVideo]
+        let invalidatedVideoIDs: Set<String>
+        let options: SemanticIndexBuildOptions
+        let visualSignature: String
+    }
+
     private let coordinator: SemanticSearchCoordinator
     private let resultSelectionMode: SemanticSearchResultSelectionMode
     private var liveSearchTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
     private var buildTask: Task<Void, Never>?
-    private var syncTaskContentSignature: String?
-    private var syncTaskAutoBuildIndex = false
+    private var pendingSyncRequest: PendingSyncRequest?
+    private var pendingBuildRequest: PendingBuildRequest?
+    private var syncRequestCounter = 0
+    private var buildRequestCounter = 0
+    private var completedSyncRequestID = 0
+    private var completedBuildRequestID = 0
+    private var syncWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
+    private var buildWaiters: [Int: [CheckedContinuation<Void, Never>]] = [:]
     private var indexedVisualSignature: String?
-    private var indexBuildInProgressSignature: String?
+    private var indexedVideoSignatures: [String: String] = [:]
     private var hasQueuedEmbeddingPrewarm = false
 
     init(
-        frameSampler: VideoFrameSampler? = nil,
+        frameSampler: (any VideoFrameSampling)? = nil,
         pipeline: SemanticSearchPipeline? = nil,
         thumbnailService: ThumbnailService? = nil
     ) {
@@ -214,7 +251,7 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     private init(
-        frameSampler: VideoFrameSampler? = nil,
+        frameSampler: (any VideoFrameSampling)? = nil,
         pipeline: SemanticSearchPipeline? = nil,
         thumbnailService: ThumbnailService? = nil,
         resultSelectionMode: SemanticSearchResultSelectionMode
@@ -246,6 +283,12 @@ final class SemanticSearchViewModel: ObservableObject {
             liveSearchTask?.cancel()
             syncTask?.cancel()
             buildTask?.cancel()
+            syncTask = nil
+            buildTask = nil
+            pendingSyncRequest = nil
+            pendingBuildRequest = nil
+            syncWaiters.removeAll()
+            buildWaiters.removeAll()
             model.videos = []
             model.visualResults = []
             model.audioResults = []
@@ -254,7 +297,7 @@ final class SemanticSearchViewModel: ObservableObject {
             model.isImportingVideos = false
             model.importErrorMessage = nil
             indexedVisualSignature = nil
-            indexBuildInProgressSignature = nil
+            indexedVideoSignatures = [:]
             Task(priority: .utility) { [coordinator] in
                 await coordinator.reset()
             }
@@ -268,6 +311,9 @@ final class SemanticSearchViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 await coordinator.reset()
                 buildTask?.cancel()
+                buildTask = nil
+                pendingBuildRequest = nil
+                buildWaiters.removeAll()
 
                 model.videos = nextVideos
                 model.visualResults = []
@@ -278,12 +324,15 @@ final class SemanticSearchViewModel: ObservableObject {
                 model.searchErrorMessage = nil
                 model.isImportingVideos = false
                 indexedVisualSignature = nil
-                indexBuildInProgressSignature = nil
+                indexedVideoSignatures = [:]
             } catch is CancellationError {
                 return
             } catch {
                 await coordinator.reset()
                 buildTask?.cancel()
+                buildTask = nil
+                pendingBuildRequest = nil
+                buildWaiters.removeAll()
                 model.videos = []
                 model.visualResults = []
                 model.audioResults = []
@@ -292,7 +341,7 @@ final class SemanticSearchViewModel: ObservableObject {
                 model.statusMessage = "Could not load imported videos."
                 model.isImportingVideos = false
                 indexedVisualSignature = nil
-                indexBuildInProgressSignature = nil
+                indexedVideoSignatures = [:]
             }
         }
     }
@@ -311,56 +360,18 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
-        let candidateMedia = Media.deduplicatedForImportPresentation(media)
-            .filter { $0.kind == .video }
-        let queuedVideoCount = candidateMedia.count
-        let requestedContentSignature = candidateMedia.map(\.semanticSearchContentSignature).joined(separator: "|")
-
-        if let syncTask,
-           !syncTask.isCancelled,
-           syncTaskContentSignature == requestedContentSignature {
-            if syncTaskAutoBuildIndex && !autoBuildIndex {
-                EditorDebugTrace.log(
-                    "SemanticSearchViewModel",
-                    "ignoring lower-priority sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
-                )
-                print(
-                    "[SemanticIndex] Ignoring passive sync because active build sync is already running signature=\(requestedContentSignature)"
-                )
-                return
-            }
-
-            if syncTaskAutoBuildIndex == autoBuildIndex {
-                EditorDebugTrace.log(
-                    "SemanticSearchViewModel",
-                    "ignoring duplicate sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
-                )
-                print(
-                    "[SemanticIndex] Ignoring duplicate sync request signature=\(requestedContentSignature) autoBuildIndex=\(autoBuildIndex)"
-                )
-                return
-            }
-        }
-
-        self.syncTask?.cancel()
+        let requestID = enqueueImportedMediaSyncRequest(media, autoBuildIndex: autoBuildIndex)
+        let queuedVideoCount = Media.deduplicatedForImportPresentation(media).filter { $0.kind == .video }.count
         EditorDebugTrace.log(
             "SemanticSearchViewModel",
-            "queue imported media sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
+            "queue imported media sync requestID=\(requestID) videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
         )
-        syncTaskContentSignature = requestedContentSignature
-        syncTaskAutoBuildIndex = autoBuildIndex
-        syncTask = Task(priority: .background) { [weak self] in
-            guard let self else { return }
-            await self.syncImportedMedia(media, autoBuildIndex: autoBuildIndex)
-            await MainActor.run {
-                if self.syncTaskContentSignature == requestedContentSignature,
-                   self.syncTaskAutoBuildIndex == autoBuildIndex {
-                    self.syncTask = nil
-                    self.syncTaskContentSignature = nil
-                    self.syncTaskAutoBuildIndex = false
-                }
-            }
-        }
+    }
+
+    func syncImportedMediaAndWait(_ media: [Media], autoBuildIndex: Bool) async -> Set<String> {
+        let requestID = enqueueImportedMediaSyncRequest(media, autoBuildIndex: autoBuildIndex)
+        await waitForSyncRequest(id: requestID)
+        return Set(indexedVideoSignatures.keys)
     }
 
     func syncImportedMedia(_ media: [Media], autoBuildIndex: Bool) async {
@@ -369,6 +380,7 @@ final class SemanticSearchViewModel: ObservableObject {
             .filter { $0.kind == .video }
         let nextContentSignatures = candidateMedia.map(\.semanticSearchContentSignature)
         let currentContentSignatures = model.videos.map(\.contentSignature)
+        let previousVideosByLocalKey = Dictionary(uniqueKeysWithValues: model.videos.map { ($0.localKey, $0) })
 
         EditorDebugTrace.log(
             "SemanticSearchViewModel",
@@ -381,7 +393,7 @@ final class SemanticSearchViewModel: ObservableObject {
                 "sync skipped unchangedVideos count=\(candidateMedia.count) \(EditorDebugTrace.elapsedMessage(since: syncStart))"
             )
             if autoBuildIndex {
-                await buildIndexIfNeeded(options: .backgroundImport)
+                await buildIndexIfNeeded(options: .backgroundImport, invalidatedVideoIDs: [])
                 if !model.trimmedQuery.isEmpty {
                     await runSearch()
                 }
@@ -402,13 +414,16 @@ final class SemanticSearchViewModel: ObservableObject {
             model.importErrorMessage = error.localizedDescription
             model.indexedFrameCount = 0
             indexedVisualSignature = nil
-            indexBuildInProgressSignature = nil
+            indexedVideoSignatures = [:]
             model.statusMessage = "Could not prepare videos for semantic search."
             await coordinator.reset()
             return
         }
 
-        let currentVisualSignature = visualIndexSignature(for: model.videos)
+        let invalidatedVideoIDs = Set(importedVideos.compactMap { video -> String? in
+            guard let previousVideo = previousVideosByLocalKey[video.localKey] else { return video.localKey }
+            return previousVideo.visualContentSignature == video.visualContentSignature ? nil : video.localKey
+        })
         let nextVisualSignature = visualIndexSignature(for: importedVideos)
 
         liveSearchTask?.cancel()
@@ -417,29 +432,23 @@ final class SemanticSearchViewModel: ObservableObject {
         model.audioResults = []
         model.searchErrorMessage = nil
         model.importErrorMessage = nil
-        if currentVisualSignature != nextVisualSignature {
-            buildTask?.cancel()
-            model.indexedFrameCount = 0
-            indexedVisualSignature = nil
-            indexBuildInProgressSignature = nil
-            await coordinator.reset()
-            print(
-                "[SemanticIndex] visual signature changed old=\(currentVisualSignature) new=\(nextVisualSignature) reset=true"
-            )
-        } else {
-            print(
-                "[SemanticIndex] visual signature unchanged signature=\(nextVisualSignature) preserveExistingIndex=\(model.indexedFrameCount > 0)"
-            )
-        }
 
         if importedVideos.isEmpty {
             model.statusMessage = "Import videos to search them semantically."
+            indexedVisualSignature = nil
+            indexedVideoSignatures = [:]
+            model.indexedFrameCount = 0
+            await coordinator.reset()
             EditorDebugTrace.log(
                 "SemanticSearchViewModel",
                 "sync completed with no imported videos \(EditorDebugTrace.elapsedMessage(since: syncStart))"
             )
             return
         }
+
+        print(
+            "[SemanticIndex] visual signature updated next=\(nextVisualSignature) invalidatedVideoIDs=\(invalidatedVideoIDs.sorted())"
+        )
 
         model.statusMessage = autoBuildIndex
             ? "Preparing search data..."
@@ -455,7 +464,7 @@ final class SemanticSearchViewModel: ObservableObject {
         )
 
         if autoBuildIndex {
-            await buildIndexIfNeeded(options: .backgroundImport)
+            await buildIndexIfNeeded(options: .backgroundImport, invalidatedVideoIDs: invalidatedVideoIDs)
             if !model.trimmedQuery.isEmpty {
                 await runSearch()
             }
@@ -489,61 +498,14 @@ final class SemanticSearchViewModel: ObservableObject {
         liveSearchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled, let self else { return }
-            await self.buildIndexIfNeeded(options: .interactive)
+            await self.buildIndexIfNeeded(options: .interactive, invalidatedVideoIDs: [])
             guard !Task.isCancelled else { return }
             await self.runSearch()
         }
     }
 
     func buildIndex() async {
-        await buildIndex(options: .interactive)
-    }
-
-    private func buildIndex(options: SemanticIndexBuildOptions) async {
-        guard model.canBuildIndex else { return }
-        let videos = model.videos
-        let requestedVisualSignature = visualIndexSignature(for: videos)
-        guard !requestedVisualSignature.isEmpty else { return }
-        print("[SemanticIndex] Starting chunk index build for \(videos.count) video(s)")
-        model.isBuildingIndex = true
-        model.searchErrorMessage = nil
-        model.visualResults = []
-        model.audioResults = []
-        indexBuildInProgressSignature = requestedVisualSignature
-
-        do {
-            let indexedFrameCount = try await coordinator.buildIndex(videos: videos, onProgress: { message in
-                await MainActor.run {
-                    self.model.statusMessage = message
-                }
-            }, options: options)
-            guard requestedVisualSignature == visualIndexSignature(for: model.videos) else {
-                model.isBuildingIndex = false
-                indexBuildInProgressSignature = nil
-                return
-            }
-            model.indexedFrameCount = indexedFrameCount
-            indexedVisualSignature = requestedVisualSignature
-            indexBuildInProgressSignature = nil
-            model.statusMessage = "Index built. Enter a query to find clip ranges."
-            print(
-                "[SemanticIndex] Index build succeeded. indexedFrameCount=\(model.indexedFrameCount) signature=\(requestedVisualSignature)"
-            )
-        } catch is CancellationError {
-            model.isBuildingIndex = false
-            indexBuildInProgressSignature = nil
-            return
-        } catch {
-            print("[SemanticIndex] Index build failed with error: \(error)")
-            print("[SemanticIndex] Error description: \(error.localizedDescription)")
-            model.searchErrorMessage = error.localizedDescription
-            model.statusMessage = "Index build failed."
-            model.indexedFrameCount = 0
-            indexedVisualSignature = nil
-            indexBuildInProgressSignature = nil
-        }
-
-        model.isBuildingIndex = false
+        await buildIndexIfNeeded(options: .interactive, invalidatedVideoIDs: [])
     }
 
     func runSearch() async {
@@ -629,32 +591,213 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     private func buildIndexIfNeeded() async {
-        await buildIndexIfNeeded(options: .interactive)
+        await buildIndexIfNeeded(options: .interactive, invalidatedVideoIDs: [])
     }
 
-    private func buildIndexIfNeeded(options: SemanticIndexBuildOptions) async {
+    private func buildIndexIfNeeded(options: SemanticIndexBuildOptions, invalidatedVideoIDs: Set<String>) async {
         guard !model.videos.isEmpty else { return }
         let requestedVisualSignature = visualIndexSignature(for: model.videos)
         guard !requestedVisualSignature.isEmpty else { return }
-        if indexBuildInProgressSignature == requestedVisualSignature, let buildTask {
-            print("[SemanticIndex] Awaiting existing build; index build already in progress signature=\(requestedVisualSignature)")
-            await buildTask.value
-            return
-        }
         if indexedVisualSignature == requestedVisualSignature, model.indexedFrameCount > 0 {
             print("[SemanticIndex] Skipping rebuild; index already available signature=\(requestedVisualSignature)")
             return
         }
-        buildTask?.cancel()
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.buildIndex(options: options)
-            if self.indexBuildInProgressSignature == nil {
-                self.buildTask = nil
-            }
+        let requestID = enqueueBuildRequest(
+            videos: model.videos,
+            invalidatedVideoIDs: invalidatedVideoIDs,
+            options: options,
+            visualSignature: requestedVisualSignature
+        )
+        await waitForBuildRequest(id: requestID)
+    }
+
+    private func enqueueImportedMediaSyncRequest(_ media: [Media], autoBuildIndex: Bool) -> Int {
+        syncRequestCounter += 1
+        let requestID = syncRequestCounter
+        if let existingPendingSyncRequest = pendingSyncRequest {
+            pendingSyncRequest = PendingSyncRequest(
+                id: requestID,
+                media: media,
+                autoBuildIndex: existingPendingSyncRequest.autoBuildIndex || autoBuildIndex
+            )
+        } else {
+            pendingSyncRequest = PendingSyncRequest(id: requestID, media: media, autoBuildIndex: autoBuildIndex)
         }
-        buildTask = task
-        await task.value
+        startNextSyncIfNeeded()
+        return requestID
+    }
+
+    private func startNextSyncIfNeeded() {
+        guard syncTask == nil, let request = pendingSyncRequest else { return }
+        pendingSyncRequest = nil
+        syncTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performSyncLoop(startingWith: request)
+        }
+    }
+
+    private func performSyncLoop(startingWith initialRequest: PendingSyncRequest) async {
+        var request = initialRequest
+
+        while true {
+            await syncImportedMedia(request.media, autoBuildIndex: request.autoBuildIndex)
+            completedSyncRequestID = max(completedSyncRequestID, request.id)
+            resumeSyncWaiters(for: request.id)
+
+            guard let nextRequest = pendingSyncRequest else { break }
+            pendingSyncRequest = nil
+            request = nextRequest
+        }
+
+        syncTask = nil
+        startNextSyncIfNeeded()
+    }
+
+    private func waitForSyncRequest(id: Int) async {
+        if completedSyncRequestID >= id { return }
+        await withCheckedContinuation { continuation in
+            syncWaiters[id, default: []].append(continuation)
+        }
+    }
+
+    private func resumeSyncWaiters(for completedID: Int) {
+        let waiterIDs = syncWaiters.keys.filter { $0 <= completedID }.sorted()
+        for waiterID in waiterIDs {
+            let waiters = syncWaiters.removeValue(forKey: waiterID) ?? []
+            waiters.forEach { $0.resume() }
+        }
+    }
+
+    private func enqueueBuildRequest(
+        videos: [SemanticImportedVideo],
+        invalidatedVideoIDs: Set<String>,
+        options: SemanticIndexBuildOptions,
+        visualSignature: String
+    ) -> Int {
+        buildRequestCounter += 1
+        let requestID = buildRequestCounter
+        let request = PendingBuildRequest(
+            id: requestID,
+            videos: videos,
+            invalidatedVideoIDs: invalidatedVideoIDs,
+            options: options,
+            visualSignature: visualSignature
+        )
+        if let existingPendingBuildRequest = pendingBuildRequest {
+            let mergedInvalidatedVideoIDs = existingPendingBuildRequest.invalidatedVideoIDs.union(invalidatedVideoIDs)
+            let preferredOptions = mergedBuildOptions(existingPendingBuildRequest.options, options)
+            self.pendingBuildRequest = PendingBuildRequest(
+                id: requestID,
+                videos: videos,
+                invalidatedVideoIDs: mergedInvalidatedVideoIDs,
+                options: preferredOptions,
+                visualSignature: visualSignature
+            )
+        } else {
+            pendingBuildRequest = request
+        }
+        startNextBuildIfNeeded()
+        return requestID
+    }
+
+    private func startNextBuildIfNeeded() {
+        guard buildTask == nil, let request = pendingBuildRequest else { return }
+        pendingBuildRequest = nil
+        buildTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performBuildLoop(startingWith: request)
+        }
+    }
+
+    private func performBuildLoop(startingWith initialRequest: PendingBuildRequest) async {
+        var request = initialRequest
+
+        while true {
+            await executeBuild(request)
+            completedBuildRequestID = max(completedBuildRequestID, request.id)
+            resumeBuildWaiters(for: request.id)
+
+            guard let nextRequest = pendingBuildRequest else { break }
+            pendingBuildRequest = nil
+            request = nextRequest
+        }
+
+        buildTask = nil
+        startNextBuildIfNeeded()
+    }
+
+    private func waitForBuildRequest(id: Int) async {
+        if completedBuildRequestID >= id { return }
+        await withCheckedContinuation { continuation in
+            buildWaiters[id, default: []].append(continuation)
+        }
+    }
+
+    private func resumeBuildWaiters(for completedID: Int) {
+        let waiterIDs = buildWaiters.keys.filter { $0 <= completedID }.sorted()
+        for waiterID in waiterIDs {
+            let waiters = buildWaiters.removeValue(forKey: waiterID) ?? []
+            waiters.forEach { $0.resume() }
+        }
+    }
+
+    private func executeBuild(_ request: PendingBuildRequest) async {
+        guard !request.videos.isEmpty else { return }
+        if indexedVisualSignature == request.visualSignature, model.indexedFrameCount > 0 {
+            return
+        }
+
+        print("[SemanticIndex] Starting chunk index build for \(request.videos.count) video(s)")
+        model.isBuildingIndex = true
+        model.searchErrorMessage = nil
+        model.visualResults = []
+        model.audioResults = []
+
+        do {
+            let buildState = try await coordinator.buildIndex(
+                videos: request.videos,
+                invalidatedVideoIDs: request.invalidatedVideoIDs,
+                onProgress: { message in
+                    await MainActor.run {
+                        self.model.statusMessage = message
+                    }
+                },
+                options: request.options
+            )
+            model.indexedFrameCount = buildState.indexedFrameCount
+            indexedVideoSignatures = buildState.indexedVideoSignatures
+
+            if request.visualSignature == visualIndexSignature(for: model.videos) {
+                indexedVisualSignature = request.visualSignature
+            }
+
+            model.statusMessage = "Index built. Enter a query to find clip ranges."
+            print(
+                "[SemanticIndex] Index build succeeded. indexedFrameCount=\(model.indexedFrameCount) signature=\(request.visualSignature)"
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            print("[SemanticIndex] Index build failed with error: \(error)")
+            print("[SemanticIndex] Error description: \(error.localizedDescription)")
+            model.searchErrorMessage = error.localizedDescription
+            model.statusMessage = "Index build failed."
+            model.indexedFrameCount = 0
+            indexedVisualSignature = nil
+            indexedVideoSignatures = [:]
+        }
+
+        model.isBuildingIndex = false
+    }
+
+    private func mergedBuildOptions(
+        _ lhs: SemanticIndexBuildOptions,
+        _ rhs: SemanticIndexBuildOptions
+    ) -> SemanticIndexBuildOptions {
+        SemanticIndexBuildOptions(
+            frameEmbeddingConcurrency: max(lhs.frameEmbeddingConcurrency, rhs.frameEmbeddingConcurrency),
+            embeddingPriority: lhs.embeddingPriority == .utility || rhs.embeddingPriority == .utility ? .utility : .background
+        )
     }
 
     private func logSearchResults(
@@ -686,13 +829,7 @@ final class SemanticSearchViewModel: ObservableObject {
 
     private func visualIndexSignature(for videos: [SemanticImportedVideo]) -> String {
         videos
-            .map { video in
-                [
-                    video.localKey,
-                    video.fileURL.path,
-                    String(format: "%.3f", video.durationSeconds)
-                ].joined(separator: "::")
-            }
+            .map(\.visualContentSignature)
             .joined(separator: "|")
     }
 

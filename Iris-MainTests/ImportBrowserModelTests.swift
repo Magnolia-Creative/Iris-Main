@@ -44,6 +44,7 @@ struct ImportBrowserModelTests {
                 isSelected: true,
                 isCommitted: true,
                 embeddingState: .succeeded("Ready"),
+                transcriptState: .succeeded("Ready"),
                 uploadState: .succeeded("Ready"),
                 commitmentStatus: "Committed"
             )
@@ -69,6 +70,7 @@ struct ImportBrowserModelTests {
                 isSelected: true,
                 isCommitted: true,
                 embeddingState: .succeeded("Ready"),
+                transcriptState: .succeeded("Ready"),
                 uploadState: .succeeded("Ready"),
                 commitmentStatus: "Committed"
             )

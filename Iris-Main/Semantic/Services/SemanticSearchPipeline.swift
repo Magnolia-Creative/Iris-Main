@@ -38,6 +38,11 @@ struct VideoChunkPoint: Hashable {
     let centerTimeSeconds: Double
 }
 
+struct SemanticVisualIndexState {
+    let indexedFrameCount: Int
+    let indexedVideoSignatures: [String: String]
+}
+
 struct SemanticRangeCandidate {
     let videoID: SemanticImportedVideo.ID
     let videoName: String
@@ -50,14 +55,15 @@ struct SemanticRangeCandidate {
 
 final class SemanticSearchPipeline {
     private let embeddingService: MobileCLIPEmbeddingProviding
-    private let frameSampler: VideoFrameSampler
+    private let frameSampler: any VideoFrameSampling
 
     private var chunkIndex = LocalVectorIndex<VideoChunkPoint>()
     private var indexedChunkCount = 0
+    private var cachedVideoEntries: [String: CachedVideoChunkIndex] = [:]
 
     init(
         embeddingService: MobileCLIPEmbeddingProviding = MobileCLIPEmbeddingPool.shared,
-        frameSampler: VideoFrameSampler = VideoFrameSampler()
+        frameSampler: any VideoFrameSampling = VideoFrameSampler()
     ) {
         self.embeddingService = embeddingService
         self.frameSampler = frameSampler
@@ -65,6 +71,15 @@ final class SemanticSearchPipeline {
 
     var indexedFrameCount: Int {
         indexedChunkCount
+    }
+
+    var indexedVideoSignatures: [String: String] {
+        cachedVideoEntries.mapValues(\.signature)
+    }
+
+    private struct CachedVideoChunkIndex {
+        let signature: String
+        let entries: [VectorEntry<VideoChunkPoint>]
     }
 
     private func chunkPoints(for video: SemanticImportedVideo) -> [VideoChunkPoint] {
@@ -163,6 +178,7 @@ final class SemanticSearchPipeline {
     func reset() {
         chunkIndex.reset()
         indexedChunkCount = 0
+        cachedVideoEntries.removeAll()
     }
 
     func prewarmEmbeddingServices() async {
@@ -172,64 +188,97 @@ final class SemanticSearchPipeline {
 
     func buildChunkIndex(
         videos: [SemanticImportedVideo],
+        invalidatedVideoIDs: Set<String>,
         onProgress: @escaping @Sendable (String) async -> Void,
         options: SemanticIndexBuildOptions = .interactive
-    ) async throws {
+    ) async throws -> SemanticVisualIndexState {
         let buildStart = Date()
-        reset()
-        guard !videos.isEmpty else { return }
-        print("[SemanticIndex] buildChunkIndex called with \(videos.count) video(s)")
+        guard !videos.isEmpty else {
+            reset()
+            return SemanticVisualIndexState(indexedFrameCount: 0, indexedVideoSignatures: [:])
+        }
+        print("[SemanticIndex] buildChunkIndex called with \(videos.count) video(s) invalidated=\(invalidatedVideoIDs.count)")
 
+        let activeVideoIDs = Set(videos.map(\.id))
+        cachedVideoEntries = cachedVideoEntries.filter { activeVideoIDs.contains($0.key) }
+
+        let videosToRebuild = videos.filter { video in
+            invalidatedVideoIDs.contains(video.id)
+                || cachedVideoEntries[video.id]?.signature != video.visualContentSignature
+        }
+
+        for (videoIndex, video) in videosToRebuild.enumerated() {
+            try Task.checkCancellation()
+            let videoStart = Date()
+            print("[SemanticIndex] Building chunks for video \(videoIndex + 1)/\(videosToRebuild.count): \(video.displayName), duration=\(video.durationSeconds)s")
+            await onProgress("Indexing \(video.displayName) (\(videoIndex + 1)/\(max(videosToRebuild.count, 1)))...")
+            let entries = try await buildChunkEntries(for: video, options: options)
+            cachedVideoEntries[video.id] = CachedVideoChunkIndex(
+                signature: video.visualContentSignature,
+                entries: entries
+            )
+            let videoElapsed = Date().timeIntervalSince(videoStart)
+            print("[SemanticIndex] Finished video \(video.displayName). cachedChunks=\(entries.count) elapsed=\(String(format: "%.2f", videoElapsed))s")
+        }
+
+        rebuildMergedIndex(for: videos)
+        let buildElapsed = Date().timeIntervalSince(buildStart)
+        print("[SemanticIndex] Chunk index finalized. totalChunks=\(indexedChunkCount) elapsed=\(String(format: "%.2f", buildElapsed))s")
+        await onProgress("Chunk index ready with \(indexedChunkCount) chunks.")
+        return SemanticVisualIndexState(
+            indexedFrameCount: indexedChunkCount,
+            indexedVideoSignatures: indexedVideoSignatures
+        )
+    }
+
+    private func buildChunkEntries(
+        for video: SemanticImportedVideo,
+        options: SemanticIndexBuildOptions
+    ) async throws -> [VectorEntry<VideoChunkPoint>] {
+        let chunks = chunkPoints(for: video)
+        let centerTimestamps = chunks.map(\.centerTimeSeconds)
+        let frames = try await frameSampler.sampleFrames(
+            videoURL: video.fileURL,
+            atTimestamps: centerTimestamps,
+            maximumDimension: SemanticSearchConstants.indexingFrameMaximumDimension
+        )
+        print("[SemanticIndex] Sampled \(frames.count) chunk center frame(s) for \(video.displayName)")
+
+        let frameByTimestamp = Dictionary(uniqueKeysWithValues: frames.map { ($0.timestampSeconds, $0) })
+        let availableChunks = chunks.compactMap { chunk -> (chunk: VideoChunkPoint, frame: SampledVideoFrame)? in
+            guard let frame = frameByTimestamp[chunk.centerTimeSeconds] else { return nil }
+            return (chunk, frame)
+        }
+
+        let embeddedFrames = try await embedFrames(
+            availableChunks.map(\.frame),
+            maxConcurrency: options.frameEmbeddingConcurrency,
+            priority: options.embeddingPriority
+        )
+        try Task.checkCancellation()
+        await Task.yield()
+
+        let chunkByCenter = Dictionary(uniqueKeysWithValues: availableChunks.map { ($0.chunk.centerTimeSeconds, $0.chunk) })
+        return embeddedFrames.compactMap { item in
+            guard let chunk = chunkByCenter[item.frame.timestampSeconds] else { return nil }
+            return VectorEntry(vector: item.embedding, payload: chunk)
+        }
+    }
+
+    private func rebuildMergedIndex(for videos: [SemanticImportedVideo]) {
         var index = LocalVectorIndex<VideoChunkPoint>()
         var totalChunks = 0
 
-        for (videoIndex, video) in videos.enumerated() {
-            try Task.checkCancellation()
-            let videoStart = Date()
-            print("[SemanticIndex] Building chunks for video \(videoIndex + 1)/\(videos.count): \(video.displayName), duration=\(video.durationSeconds)s")
-            await onProgress("Indexing \(video.displayName) (\(videoIndex + 1)/\(videos.count))...")
-
-            let chunks = chunkPoints(for: video)
-            let centerTimestamps = chunks.map(\.centerTimeSeconds)
-            let frames = try await frameSampler.sampleFrames(
-                videoURL: video.fileURL,
-                atTimestamps: centerTimestamps,
-                maximumDimension: SemanticSearchConstants.indexingFrameMaximumDimension
-            )
-            print("[SemanticIndex] Sampled \(frames.count) chunk center frame(s) for \(video.displayName)")
-
-            let frameByTimestamp = Dictionary(uniqueKeysWithValues: frames.map { ($0.timestampSeconds, $0) })
-            let availableChunks = chunks.compactMap { chunk -> (chunk: VideoChunkPoint, frame: SampledVideoFrame)? in
-                guard let frame = frameByTimestamp[chunk.centerTimeSeconds] else { return nil }
-                return (chunk, frame)
-            }
-
-            let embeddedFrames = try await embedFrames(
-                availableChunks.map(\.frame),
-                maxConcurrency: options.frameEmbeddingConcurrency,
-                priority: options.embeddingPriority
-            )
-            try Task.checkCancellation()
-            await Task.yield()
-
-            let chunkByCenter = Dictionary(uniqueKeysWithValues: availableChunks.map { ($0.chunk.centerTimeSeconds, $0.chunk) })
-            for item in embeddedFrames {
-                guard let chunk = chunkByCenter[item.frame.timestampSeconds] else { continue }
-                index.add(
-                    vector: item.embedding,
-                    payload: chunk
-                )
+        for video in videos {
+            guard let cachedVideo = cachedVideoEntries[video.id] else { continue }
+            for entry in cachedVideo.entries {
+                index.add(vector: entry.vector, payload: entry.payload)
                 totalChunks += 1
             }
-            let videoElapsed = Date().timeIntervalSince(videoStart)
-            print("[SemanticIndex] Finished video \(video.displayName). runningChunkTotal=\(totalChunks) elapsed=\(String(format: "%.2f", videoElapsed))s")
         }
 
         chunkIndex = index
         indexedChunkCount = totalChunks
-        let buildElapsed = Date().timeIntervalSince(buildStart)
-        print("[SemanticIndex] Chunk index finalized. totalChunks=\(totalChunks) elapsed=\(String(format: "%.2f", buildElapsed))s")
-        await onProgress("Chunk index ready with \(totalChunks) chunks.")
     }
 
     func search(query: String, videos: [SemanticImportedVideo]) async throws -> [SemanticRangeCandidate] {

@@ -115,6 +115,7 @@ struct ImportClipProcessingItem: Identifiable, Equatable {
     var isSelected = true
     var isCommitted = false
     var embeddingState: ImportClipWorkState = .idle
+    var transcriptState: ImportClipWorkState = .idle
     var uploadState: ImportClipWorkState = .idle
     var commitmentStatus = "Waiting to confirm selection"
 

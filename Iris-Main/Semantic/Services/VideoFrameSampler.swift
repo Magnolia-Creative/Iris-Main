@@ -7,6 +7,15 @@ struct SampledVideoFrame {
     let image: CGImage
 }
 
+protocol VideoFrameSampling: Sendable {
+    func loadDurationSeconds(videoURL: URL) async throws -> Double
+    func sampleFrames(
+        videoURL: URL,
+        atTimestamps timestamps: [Double],
+        maximumDimension: CGFloat?
+    ) async throws -> [SampledVideoFrame]
+}
+
 enum VideoFrameSamplerError: LocalizedError {
     case invalidDuration
     case mediaNotPlayable
@@ -30,7 +39,7 @@ enum VideoFrameSamplerError: LocalizedError {
     }
 }
 
-struct VideoFrameSampler {
+struct VideoFrameSampler: VideoFrameSampling {
     func loadDurationSeconds(videoURL: URL) async throws -> Double {
         let asset = AVURLAsset(url: videoURL)
         let duration = try await asset.load(.duration)

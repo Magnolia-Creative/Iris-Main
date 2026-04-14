@@ -11,6 +11,8 @@ struct SemanticImportedVideo: Identifiable, Equatable {
     let displayName: String
     let durationSeconds: Double
     let transcriptSentences: [MediaTranscriptSentence]
+    let visualContentSignature: String
+    let transcriptContentSignature: String
     let contentSignature: String
 
     var id: String { localKey }
@@ -57,7 +59,7 @@ struct SemanticSearchModel {
     }
 
     var canBuildIndex: Bool {
-        hasVideos && !isImportingVideos && !isBuildingIndex && !isSearching
+        hasVideos && !isImportingVideos && !isBuildingIndex
     }
 
     var canSearch: Bool {

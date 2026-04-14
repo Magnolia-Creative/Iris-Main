@@ -56,13 +56,27 @@ struct Media: Codable, Identifiable, FetchableRecord, PersistableRecord {
         "\(kind.rawValue)::\(assetRefId)"
     }
 
-    var semanticSearchContentSignature: String {
+    var semanticSearchVisualSignature: String {
         [
             mediaId,
-            updatedAt.timeIntervalSince1970.formatted(.number.precision(.fractionLength(3))),
+            kind.rawValue,
+            assetRefId,
+            spec.duration.map { String(format: "%.3f", $0) } ?? ""
+        ].joined(separator: "::")
+    }
+
+    var semanticSearchTranscriptSignature: String {
+        [
             spec.transcriptID ?? "",
             String(spec.transcriptSentences?.count ?? 0),
             spec.transcriptFullText ?? ""
+        ].joined(separator: "::")
+    }
+
+    var semanticSearchContentSignature: String {
+        [
+            semanticSearchVisualSignature,
+            semanticSearchTranscriptSignature
         ].joined(separator: "::")
     }
 

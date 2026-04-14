@@ -58,6 +58,13 @@ struct ProjectClipProcessingService {
         return try decoder.decode(IngestResponse.self, from: data)
     }
 
+    func fetchSessionStatus(sessionID: String) async throws -> IngestResponse {
+        let endpoint = AppConfiguration.sessionStatusEndpoint(sessionID: sessionID)
+        let (data, response) = try await session.data(from: endpoint)
+        try validate(response: response, data: data)
+        return try decoder.decode(IngestResponse.self, from: data)
+    }
+
     @discardableResult
     func cancelClip(localKey: String, remoteSession: RemoteImportSession) async throws -> CancelClipResponse {
         let endpoint = AppConfiguration.projectClipCancelEndpoint(

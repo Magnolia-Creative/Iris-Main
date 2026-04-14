@@ -17,8 +17,10 @@ final class ImportBrowserViewModel: ObservableObject {
     private var didLoadLibrary = false
     private var assetLookup: [String: PHAsset] = [:]
     private var commitmentTasks: [String: Task<Void, Never>] = [:]
+    private var localMediaTasks: [String: Task<String, Error>] = [:]
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
     private var transcriptionTasks: [String: Task<Void, Never>] = [:]
+    private var sessionStatusPollTask: Task<Void, Never>?
     private var pendingUploadKeys: Set<String> = []
     private var uploadFlushTask: Task<Void, Never>?
     private var filenameCache: [String: String] = [:]
@@ -45,8 +47,10 @@ final class ImportBrowserViewModel: ObservableObject {
     deinit {
         uploadFlushTask?.cancel()
         commitmentTasks.values.forEach { $0.cancel() }
+        localMediaTasks.values.forEach { $0.cancel() }
         embeddingTasks.values.forEach { $0.cancel() }
         transcriptionTasks.values.forEach { $0.cancel() }
+        sessionStatusPollTask?.cancel()
         filenameTasks.values.forEach { $0.cancel() }
     }
 
@@ -103,11 +107,17 @@ final class ImportBrowserViewModel: ObservableObject {
             if !mode.runsEmbeddings, model.clips[index].embeddingState == .idle {
                 model.clips[index].embeddingState = .succeeded("Embeddings skipped")
             }
+            if !mode.runsEmbeddings, model.clips[index].transcriptState == .idle {
+                model.clips[index].transcriptState = .succeeded("Transcript skipped")
+            }
             if !mode.runsAgentPreprocessing, model.clips[index].uploadState == .idle {
                 model.clips[index].uploadState = .succeeded("Agent prep skipped")
             }
             if mode.runsEmbeddings, model.clips[index].isCommitted, model.clips[index].embeddingState.isSucceeded == false {
                 startEmbeddingIfNeeded(for: model.clips[index].localKey)
+            }
+            if mode.runsEmbeddings, model.clips[index].isCommitted, model.clips[index].transcriptState.isSucceeded == false {
+                startTranscriptionIfNeeded(for: model.clips[index].localKey)
             }
             if mode.runsAgentPreprocessing, model.clips[index].isCommitted, model.clips[index].remoteClipID == nil {
                 enqueueClipForUpload(localKey: model.clips[index].localKey)
@@ -138,6 +148,7 @@ final class ImportBrowserViewModel: ObservableObject {
             isSelected: true,
             isCommitted: false,
             embeddingState: model.processingMode.runsEmbeddings ? .queued("Waiting for commit") : .succeeded("Embeddings skipped"),
+            transcriptState: model.processingMode.runsEmbeddings ? .queued("Waiting for local transcript") : .succeeded("Transcript skipped"),
             uploadState: model.processingMode.runsAgentPreprocessing ? .queued("Waiting for commit") : .succeeded("Agent prep skipped"),
             commitmentStatus: "Hold selection to begin processing"
         )
@@ -184,7 +195,7 @@ final class ImportBrowserViewModel: ObservableObject {
             }
 
             do {
-                try await ensureLocalMediaAvailable(for: localKey)
+                _ = try await ensureLocalMediaAvailable(for: localKey)
             } catch {
                 updateClip(localKey: localKey) { clip in
                     clip.embeddingState = .failed(error.localizedDescription)
@@ -203,6 +214,8 @@ final class ImportBrowserViewModel: ObservableObject {
     func cancelClip(localKey: String, removeFromSelection: Bool = true) async {
         commitmentTasks[localKey]?.cancel()
         commitmentTasks[localKey] = nil
+        localMediaTasks[localKey]?.cancel()
+        localMediaTasks[localKey] = nil
         embeddingTasks[localKey]?.cancel()
         embeddingTasks[localKey] = nil
         transcriptionTasks[localKey]?.cancel()
@@ -214,12 +227,12 @@ final class ImportBrowserViewModel: ObservableObject {
 
         if let localMediaID = clip.localMediaID {
             try? db.delete(Media.self, id: localMediaID, keyColumn: "media_id")
-            await resyncSemanticIndexIfNeeded()
+            _ = await resyncSemanticIndexIfNeeded(autoBuildIndex: true)
         }
 
         if let remoteSession = model.remoteSession,
            clip.remoteClipID != nil || clip.uploadState.isRunning || clip.uploadState.isSucceeded || clip.uploadState.isFailed {
-            try? await projectClipProcessingService.cancelClip(localKey: localKey, remoteSession: remoteSession)
+            _ = try? await projectClipProcessingService.cancelClip(localKey: localKey, remoteSession: remoteSession)
         }
 
         if let url = clip.originalURL {
@@ -231,6 +244,7 @@ final class ImportBrowserViewModel: ObservableObject {
         } else {
             model.clips[index].isSelected = false
             model.clips[index].embeddingState = .cancelled
+            model.clips[index].transcriptState = .cancelled
             model.clips[index].uploadState = .cancelled
         }
 
@@ -315,7 +329,10 @@ final class ImportBrowserViewModel: ObservableObject {
             print("[ImportBrowser] commitClip: committed localKey=\(localKey) url=\(localURL.lastPathComponent)")
             refreshVisibleAssetSelectionState()
 
-            startEmbeddingIfNeeded(for: localKey)
+            if model.processingMode.runsEmbeddings {
+                startEmbeddingIfNeeded(for: localKey)
+                startTranscriptionIfNeeded(for: localKey)
+            }
             if model.processingMode.runsAgentPreprocessing {
                 enqueueClipForUpload(localKey: localKey)
             } else {
@@ -324,6 +341,7 @@ final class ImportBrowserViewModel: ObservableObject {
         } catch {
             print("[ImportBrowser] commitClip: export FAILED – \(error)")
             model.clips[index].embeddingState = .failed(error.localizedDescription)
+            model.clips[index].transcriptState = .failed(error.localizedDescription)
             model.clips[index].uploadState = .failed(error.localizedDescription)
             model.clips[index].commitmentStatus = "Export failed"
         }
@@ -343,11 +361,15 @@ final class ImportBrowserViewModel: ObservableObject {
         embeddingTasks[localKey] = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.ensureLocalMediaAvailable(for: localKey)
-                self.updateClip(localKey: localKey) { clip in
-                    clip.embeddingState = .succeeded("Embeddings queued locally")
+                let mediaID = try await self.ensureLocalMediaAvailable(for: localKey)
+                let indexedVideoIDs = await self.resyncSemanticIndexIfNeeded(autoBuildIndex: true)
+                await MainActor.run {
+                    self.updateClip(localKey: localKey) { clip in
+                        clip.embeddingState = indexedVideoIDs.contains(mediaID)
+                            ? .succeeded("Embeddings ready")
+                            : .failed("The clip was imported locally but did not finish indexing.")
+                    }
                 }
-                self.startTranscriptionIfNeeded(for: localKey)
             } catch is CancellationError {
                 await MainActor.run {
                     self.updateClip(localKey: localKey) { clip in
@@ -369,6 +391,11 @@ final class ImportBrowserViewModel: ObservableObject {
     }
 
     private func startTranscriptionIfNeeded(for localKey: String) {
+        guard model.processingMode.runsEmbeddings else { return }
+        guard let clipIndex = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else { return }
+        guard model.clips[clipIndex].originalURL != nil else { return }
+        guard model.clips[clipIndex].transcriptState.isSucceeded == false else { return }
+        model.clips[clipIndex].transcriptState = .running("Preparing local transcript")
         print("[ImportBrowser] transcript task scheduling localKey=\(localKey)")
         transcriptionTasks[localKey]?.cancel()
         transcriptionTasks[localKey] = Task(priority: .utility) { [weak self] in
@@ -380,8 +407,14 @@ final class ImportBrowserViewModel: ObservableObject {
             }
 
             do {
+                _ = try await self.ensureLocalMediaAvailable(for: localKey)
                 guard let request = try self.makeTranscriptRequest(for: localKey) else {
                     print("[ImportBrowser] transcript task skipped localKey=\(localKey)")
+                    await MainActor.run {
+                        self.updateClip(localKey: localKey) { clip in
+                            clip.transcriptState = .succeeded("Transcript ready")
+                        }
+                    }
                     return
                 }
                 let audioExtractionService = self.audioExtractionService
@@ -407,13 +440,28 @@ final class ImportBrowserViewModel: ObservableObject {
                 )
                 try self.persistTranscript(transcript, forMediaID: request.mediaID)
                 print("[ImportBrowser] transcript persisted localKey=\(localKey) mediaID=\(request.mediaID)")
-                await self.resyncSemanticIndexIfNeeded()
+                _ = await self.resyncSemanticIndexIfNeeded(autoBuildIndex: false)
+                await MainActor.run {
+                    self.updateClip(localKey: localKey) { clip in
+                        clip.transcriptState = .succeeded("Transcript ready")
+                    }
+                }
                 print("[ImportBrowser] transcript resync queued localKey=\(localKey)")
             } catch is CancellationError {
                 print("[ImportBrowser] transcript task cancelled localKey=\(localKey)")
+                await MainActor.run {
+                    self.updateClip(localKey: localKey) { clip in
+                        clip.transcriptState = .cancelled
+                    }
+                }
                 return
             } catch {
                 print("[ImportBrowser] transcript request failed localKey=\(localKey): \(error)")
+                await MainActor.run {
+                    self.updateClip(localKey: localKey) { clip in
+                        clip.transcriptState = .failed(error.localizedDescription)
+                    }
+                }
             }
         }
     }
@@ -563,6 +611,11 @@ final class ImportBrowserViewModel: ObservableObject {
             }
         )
 
+        applyRemoteVideoStatuses(responseByLocalKey)
+        startRemoteStatusPollingIfNeeded()
+    }
+
+    private func applyRemoteVideoStatuses(_ responseByLocalKey: [String: IngestVideoResponse]) {
         for index in model.clips.indices {
             let localKey = model.clips[index].localKey
             guard let responseVideo = responseByLocalKey[localKey] else { continue }
@@ -570,15 +623,64 @@ final class ImportBrowserViewModel: ObservableObject {
 
             switch responseVideo.processingStatus {
             case "ready":
-                model.clips[index].uploadState = .succeeded("Ready on the server")
+                model.clips[index].uploadState = .succeeded("Uploaded to server")
             case "failed":
                 model.clips[index].uploadState = .failed(responseVideo.processingError ?? "Clip preprocessing failed.")
             case "cancelled":
                 model.clips[index].uploadState = .cancelled
-            case "processing":
-                model.clips[index].uploadState = .running("Still processing on the server")
+            case "processing", "created":
+                model.clips[index].uploadState = .succeeded("Uploaded to server")
             default:
-                model.clips[index].uploadState = .queued("Waiting for the server")
+                model.clips[index].uploadState = .queued("Waiting for server registration")
+            }
+        }
+    }
+
+    private func startRemoteStatusPollingIfNeeded() {
+        guard model.processingMode.runsAgentPreprocessing else { return }
+        guard let remoteSession = model.remoteSession else { return }
+        guard let ingestResponse = model.ingestResponse else { return }
+        guard ingestResponse.pendingClipCount ?? 0 > 0 || ingestResponse.readyForWebSocket != true else {
+            sessionStatusPollTask?.cancel()
+            sessionStatusPollTask = nil
+            return
+        }
+        guard sessionStatusPollTask == nil else { return }
+
+        sessionStatusPollTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.sessionStatusPollTask = nil
+                }
+            }
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                    let response = try await projectClipProcessingService.fetchSessionStatus(
+                        sessionID: remoteSession.sessionID
+                    )
+                    await MainActor.run {
+                        self.model.ingestResponse = response
+                        let responseByLocalKey: [String: IngestVideoResponse] = Dictionary(
+                            uniqueKeysWithValues: response.videos.compactMap { video in
+                                guard let localKey = video.localKey else { return nil }
+                                return (localKey, video)
+                            }
+                        )
+                        self.applyRemoteVideoStatuses(responseByLocalKey)
+                        self.updateStatusAndReadiness()
+                    }
+                    if (response.pendingClipCount ?? 0) == 0 {
+                        return
+                    }
+                } catch is CancellationError {
+                    return
+                } catch {
+                    print("[ImportBrowser] session status polling failed: \(error)")
+                    return
+                }
             }
         }
     }
@@ -616,17 +718,19 @@ final class ImportBrowserViewModel: ObservableObject {
         mutate(&model.clips[index])
     }
 
-    private func ensureLocalMediaAvailable(for localKey: String) async throws {
-        guard let clip = clip(for: localKey), clip.isSelected else { return }
+    private func ensureLocalMediaAvailable(for localKey: String) async throws -> String {
+        guard let clip = clip(for: localKey), clip.isSelected else {
+            throw CancellationError()
+        }
         if clip.localMediaID != nil {
             print("[ImportBrowser] local media already available localKey=\(localKey) mediaID=\(clip.localMediaID ?? "nil")")
-            updateClip(localKey: localKey) { clip in
-                clip.embeddingState = .succeeded("Embeddings queued locally")
+            if let localMediaID = clip.localMediaID {
+                return localMediaID
             }
-            if model.processingMode.runsEmbeddings {
-                await resyncSemanticIndexIfNeeded()
-            }
-            return
+            throw makeLocalLibraryImportError("The clip is missing a local media identifier.")
+        }
+        if let task = localMediaTasks[localKey] {
+            return try await task.value
         }
         guard let originalURL = clip.originalURL else {
             throw makeLocalLibraryImportError("The selected clip could not be exported locally.")
@@ -635,23 +739,37 @@ final class ImportBrowserViewModel: ObservableObject {
             throw makeLocalLibraryImportError("Could not resolve the local media library.")
         }
 
-        let imported = try await mediaImportService.importFileURLsQuick(
-            [originalURL],
-            to: mediaLibraryID,
-            preferredKind: .video
-        )
-        guard let media = imported.first else {
-            throw makeLocalLibraryImportError("The clip could not be added to the local library.")
+        let task = Task<String, Error> { [weak self] in
+            guard let self else {
+                throw NSError(
+                    domain: "ImportBrowserViewModel",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "The clip could not be added to the local library."]
+                )
+            }
+            let imported = try await mediaImportService.importFileURLsQuick(
+                [originalURL],
+                to: mediaLibraryID,
+                preferredKind: .video
+            )
+            guard let media = imported.first else {
+                throw makeLocalLibraryImportError("The clip could not be added to the local library.")
+            }
+            await MainActor.run {
+                self.updateClip(localKey: localKey) { clip in
+                    clip.localMediaID = media.mediaId
+                }
+            }
+            print(
+                "[ImportBrowser] local media imported localKey=\(localKey) mediaID=\(media.mediaId) assetRefID=\(media.assetRefId)"
+            )
+            return media.mediaId
         }
-
-        updateClip(localKey: localKey) { clip in
-            clip.localMediaID = media.mediaId
-            clip.embeddingState = .succeeded("Embeddings queued locally")
+        localMediaTasks[localKey] = task
+        defer {
+            localMediaTasks[localKey] = nil
         }
-        print(
-            "[ImportBrowser] local media imported localKey=\(localKey) mediaID=\(media.mediaId) assetRefID=\(media.assetRefId)"
-        )
-        await resyncSemanticIndexIfNeeded()
+        return try await task.value
     }
 
     private func updateStatusAndReadiness() {
@@ -667,6 +785,10 @@ final class ImportBrowserViewModel: ObservableObject {
             model.statusMessage = "Fix or remove the failed clips before starting the live session."
         } else if hasRunningWork {
             model.statusMessage = "Preparing \(committedCount) clip\(committedCount == 1 ? "" : "s") for Iris."
+        } else if model.processingMode.runsAgentPreprocessing,
+                  committedCount > 0,
+                  model.ingestResponse?.readyForWebSocket != true {
+            model.statusMessage = "Waiting for server transcripts before starting Iris."
         } else if committedCount > 0 {
             model.statusMessage = "\(committedCount) clip\(committedCount == 1 ? "" : "s") ready for Iris."
         } else if selectedCount > 0 {
@@ -722,8 +844,8 @@ final class ImportBrowserViewModel: ObservableObject {
         return try db.getMediaLibrary(forProjectId: timeline.projectId)?.id
     }
 
-    private func resyncSemanticIndexIfNeeded() async {
-        guard let mediaLibraryID = try? resolveMediaLibraryID() else { return }
+    private func resyncSemanticIndexIfNeeded(autoBuildIndex: Bool) async -> Set<String> {
+        guard let mediaLibraryID = try? resolveMediaLibraryID() else { return [] }
         let media = (try? db.getAllMedia(forLibraryId: mediaLibraryID)) ?? []
         let transcriptVideoCount = media
             .filter { $0.kind == .video && !($0.spec.transcriptSentences?.isEmpty ?? true) }
@@ -732,7 +854,7 @@ final class ImportBrowserViewModel: ObservableObject {
             "[ImportBrowser] semantic resync localLibraryID=\(mediaLibraryID) mediaCount=\(media.count) " +
             "videoTranscriptCount=\(transcriptVideoCount)"
         )
-        semanticSearchViewModel.queueImportedMediaSync(media, autoBuildIndex: true)
+        return await semanticSearchViewModel.syncImportedMediaAndWait(media, autoBuildIndex: autoBuildIndex)
     }
 
     private func makeTranscriptRequest(for localKey: String) throws -> (video: SelectedVideoAsset, mediaID: String)? {

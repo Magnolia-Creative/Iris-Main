@@ -58,6 +58,12 @@ enum AppConfiguration {
             .appending(path: "process")
     }
 
+    static func sessionStatusEndpoint(sessionID: String) -> URL {
+        backendBaseURL
+            .appending(path: "sessions")
+            .appending(path: sessionID)
+    }
+
     static func projectClipCancelEndpoint(projectID: String, localKey: String, sessionID: String) -> URL {
         var components = URLComponents(
             url: backendBaseURL
