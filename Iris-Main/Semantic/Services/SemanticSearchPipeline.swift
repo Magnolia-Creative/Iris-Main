@@ -245,7 +245,6 @@ final class SemanticSearchPipeline {
 
         return candidates
             .sorted { $0.confidence > $1.confidence }
-            .prefix(SemanticSearchConstants.resultsLimit)
             .map { $0 }
     }
 }

@@ -48,7 +48,8 @@ actor MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
 
     private func explicitModelsDirectoryPath() -> String? {
         guard let components = URLComponents(string: encoderURI) else { return nil }
-        let trimmedPath = components.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let decodedPath = components.path.removingPercentEncoding ?? components.path
+        let trimmedPath = decodedPath.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedPath.isEmpty ? nil : trimmedPath
     }
 
