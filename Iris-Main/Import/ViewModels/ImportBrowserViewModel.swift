@@ -9,6 +9,7 @@ final class ImportBrowserViewModel: ObservableObject {
     private let timelineId: String?
     private let mediaImportService: MediaImportService
     private let audioExtractionService: AudioExtractionService
+    private let clipTranscriptService: ClipTranscriptService
     private let projectClipProcessingService: ProjectClipProcessingService
     private let db: DatabaseManager
     private let semanticSearchViewModel: SemanticSearchViewModel
@@ -17,6 +18,7 @@ final class ImportBrowserViewModel: ObservableObject {
     private var assetLookup: [String: PHAsset] = [:]
     private var commitmentTasks: [String: Task<Void, Never>] = [:]
     private var embeddingTasks: [String: Task<Void, Never>] = [:]
+    private var transcriptionTasks: [String: Task<Void, Never>] = [:]
     private var pendingUploadKeys: Set<String> = []
     private var uploadFlushTask: Task<Void, Never>?
     private var filenameCache: [String: String] = [:]
@@ -26,6 +28,7 @@ final class ImportBrowserViewModel: ObservableObject {
         timelineId: String?,
         mediaImportService: MediaImportService = .shared,
         audioExtractionService: AudioExtractionService? = nil,
+        clipTranscriptService: ClipTranscriptService? = nil,
         projectClipProcessingService: ProjectClipProcessingService? = nil,
         db: DatabaseManager? = nil,
         semanticSearchViewModel: SemanticSearchViewModel = .shared
@@ -33,6 +36,7 @@ final class ImportBrowserViewModel: ObservableObject {
         self.timelineId = timelineId
         self.mediaImportService = mediaImportService
         self.audioExtractionService = audioExtractionService ?? AudioExtractionService()
+        self.clipTranscriptService = clipTranscriptService ?? ClipTranscriptService()
         self.projectClipProcessingService = projectClipProcessingService ?? ProjectClipProcessingService()
         self.db = db ?? .shared
         self.semanticSearchViewModel = semanticSearchViewModel
@@ -42,6 +46,7 @@ final class ImportBrowserViewModel: ObservableObject {
         uploadFlushTask?.cancel()
         commitmentTasks.values.forEach { $0.cancel() }
         embeddingTasks.values.forEach { $0.cancel() }
+        transcriptionTasks.values.forEach { $0.cancel() }
         filenameTasks.values.forEach { $0.cancel() }
     }
 
@@ -91,6 +96,9 @@ final class ImportBrowserViewModel: ObservableObject {
         for index in model.clips.indices {
             if !mode.runsEmbeddings, model.clips[index].embeddingState.isRunning {
                 embeddingTasks[model.clips[index].localKey]?.cancel()
+            }
+            if !mode.runsEmbeddings {
+                transcriptionTasks[model.clips[index].localKey]?.cancel()
             }
             if !mode.runsEmbeddings, model.clips[index].embeddingState == .idle {
                 model.clips[index].embeddingState = .succeeded("Embeddings skipped")
@@ -197,6 +205,8 @@ final class ImportBrowserViewModel: ObservableObject {
         commitmentTasks[localKey] = nil
         embeddingTasks[localKey]?.cancel()
         embeddingTasks[localKey] = nil
+        transcriptionTasks[localKey]?.cancel()
+        transcriptionTasks[localKey] = nil
         pendingUploadKeys.remove(localKey)
 
         guard let index = model.clips.firstIndex(where: { $0.localKey == localKey }) else { return }
@@ -334,6 +344,10 @@ final class ImportBrowserViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await self.ensureLocalMediaAvailable(for: localKey)
+                self.updateClip(localKey: localKey) { clip in
+                    clip.embeddingState = .succeeded("Embeddings queued locally")
+                }
+                self.startTranscriptionIfNeeded(for: localKey)
             } catch is CancellationError {
                 await MainActor.run {
                     self.updateClip(localKey: localKey) { clip in
@@ -350,6 +364,52 @@ final class ImportBrowserViewModel: ObservableObject {
             await MainActor.run {
                 self.embeddingTasks[localKey] = nil
                 self.updateStatusAndReadiness()
+            }
+        }
+    }
+
+    private func startTranscriptionIfNeeded(for localKey: String) {
+        print("[ImportBrowser] transcript task scheduling localKey=\(localKey)")
+        transcriptionTasks[localKey]?.cancel()
+        transcriptionTasks[localKey] = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.transcriptionTasks[localKey] = nil
+                }
+            }
+
+            do {
+                guard let request = try self.makeTranscriptRequest(for: localKey) else {
+                    print("[ImportBrowser] transcript task skipped localKey=\(localKey)")
+                    return
+                }
+                print(
+                    "[ImportBrowser] transcript task started localKey=\(localKey) mediaID=\(request.mediaID) " +
+                    "file=\(request.video.displayName)"
+                )
+                let processedAsset = try await self.audioExtractionService.extractCompressedAudio(from: request.video)
+                print(
+                    "[ImportBrowser] transcript audio extracted localKey=\(localKey) audioURL=\(processedAsset.audioURL.lastPathComponent)"
+                )
+                defer {
+                    self.cleanupProcessedAssets([processedAsset])
+                }
+
+                let transcript = try await self.clipTranscriptService.transcribe(processedAsset)
+                print(
+                    "[ImportBrowser] transcript response ready localKey=\(localKey) transcriptID=\(transcript.transcriptID) " +
+                    "sentences=\(transcript.sentences.count)"
+                )
+                try self.persistTranscript(transcript, forMediaID: request.mediaID)
+                print("[ImportBrowser] transcript persisted localKey=\(localKey) mediaID=\(request.mediaID)")
+                await self.resyncSemanticIndexIfNeeded()
+                print("[ImportBrowser] transcript resync queued localKey=\(localKey)")
+            } catch is CancellationError {
+                print("[ImportBrowser] transcript task cancelled localKey=\(localKey)")
+                return
+            } catch {
+                print("[ImportBrowser] transcript request failed localKey=\(localKey): \(error)")
             }
         }
     }
@@ -408,6 +468,7 @@ final class ImportBrowserViewModel: ObservableObject {
                 return SelectedVideoAsset(
                     localKey: clip.localKey,
                     assetLocalIdentifier: clip.assetLocalIdentifier,
+                    localMediaID: clip.localMediaID,
                     originalURL: originalURL,
                     displayName: clip.displayName,
                     fileSize: clip.fileSize,
@@ -553,7 +614,13 @@ final class ImportBrowserViewModel: ObservableObject {
 
     private func ensureLocalMediaAvailable(for localKey: String) async throws {
         guard let clip = clip(for: localKey), clip.isSelected else { return }
-        if clip.localMediaID != nil { return }
+        if clip.localMediaID != nil {
+            print("[ImportBrowser] local media already available localKey=\(localKey) mediaID=\(clip.localMediaID ?? "nil")")
+            updateClip(localKey: localKey) { clip in
+                clip.embeddingState = .succeeded("Embeddings queued locally")
+            }
+            return
+        }
         guard let originalURL = clip.originalURL else {
             throw makeLocalLibraryImportError("The selected clip could not be exported locally.")
         }
@@ -574,6 +641,9 @@ final class ImportBrowserViewModel: ObservableObject {
             clip.localMediaID = media.mediaId
             clip.embeddingState = .succeeded("Embeddings queued locally")
         }
+        print(
+            "[ImportBrowser] local media imported localKey=\(localKey) mediaID=\(media.mediaId) assetRefID=\(media.assetRefId)"
+        )
         await resyncSemanticIndexIfNeeded()
     }
 
@@ -648,7 +718,80 @@ final class ImportBrowserViewModel: ObservableObject {
     private func resyncSemanticIndexIfNeeded() async {
         guard let mediaLibraryID = try? resolveMediaLibraryID() else { return }
         let media = (try? db.getAllMedia(forLibraryId: mediaLibraryID)) ?? []
+        let transcriptVideoCount = media
+            .filter { $0.kind == .video && !($0.spec.transcriptSentences?.isEmpty ?? true) }
+            .count
+        print(
+            "[ImportBrowser] semantic resync localLibraryID=\(mediaLibraryID) mediaCount=\(media.count) " +
+            "videoTranscriptCount=\(transcriptVideoCount)"
+        )
         semanticSearchViewModel.queueImportedMediaSync(media, autoBuildIndex: true)
+    }
+
+    private func makeTranscriptRequest(for localKey: String) throws -> (video: SelectedVideoAsset, mediaID: String)? {
+        guard let clip = clip(for: localKey),
+              clip.isSelected,
+              let originalURL = clip.originalURL,
+              let mediaID = clip.localMediaID else {
+            print(
+                "[ImportBrowser] transcript request unavailable localKey=\(localKey) " +
+                "isSelected=\(clip(for: localKey)?.isSelected ?? false) mediaID=\(clip(for: localKey)?.localMediaID ?? "nil")"
+            )
+            return nil
+        }
+
+        if let media = try db.getMedia(mediaId: mediaID),
+           let transcriptSentences = media.spec.transcriptSentences,
+           !transcriptSentences.isEmpty {
+            print(
+                "[ImportBrowser] transcript request skipped existing transcript localKey=\(localKey) " +
+                "mediaID=\(mediaID) sentences=\(transcriptSentences.count)"
+            )
+            return nil
+        }
+
+        let video = SelectedVideoAsset(
+            localKey: clip.localKey,
+            assetLocalIdentifier: clip.assetLocalIdentifier,
+            localMediaID: clip.localMediaID,
+            originalURL: originalURL,
+            displayName: clip.displayName,
+            fileSize: clip.fileSize,
+            remoteClipID: clip.remoteClipID
+        )
+        print(
+            "[ImportBrowser] transcript request prepared localKey=\(localKey) mediaID=\(mediaID) " +
+            "file=\(video.displayName) originalURL=\(video.originalURL.lastPathComponent)"
+        )
+        return (video, mediaID)
+    }
+
+    private func persistTranscript(_ transcript: ClipTranscriptResponse, forMediaID mediaID: String) throws {
+        guard var media = try db.getMedia(mediaId: mediaID) else {
+            print("[ImportBrowser] transcript persist skipped missing media mediaID=\(mediaID)")
+            return
+        }
+        media.spec.transcriptID = transcript.transcriptID
+        media.spec.transcriptFullText = transcript.fullText
+        media.spec.transcriptSentences = transcript.sentences.map {
+            MediaTranscriptSentence(
+                text: $0.text,
+                startTimeSeconds: $0.start,
+                endTimeSeconds: $0.end,
+                confidence: $0.confidence,
+                speaker: $0.speaker,
+                channel: $0.channel
+            )
+        }
+        if media.spec.duration == nil, let audioDuration = transcript.audioDuration {
+            media.spec.duration = audioDuration
+        }
+        media.updatedAt = Date()
+        try db.update(media)
+        print(
+            "[ImportBrowser] transcript saved mediaID=\(mediaID) transcriptID=\(transcript.transcriptID) " +
+            "sentences=\(media.spec.transcriptSentences?.count ?? 0) fullTextChars=\(transcript.fullText.count)"
+        )
     }
 
     private func localProjectName() -> String? {

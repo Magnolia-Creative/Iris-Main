@@ -461,8 +461,21 @@ final class TimelineController: ObservableObject {
         for sourceVideos: [SelectedVideoAsset],
         mediaLibraryID: String
     ) async throws -> SeedMediaResolution {
-        let missingVideos = sourceVideos.filter { importedMediaBySeedLocalKey[$0.localKey] == nil }
-        let existingMediaByAssetIdentifier = try existingVideoMediaByAssetIdentifier(in: mediaLibraryID)
+        let libraryMedia = try db.getAllMedia(forLibraryId: mediaLibraryID)
+        let existingMediaByID = Dictionary(uniqueKeysWithValues: libraryMedia.map { ($0.mediaId, $0) })
+        let existingMediaByAssetIdentifier = try existingVideoMediaByAssetIdentifier(in: libraryMedia)
+        let missingVideos = sourceVideos.filter { video in
+            if importedMediaBySeedLocalKey[video.localKey] != nil {
+                return false
+            }
+            if let localMediaID = video.localMediaID,
+               let existingMedia = existingMediaByID[localMediaID] {
+                importedMediaBySeedLocalKey[video.localKey] = existingMedia
+                state.mediaById[existingMedia.mediaId] = existingMedia
+                return false
+            }
+            return true
+        }
         let videosNeedingImport = missingVideos.filter { video in
             guard let assetLocalIdentifier = video.assetLocalIdentifier,
                   let existingMedia = existingMediaByAssetIdentifier[assetLocalIdentifier] else {
@@ -526,8 +539,7 @@ final class TimelineController: ObservableObject {
         return rebuiltClips
     }
 
-    private func existingVideoMediaByAssetIdentifier(in mediaLibraryID: String) throws -> [String: Media] {
-        let libraryMedia = try db.getAllMedia(forLibraryId: mediaLibraryID)
+    private func existingVideoMediaByAssetIdentifier(in libraryMedia: [Media]) throws -> [String: Media] {
         var mediaByAssetIdentifier: [String: Media] = [:]
 
         for media in libraryMedia where media.kind == .video {

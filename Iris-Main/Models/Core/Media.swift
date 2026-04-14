@@ -56,6 +56,16 @@ struct Media: Codable, Identifiable, FetchableRecord, PersistableRecord {
         "\(kind.rawValue)::\(assetRefId)"
     }
 
+    var semanticSearchContentSignature: String {
+        [
+            mediaId,
+            updatedAt.timeIntervalSince1970.formatted(.number.precision(.fractionLength(3))),
+            spec.transcriptID ?? "",
+            String(spec.transcriptSentences?.count ?? 0),
+            spec.transcriptFullText ?? ""
+        ].joined(separator: "::")
+    }
+
     static func deduplicatedForImportPresentation(_ media: [Media]) -> [Media] {
         var seenKeys: Set<String> = []
 
@@ -79,4 +89,16 @@ struct MediaSpec: Codable {
     var thumbnailStripFrameCount: Int?
     var waveformPath: String?
     var waveformHeight: Int?
+    var transcriptID: String?
+    var transcriptFullText: String?
+    var transcriptSentences: [MediaTranscriptSentence]?
+}
+
+struct MediaTranscriptSentence: Codable, Equatable {
+    var text: String
+    var startTimeSeconds: Double
+    var endTimeSeconds: Double
+    var confidence: Double?
+    var speaker: String?
+    var channel: String?
 }

@@ -67,7 +67,7 @@ struct ImportPanelContent: View {
 
     @State private var filterTag: MediaFilterTag = .all
     @State private var isSemanticSearchActive = false
-    @State private var selectedSemanticVideoId: String?
+    @State private var selectedSemanticGroupSelection: SemanticGroupSelection?
     @State private var previewItem: ImportClipPreviewItem?
     @ObservedObject private var semanticVM = SemanticSearchViewModel.shared
     @FocusState private var isSearchFieldFocused: Bool
@@ -128,7 +128,7 @@ struct ImportPanelContent: View {
         .onChange(of: isSemanticSearchActive) { _, isActive in
             EditorDebugTrace.log(
                 "ImportPanelContent",
-                "semantic search toggled active=\(isActive) selectedVideo=\(selectedSemanticVideoId ?? "nil")"
+                "semantic search toggled active=\(isActive) selectedVideo=\(selectedSemanticGroupSelection?.videoID ?? "nil")"
             )
             if isActive {
                 Task { @MainActor in
@@ -138,7 +138,7 @@ struct ImportPanelContent: View {
                 }
             } else {
                 isSearchFieldFocused = false
-                selectedSemanticVideoId = nil
+                selectedSemanticGroupSelection = nil
                 semanticVM.clearSearch()
             }
         }
@@ -147,9 +147,12 @@ struct ImportPanelContent: View {
                 "ImportPanelContent",
                 "semantic results updated count=\(results.count) isSearching=\(semanticVM.model.isSearching)"
             )
-            guard let selectedSemanticVideoId else { return }
-            if !results.contains(where: { $0.videoID == selectedSemanticVideoId }) {
-                self.selectedSemanticVideoId = nil
+            guard let selectedSemanticGroupSelection else { return }
+            if !results.contains(where: {
+                $0.videoID == selectedSemanticGroupSelection.videoID
+                    && $0.source == selectedSemanticGroupSelection.source
+            }) {
+                self.selectedSemanticGroupSelection = nil
             }
         }
         .onAppear {
@@ -169,10 +172,10 @@ struct ImportPanelContent: View {
     private var topBar: some View {
         if isSemanticSearchActive {
             HStack(spacing: .spacing(.sp2)) {
-                if selectedSemanticVideoId != nil {
+                if selectedSemanticGroupSelection != nil {
                     Button {
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
-                            selectedSemanticVideoId = nil
+                            selectedSemanticGroupSelection = nil
                         }
                     } label: {
                         Image(systemName: "chevron.left")
@@ -194,7 +197,7 @@ struct ImportPanelContent: View {
                             get: { semanticVM.model.queryText },
                             set: {
                                 semanticVM.updateQuery($0)
-                                selectedSemanticVideoId = nil
+                                selectedSemanticGroupSelection = nil
                                 semanticVM.queueLiveSearch()
                             }
                         )
@@ -349,7 +352,7 @@ struct ImportPanelContent: View {
                 title: "Search failed",
                 subtitle: searchError
             )
-        } else if semanticGroups.isEmpty {
+        } else if visualSemanticGroups.isEmpty && audioSemanticGroups.isEmpty {
             semanticCenteredState(
                 icon: "tray",
                 title: "No matches found",
@@ -415,42 +418,87 @@ struct ImportPanelContent: View {
 
     private func semanticResultGrid(state: TimelineState) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
-                ForEach(semanticGroups) { group in
-                    if let media = state.mediaById[group.id] {
-                        SemanticVideoResultCell(media: media, matchCount: group.segments.count)
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
-                                    selectedSemanticVideoId = group.id
+            VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+                semanticResultSection(
+                    title: "Visual matches",
+                    groups: visualSemanticGroups,
+                    state: state
+                )
+                semanticResultSection(
+                    title: "Audio matches",
+                    groups: audioSemanticGroups,
+                    state: state
+                )
+            }
+            .padding(.horizontal, .sp3)
+            .padding(.vertical, .sp3)
+        }
+    }
+
+    @ViewBuilder
+    private func semanticResultSection(
+        title: String,
+        groups: [SemanticResultGroup],
+        state: TimelineState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            Text(title)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+
+            if groups.isEmpty {
+                Text("No matches")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
+                    ForEach(groups) { group in
+                        if let media = state.mediaById[group.id] {
+                            SemanticVideoResultCell(media: media, matchCount: group.segments.count)
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.88)) {
+                                        selectedSemanticGroupSelection = SemanticGroupSelection(
+                                            source: group.source,
+                                            videoID: group.id
+                                        )
+                                    }
                                 }
-                            }
+                        }
                     }
                 }
             }
-            .padding(.sp3)
         }
     }
 
     private func semanticRangeGrid(for group: SemanticResultGroup, state: TimelineState) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
-                ForEach(group.segments) { segment in
-                    if let media = state.mediaById[group.id] {
-                        let heroID = previewHeroID(for: media, range: segment)
-                        SemanticRangeThumbnailCell(
-                            result: segment,
-                            assetRefId: media.assetRefId,
-                            previewHeroID: heroID,
-                            previewNamespace: previewNamespace,
-                            isPreviewSourceHidden: previewItem?.heroID == heroID
-                        )
-                        .onTapGesture {
-                            presentPreview(media: media, range: segment)
+            VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+                Text(group.source == .visual ? "Visual matches" : "Audio matches")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+                    .padding(.horizontal, .sp3)
+                    .padding(.top, .sp3)
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 4)], spacing: 4) {
+                    ForEach(group.segments) { segment in
+                        if let media = state.mediaById[group.id] {
+                            let heroID = previewHeroID(for: media, range: segment)
+                            SemanticRangeThumbnailCell(
+                                result: segment,
+                                assetRefId: media.assetRefId,
+                                previewHeroID: heroID,
+                                previewNamespace: previewNamespace,
+                                isPreviewSourceHidden: previewItem?.heroID == heroID
+                            )
+                            .onTapGesture {
+                                presentPreview(media: media, range: segment)
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, .sp3)
+                .padding(.bottom, .sp3)
             }
-            .padding(.sp3)
         }
     }
 
@@ -475,11 +523,19 @@ struct ImportPanelContent: View {
         .padding(.horizontal, .sp3)
     }
 
-    private var semanticGroups: [SemanticResultGroup] {
+    private var visualSemanticGroups: [SemanticResultGroup] {
+        semanticGroups(for: semanticVM.model.visualResults)
+    }
+
+    private var audioSemanticGroups: [SemanticResultGroup] {
+        semanticGroups(for: semanticVM.model.audioResults)
+    }
+
+    private func semanticGroups(for results: [SemanticMatchRange]) -> [SemanticResultGroup] {
         var grouped: [String: [SemanticMatchRange]] = [:]
         var orderedIds: [String] = []
 
-        for result in semanticVM.model.results {
+        for result in results {
             if grouped[result.videoID] == nil {
                 orderedIds.append(result.videoID)
             }
@@ -490,14 +546,16 @@ struct ImportPanelContent: View {
             guard let results = grouped[id] else { return nil }
             return SemanticResultGroup(
                 id: id,
+                source: results.first?.source ?? .visual,
                 segments: results.sorted { $0.confidence > $1.confidence }
             )
         }
     }
 
     private var selectedGroup: SemanticResultGroup? {
-        guard let selectedSemanticVideoId else { return nil }
-        return semanticGroups.first(where: { $0.id == selectedSemanticVideoId })
+        guard let selectedSemanticGroupSelection else { return nil }
+        let groups = selectedSemanticGroupSelection.source == .visual ? visualSemanticGroups : audioSemanticGroups
+        return groups.first(where: { $0.id == selectedSemanticGroupSelection.videoID })
     }
 
     private func searchableVideos(from state: TimelineState) -> [Media] {
@@ -642,7 +700,13 @@ private struct ImportClipPreviewItem: Identifiable {
 
 private struct SemanticResultGroup: Identifiable {
     let id: String
+    let source: SemanticSearchResultSource
     let segments: [SemanticMatchRange]
+}
+
+private struct SemanticGroupSelection: Equatable {
+    let source: SemanticSearchResultSource
+    let videoID: String
 }
 
 private struct SemanticVideoResultCell: View {
@@ -696,14 +760,23 @@ private struct SemanticRangeThumbnailCell: View {
                 }
             }
             .overlay(alignment: .bottomLeading) {
-                Text("\(formatTime(result.startTimeSeconds)) - \(formatTime(result.endTimeSeconds))")
-                    .typography(.bodySmall)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, .sp2)
-                    .padding(.vertical, 3)
-                    .background(Color.black.opacity(0.72))
-                    .clipShape(Capsule())
-                    .padding(6)
+                VStack(alignment: .leading, spacing: 4) {
+                    if let matchText = result.matchText, result.source == .audio {
+                        Text(matchText)
+                            .typography(.bodySmall)
+                            .lineLimit(2)
+                            .foregroundStyle(.white)
+                    }
+
+                    Text("\(formatTime(result.startTimeSeconds)) - \(formatTime(result.endTimeSeconds))")
+                        .typography(.bodySmall)
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, .sp2)
+                .padding(.vertical, 3)
+                .background(Color.black.opacity(0.72))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+                .padding(6)
             }
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .matchedPreviewIfPresent(previewHeroID, in: previewNamespace)

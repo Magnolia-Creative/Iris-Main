@@ -44,6 +44,8 @@ struct SemanticRangeCandidate {
     let startTimeSeconds: Double
     let endTimeSeconds: Double
     let confidence: Double
+    let source: SemanticSearchResultSource
+    let matchText: String?
 }
 
 final class SemanticSearchPipeline {
@@ -286,7 +288,9 @@ enum TemporalRangeScorer {
                             videoName: videoName,
                             startTimeSeconds: rangeStart,
                             endTimeSeconds: rangeEnd,
-                            confidence: confidence
+                            confidence: confidence,
+                            source: .visual,
+                            matchText: nil
                         )
                     )
                     rangeStart = current.payload.startTimeSeconds
@@ -304,7 +308,9 @@ enum TemporalRangeScorer {
                     videoName: videoName,
                     startTimeSeconds: rangeStart,
                     endTimeSeconds: rangeEnd,
-                    confidence: lastConfidence
+                    confidence: lastConfidence,
+                    source: .visual,
+                    matchText: nil
                 )
             )
         }

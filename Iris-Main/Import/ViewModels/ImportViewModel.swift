@@ -206,6 +206,7 @@ final class ImportViewModel: ObservableObject {
         return SelectedVideoAsset(
             localKey: importedVideo.localKey,
             assetLocalIdentifier: nil,
+            localMediaID: nil,
             originalURL: importedVideo.localURL,
             displayName: importedVideo.displayName,
             fileSize: size > 0 ? size : nil,

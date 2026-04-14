@@ -17,6 +17,8 @@ struct ImportBrowserModelTests {
     @Test func selectedVideoAssetUsesLocalKeyAsStableIdentity() {
         let asset = SelectedVideoAsset(
             localKey: "local-123",
+            assetLocalIdentifier: nil,
+            localMediaID: "media-123",
             originalURL: URL(fileURLWithPath: "/tmp/clip.mov"),
             displayName: "clip.mov",
             fileSize: 42,
@@ -51,5 +53,28 @@ struct ImportBrowserModelTests {
 
         model.processingMode = .embeddingsOnly
         #expect(model.canRequestAgentStart == false)
+    }
+
+    @Test func committedVideosPreserveResolvedLocalMediaIdentity() {
+        var model = ImportBrowserModel()
+        model.clips = [
+            ImportClipProcessingItem(
+                localKey: "local-123",
+                assetLocalIdentifier: "asset-123",
+                displayName: "clip.mov",
+                originalURL: URL(fileURLWithPath: "/tmp/clip.mov"),
+                fileSize: 42,
+                localMediaID: "media-123",
+                remoteClipID: nil,
+                isSelected: true,
+                isCommitted: true,
+                embeddingState: .succeeded("Ready"),
+                uploadState: .succeeded("Ready"),
+                commitmentStatus: "Committed"
+            )
+        ]
+
+        #expect(model.committedVideos.count == 1)
+        #expect(model.committedVideos.first?.localMediaID == "media-123")
     }
 }

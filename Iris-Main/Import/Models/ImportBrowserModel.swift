@@ -155,6 +155,7 @@ struct ImportBrowserModel {
             return SelectedVideoAsset(
                 localKey: clip.localKey,
                 assetLocalIdentifier: clip.assetLocalIdentifier,
+                localMediaID: clip.localMediaID,
                 originalURL: originalURL,
                 displayName: clip.displayName,
                 fileSize: clip.fileSize,

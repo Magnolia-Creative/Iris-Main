@@ -18,6 +18,79 @@ private enum SemanticSearchResultSelectionMode {
     }
 }
 
+private enum TranscriptSearchScorer {
+    static func candidates(
+        for query: String,
+        in videos: [SemanticImportedVideo]
+    ) -> [SemanticRangeCandidate] {
+        let normalizedQuery = normalizedText(query)
+        let queryTerms = Set(normalizedQuery.split(separator: " ").map(String.init))
+        guard !normalizedQuery.isEmpty, !queryTerms.isEmpty else { return [] }
+
+        let transcriptVideoCount = videos.filter { !$0.transcriptSentences.isEmpty }.count
+        let transcriptSentenceCount = videos.reduce(into: 0) { partialResult, video in
+            partialResult += video.transcriptSentences.count
+        }
+        print(
+            "[SemanticAudioSearch] scoring query=\"\(query)\" normalized=\"\(normalizedQuery)\" " +
+            "videos=\(videos.count) transcriptVideos=\(transcriptVideoCount) transcriptSentences=\(transcriptSentenceCount)"
+        )
+
+        var matches: [SemanticRangeCandidate] = []
+        for video in videos {
+            if video.transcriptSentences.isEmpty {
+                print("[SemanticAudioSearch] video has no transcript videoID=\(video.id) name=\(video.displayName)")
+            }
+            for sentence in video.transcriptSentences {
+                let normalizedSentence = normalizedText(sentence.text)
+                guard !normalizedSentence.isEmpty else { continue }
+
+                let sentenceTerms = Set(normalizedSentence.split(separator: " ").map(String.init))
+                let sharedTermCount = queryTerms.intersection(sentenceTerms).count
+                guard sharedTermCount > 0 else { continue }
+
+                var score = Double(sharedTermCount) / Double(max(queryTerms.count, 1))
+                if normalizedSentence.contains(normalizedQuery) {
+                    score += 1.0
+                } else if queryTerms.isSubset(of: sentenceTerms) {
+                    score += 0.55
+                }
+                if let confidence = sentence.confidence {
+                    score += min(max(confidence, 0), 1) * 0.1
+                }
+
+                matches.append(
+                    SemanticRangeCandidate(
+                        videoID: video.id,
+                        videoName: video.displayName,
+                        startTimeSeconds: sentence.startTimeSeconds,
+                        endTimeSeconds: sentence.endTimeSeconds,
+                        confidence: score,
+                        source: .audio,
+                        matchText: sentence.text
+                    )
+                )
+            }
+        }
+
+        print("[SemanticAudioSearch] produced audio candidates count=\(matches.count) query=\"\(query)\"")
+        return matches.sorted { lhs, rhs in
+            if lhs.confidence == rhs.confidence {
+                return lhs.startTimeSeconds < rhs.startTimeSeconds
+            }
+            return lhs.confidence > rhs.confidence
+        }
+    }
+
+    private static func normalizedText(_ text: String) -> String {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}
+
 private actor SemanticSearchCoordinator {
     private let frameSampler: VideoFrameSampler
     private let pipeline: SemanticSearchPipeline
@@ -45,7 +118,9 @@ private actor SemanticSearchCoordinator {
                     localKey: imported.localKey,
                     fileURL: imported.localURL,
                     displayName: imported.displayName,
-                    durationSeconds: duration
+                    durationSeconds: duration,
+                    transcriptSentences: [],
+                    contentSignature: imported.localKey
                 )
             )
         }
@@ -76,7 +151,9 @@ private actor SemanticSearchCoordinator {
                     localKey: item.mediaId,
                     fileURL: fileURL,
                     displayName: fileURL.lastPathComponent,
-                    durationSeconds: duration
+                    durationSeconds: duration,
+                    transcriptSentences: item.spec.transcriptSentences ?? [],
+                    contentSignature: item.semanticSearchContentSignature
                 )
             )
         }
@@ -151,7 +228,8 @@ final class SemanticSearchViewModel: ObservableObject {
             liveSearchTask?.cancel()
             syncTask?.cancel()
             model.videos = []
-            model.results = []
+            model.visualResults = []
+            model.audioResults = []
             model.indexedFrameCount = 0
             model.statusMessage = "Import videos to build a chunk index."
             model.isImportingVideos = false
@@ -170,7 +248,8 @@ final class SemanticSearchViewModel: ObservableObject {
                 await coordinator.reset()
 
                 model.videos = nextVideos
-                model.results = []
+                model.visualResults = []
+                model.audioResults = []
                 model.indexedFrameCount = 0
                 model.statusMessage = "\(nextVideos.count) video(s) ready. Build index to search."
                 model.importErrorMessage = nil
@@ -181,7 +260,8 @@ final class SemanticSearchViewModel: ObservableObject {
             } catch {
                 await coordinator.reset()
                 model.videos = []
-                model.results = []
+                model.visualResults = []
+                model.audioResults = []
                 model.indexedFrameCount = 0
                 model.importErrorMessage = error.localizedDescription
                 model.statusMessage = "Could not load imported videos."
@@ -197,13 +277,10 @@ final class SemanticSearchViewModel: ObservableObject {
     func clearSearch() {
         liveSearchTask?.cancel()
         model.queryText = ""
-        model.results = []
+        model.visualResults = []
+        model.audioResults = []
         model.searchErrorMessage = nil
-        if model.indexedFrameCount > 0 {
-            model.statusMessage = model.videos.isEmpty
-                ? "Import videos to build a chunk index."
-                : "Index ready. Start typing to search clips."
-        }
+        model.statusMessage = readyStatusMessage()
     }
 
     func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
@@ -224,14 +301,16 @@ final class SemanticSearchViewModel: ObservableObject {
         let candidateMedia = Media.deduplicatedForImportPresentation(media)
             .filter { $0.kind == .video }
         let nextKeys = candidateMedia.map(\.mediaId)
+        let nextContentSignatures = candidateMedia.map(\.semanticSearchContentSignature)
         let currentKeys = model.videos.map(\.localKey)
+        let currentContentSignatures = model.videos.map(\.contentSignature)
 
         EditorDebugTrace.log(
             "SemanticSearchViewModel",
             "sync start candidateVideos=\(candidateMedia.count) autoBuildIndex=\(autoBuildIndex)"
         )
 
-        guard nextKeys != currentKeys else {
+        guard nextContentSignatures != currentContentSignatures else {
             EditorDebugTrace.log(
                 "SemanticSearchViewModel",
                 "sync skipped unchangedVideos count=\(candidateMedia.count) \(EditorDebugTrace.elapsedMessage(since: syncStart))"
@@ -245,6 +324,7 @@ final class SemanticSearchViewModel: ObservableObject {
             return
         }
 
+        let hasSameVideoKeys = nextKeys == currentKeys
         let importedVideos: [SemanticImportedVideo]
         do {
             importedVideos = try await coordinator.resolveSearchableVideos(from: candidateMedia)
@@ -252,7 +332,8 @@ final class SemanticSearchViewModel: ObservableObject {
             return
         } catch {
             model.videos = []
-            model.results = []
+            model.visualResults = []
+            model.audioResults = []
             model.searchErrorMessage = error.localizedDescription
             model.importErrorMessage = error.localizedDescription
             model.indexedFrameCount = 0
@@ -264,12 +345,15 @@ final class SemanticSearchViewModel: ObservableObject {
 
         liveSearchTask?.cancel()
         model.videos = importedVideos
-        model.results = []
+        model.visualResults = []
+        model.audioResults = []
         model.searchErrorMessage = nil
         model.importErrorMessage = nil
-        model.indexedFrameCount = 0
-        indexedVideoKeys = []
-        await coordinator.reset()
+        if !hasSameVideoKeys {
+            model.indexedFrameCount = 0
+            indexedVideoKeys = []
+            await coordinator.reset()
+        }
 
         if importedVideos.isEmpty {
             model.statusMessage = "Import videos to search them semantically."
@@ -281,8 +365,17 @@ final class SemanticSearchViewModel: ObservableObject {
         }
 
         model.statusMessage = autoBuildIndex
-            ? "Preparing semantic index..."
-            : "Tap search to build an index for imported clips."
+            ? "Preparing search data..."
+            : readyStatusMessage()
+
+        let transcriptVideoCount = importedVideos.filter { !$0.transcriptSentences.isEmpty }.count
+        let transcriptSentenceCount = importedVideos.reduce(into: 0) { partialResult, video in
+            partialResult += video.transcriptSentences.count
+        }
+        print(
+            "[SemanticAudioSearch] sync prepared videos=\(importedVideos.count) transcriptVideos=\(transcriptVideoCount) " +
+            "transcriptSentences=\(transcriptSentenceCount) autoBuildIndex=\(autoBuildIndex)"
+        )
 
         if autoBuildIndex {
             await buildIndexIfNeeded(options: .backgroundImport)
@@ -300,13 +393,18 @@ final class SemanticSearchViewModel: ObservableObject {
     func queueLiveSearch() {
         liveSearchTask?.cancel()
         model.searchErrorMessage = nil
+        print(
+            "[SemanticAudioSearch] queue live search query=\"\(model.queryText)\" " +
+            "trimmed=\"\(model.trimmedQuery)\" indexedFrames=\(model.indexedFrameCount) hasTranscriptData=\(model.hasTranscriptData)"
+        )
 
         guard !model.trimmedQuery.isEmpty else {
-            model.results = []
+            model.visualResults = []
+            model.audioResults = []
             if model.videos.isEmpty {
                 model.statusMessage = "Import videos to search them semantically."
-            } else if model.indexedFrameCount > 0 {
-                model.statusMessage = "Index ready. Start typing to search clips."
+            } else {
+                model.statusMessage = readyStatusMessage()
             }
             return
         }
@@ -331,7 +429,8 @@ final class SemanticSearchViewModel: ObservableObject {
         print("[SemanticIndex] Starting chunk index build for \(videos.count) video(s)")
         model.isBuildingIndex = true
         model.searchErrorMessage = nil
-        model.results = []
+        model.visualResults = []
+        model.audioResults = []
 
         do {
             let indexedFrameCount = try await coordinator.buildIndex(videos: videos, onProgress: { message in
@@ -363,37 +462,80 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func runSearch() async {
-        guard model.canSearch else { return }
+        guard model.canSearch else {
+            print(
+                "[SemanticAudioSearch] run search skipped query=\"\(model.queryText)\" " +
+                "trimmedEmpty=\(model.trimmedQuery.isEmpty) indexedFrames=\(model.indexedFrameCount) " +
+                "hasTranscriptData=\(model.hasTranscriptData) videos=\(model.videos.count)"
+            )
+            return
+        }
         let query = model.trimmedQuery
         let videos = model.videos
         let requestedVideoKeys = videos.map(\.localKey)
         model.isSearching = true
         model.searchErrorMessage = nil
-        model.results = []
-        model.statusMessage = "Searching likely ranges..."
+        model.visualResults = []
+        model.audioResults = []
+        model.statusMessage = "Searching clips..."
+        let transcriptVideoCount = videos.filter { !$0.transcriptSentences.isEmpty }.count
+        let transcriptSentenceCount = videos.reduce(into: 0) { partialResult, video in
+            partialResult += video.transcriptSentences.count
+        }
+        print(
+            "[SemanticAudioSearch] run search query=\"\(query)\" videos=\(videos.count) indexedFrames=\(model.indexedFrameCount) " +
+            "transcriptVideos=\(transcriptVideoCount) transcriptSentences=\(transcriptSentenceCount)"
+        )
 
         do {
-            let candidateRanges = try await coordinator.search(query: query, videos: videos)
-            let ranges = resultSelectionMode.select(from: candidateRanges)
+            let visualCandidateRanges = model.indexedFrameCount > 0
+                ? try await coordinator.search(query: query, videos: videos)
+                : []
+            let audioCandidateRanges = TranscriptSearchScorer.candidates(for: query, in: videos)
+            let visualRanges = resultSelectionMode.select(from: visualCandidateRanges)
+            let audioRanges = resultSelectionMode.select(from: audioCandidateRanges)
             guard query == model.trimmedQuery, requestedVideoKeys == model.videos.map(\.localKey) else {
                 model.isSearching = false
                 return
             }
-            logSearchResults(ranges, query: query)
-            model.results = ranges.map {
+            logSearchResults(visualRanges, query: query, source: .visual)
+            logSearchResults(audioRanges, query: query, source: .audio)
+            model.visualResults = visualRanges.map {
                 SemanticMatchRange(
                     videoID: $0.videoID,
                     videoName: $0.videoName,
                     startTimeSeconds: $0.startTimeSeconds,
                     endTimeSeconds: $0.endTimeSeconds,
-                    confidence: $0.confidence
+                    confidence: $0.confidence,
+                    source: $0.source,
+                    matchText: $0.matchText
                 )
             }
-            model.statusMessage = ranges.isEmpty ? "No matching ranges found." : "Found \(ranges.count) likely range(s)."
+            model.audioResults = audioRanges.map {
+                SemanticMatchRange(
+                    videoID: $0.videoID,
+                    videoName: $0.videoName,
+                    startTimeSeconds: $0.startTimeSeconds,
+                    endTimeSeconds: $0.endTimeSeconds,
+                    confidence: $0.confidence,
+                    source: $0.source,
+                    matchText: $0.matchText
+                )
+            }
+            let totalRangeCount = model.visualResults.count + model.audioResults.count
+            model.statusMessage = totalRangeCount == 0
+                ? "No matching ranges found."
+                : "Found \(totalRangeCount) likely range(s)."
+            print(
+                "[SemanticAudioSearch] search complete query=\"\(query)\" visualCandidates=\(visualCandidateRanges.count) " +
+                "visualResults=\(visualRanges.count) audioCandidates=\(audioCandidateRanges.count) audioResults=\(audioRanges.count)"
+            )
         } catch is CancellationError {
+            print("[SemanticAudioSearch] search cancelled query=\"\(query)\"")
             model.isSearching = false
             return
         } catch {
+            print("[SemanticAudioSearch] search failed query=\"\(query)\" error=\(error)")
             model.searchErrorMessage = error.localizedDescription
             model.statusMessage = "Search failed."
         }
@@ -411,17 +553,31 @@ final class SemanticSearchViewModel: ObservableObject {
         await buildIndex(options: options)
     }
 
-    private func logSearchResults(_ ranges: [SemanticRangeCandidate], query: String) {
+    private func logSearchResults(
+        _ ranges: [SemanticRangeCandidate],
+        query: String,
+        source: SemanticSearchResultSource
+    ) {
         if ranges.isEmpty {
-            print("[SemanticIndex] No results found for query=\"\(query)\"")
+            print("[SemanticIndex] No \(source.rawValue) results found for query=\"\(query)\"")
             return
         }
 
         for (index, range) in ranges.enumerated() {
             print(
-                "[SemanticIndex] Result \(index + 1): video=\"\(range.videoName)\" start=\(formatTime(range.startTimeSeconds)) end=\(formatTime(range.endTimeSeconds)) confidence=\(String(format: "%.4f", range.confidence))"
+                "[SemanticIndex] \(source.rawValue.capitalized) result \(index + 1): video=\"\(range.videoName)\" start=\(formatTime(range.startTimeSeconds)) end=\(formatTime(range.endTimeSeconds)) confidence=\(String(format: "%.4f", range.confidence))"
             )
         }
+    }
+
+    private func readyStatusMessage() -> String {
+        if model.videos.isEmpty {
+            return "Import videos to build a chunk index."
+        }
+        if model.indexedFrameCount > 0 || model.hasTranscriptData {
+            return "Search ready. Start typing to search clips."
+        }
+        return "Tap search to build an index for imported clips."
     }
 
     private func formatTime(_ seconds: Double) -> String {

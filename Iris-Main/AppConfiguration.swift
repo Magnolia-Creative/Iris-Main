@@ -3,6 +3,7 @@ import Foundation
 enum AppConfiguration {
     static let backendBaseURL = URL(string: "http://127.0.0.1:8000")!
     static let ingestEndpoint = backendBaseURL.appending(path: "sessions/upload")
+    static let transcriptSentencesEndpoint = backendBaseURL.appending(path: "transcriptions/sentences")
     static let agentSessionEndpoint = backendBaseURL.appending(path: "projects/agent-sessions")
     static let uploadFieldName = "videos"
     static let uploadLocalKeyFieldName = "local_key"
