@@ -1,6 +1,23 @@
 internal import Combine
 import Foundation
 
+private enum SemanticSearchResultSelectionMode {
+    case topRanges(limit: Int)
+    case bestClip
+
+    func select(from candidates: [SemanticRangeCandidate]) -> [SemanticRangeCandidate] {
+        let sortedCandidates = candidates.sorted { $0.confidence > $1.confidence }
+
+        switch self {
+        case .topRanges(let limit):
+            return Array(sortedCandidates.prefix(limit))
+        case .bestClip:
+            guard let bestMatch = sortedCandidates.first else { return [] }
+            return sortedCandidates.filter { $0.videoID == bestMatch.videoID }
+        }
+    }
+}
+
 private actor SemanticSearchCoordinator {
     private let frameSampler: VideoFrameSampler
     private let pipeline: SemanticSearchPipeline
@@ -87,11 +104,12 @@ private actor SemanticSearchCoordinator {
 
 @MainActor
 final class SemanticSearchViewModel: ObservableObject {
-    static let shared = SemanticSearchViewModel()
+    static let shared = SemanticSearchViewModel(resultSelectionMode: .bestClip)
 
     @Published private(set) var model = SemanticSearchModel()
 
     private let coordinator: SemanticSearchCoordinator
+    private let resultSelectionMode: SemanticSearchResultSelectionMode
     private var liveSearchTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
     private var indexedVideoKeys: [String] = []
@@ -101,11 +119,26 @@ final class SemanticSearchViewModel: ObservableObject {
         pipeline: SemanticSearchPipeline? = nil,
         thumbnailService: ThumbnailService? = nil
     ) {
+        self.resultSelectionMode = .topRanges(limit: SemanticSearchConstants.resultsLimit)
         self.coordinator = SemanticSearchCoordinator(
             frameSampler: frameSampler ?? VideoFrameSampler(),
             pipeline: pipeline ?? SemanticSearchPipeline(),
             thumbnailService: thumbnailService ?? .shared
         )
+    }
+
+    private init(
+        frameSampler: VideoFrameSampler? = nil,
+        pipeline: SemanticSearchPipeline? = nil,
+        thumbnailService: ThumbnailService? = nil,
+        resultSelectionMode: SemanticSearchResultSelectionMode
+    ) {
+        self.coordinator = SemanticSearchCoordinator(
+            frameSampler: frameSampler ?? VideoFrameSampler(),
+            pipeline: pipeline ?? SemanticSearchPipeline(),
+            thumbnailService: thumbnailService ?? .shared
+        )
+        self.resultSelectionMode = resultSelectionMode
     }
 
     func beginVideoImport() {
@@ -340,7 +373,8 @@ final class SemanticSearchViewModel: ObservableObject {
         model.statusMessage = "Searching likely ranges..."
 
         do {
-            let ranges = try await coordinator.search(query: query, videos: videos)
+            let candidateRanges = try await coordinator.search(query: query, videos: videos)
+            let ranges = resultSelectionMode.select(from: candidateRanges)
             guard query == model.trimmedQuery, requestedVideoKeys == model.videos.map(\.localKey) else {
                 model.isSearching = false
                 return
