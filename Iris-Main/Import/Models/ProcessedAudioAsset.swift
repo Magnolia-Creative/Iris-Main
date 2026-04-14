@@ -1,6 +1,6 @@
 import Foundation
 
-struct ProcessedAudioAsset {
+struct ProcessedAudioAsset: Sendable {
     let source: SelectedVideoAsset
     let localKey: String
     let audioURL: URL

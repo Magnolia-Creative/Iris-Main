@@ -17,7 +17,7 @@ enum ClipTranscriptServiceError: LocalizedError {
     }
 }
 
-struct ClipTranscriptSentenceResponse: Decodable, Equatable {
+struct ClipTranscriptSentenceResponse: Decodable, Equatable, Sendable {
     let text: String
     let start: Double
     let end: Double
@@ -26,7 +26,7 @@ struct ClipTranscriptSentenceResponse: Decodable, Equatable {
     let channel: String?
 }
 
-struct ClipTranscriptResponse: Decodable, Equatable {
+struct ClipTranscriptResponse: Decodable, Equatable, Sendable {
     let transcriptID: String
     let fullText: String
     let sentences: [ClipTranscriptSentenceResponse]
@@ -44,7 +44,7 @@ struct ClipTranscriptResponse: Decodable, Equatable {
     }
 }
 
-struct ClipTranscriptService {
+struct ClipTranscriptService: Sendable {
     private let session: URLSession
     private let decoder = JSONDecoder()
 

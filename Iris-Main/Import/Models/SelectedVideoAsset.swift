@@ -1,6 +1,6 @@
 import Foundation
 
-struct SelectedVideoAsset: Identifiable, Equatable {
+struct SelectedVideoAsset: Identifiable, Equatable, Sendable {
     let localKey: String
     let assetLocalIdentifier: String?
     let localMediaID: String?

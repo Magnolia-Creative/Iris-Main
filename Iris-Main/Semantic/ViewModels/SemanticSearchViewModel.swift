@@ -189,7 +189,11 @@ final class SemanticSearchViewModel: ObservableObject {
     private let resultSelectionMode: SemanticSearchResultSelectionMode
     private var liveSearchTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
-    private var indexedVideoKeys: [String] = []
+    private var buildTask: Task<Void, Never>?
+    private var syncTaskContentSignature: String?
+    private var syncTaskAutoBuildIndex = false
+    private var indexedVisualSignature: String?
+    private var indexBuildInProgressSignature: String?
 
     init(
         frameSampler: VideoFrameSampler? = nil,
@@ -227,6 +231,7 @@ final class SemanticSearchViewModel: ObservableObject {
         guard !importedVideos.isEmpty else {
             liveSearchTask?.cancel()
             syncTask?.cancel()
+            buildTask?.cancel()
             model.videos = []
             model.visualResults = []
             model.audioResults = []
@@ -234,6 +239,8 @@ final class SemanticSearchViewModel: ObservableObject {
             model.statusMessage = "Import videos to build a chunk index."
             model.isImportingVideos = false
             model.importErrorMessage = nil
+            indexedVisualSignature = nil
+            indexBuildInProgressSignature = nil
             Task(priority: .utility) { [coordinator] in
                 await coordinator.reset()
             }
@@ -246,6 +253,7 @@ final class SemanticSearchViewModel: ObservableObject {
                 let nextVideos = try await coordinator.resolveImportedVideos(importedVideos)
                 guard !Task.isCancelled else { return }
                 await coordinator.reset()
+                buildTask?.cancel()
 
                 model.videos = nextVideos
                 model.visualResults = []
@@ -255,10 +263,13 @@ final class SemanticSearchViewModel: ObservableObject {
                 model.importErrorMessage = nil
                 model.searchErrorMessage = nil
                 model.isImportingVideos = false
+                indexedVisualSignature = nil
+                indexBuildInProgressSignature = nil
             } catch is CancellationError {
                 return
             } catch {
                 await coordinator.reset()
+                buildTask?.cancel()
                 model.videos = []
                 model.visualResults = []
                 model.audioResults = []
@@ -266,6 +277,8 @@ final class SemanticSearchViewModel: ObservableObject {
                 model.importErrorMessage = error.localizedDescription
                 model.statusMessage = "Could not load imported videos."
                 model.isImportingVideos = false
+                indexedVisualSignature = nil
+                indexBuildInProgressSignature = nil
             }
         }
     }
@@ -284,15 +297,55 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
-        syncTask?.cancel()
-        let queuedVideoCount = media.filter { $0.kind == .video }.count
+        let candidateMedia = Media.deduplicatedForImportPresentation(media)
+            .filter { $0.kind == .video }
+        let queuedVideoCount = candidateMedia.count
+        let requestedContentSignature = candidateMedia.map(\.semanticSearchContentSignature).joined(separator: "|")
+
+        if let syncTask,
+           !syncTask.isCancelled,
+           syncTaskContentSignature == requestedContentSignature {
+            if syncTaskAutoBuildIndex && !autoBuildIndex {
+                EditorDebugTrace.log(
+                    "SemanticSearchViewModel",
+                    "ignoring lower-priority sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
+                )
+                print(
+                    "[SemanticIndex] Ignoring passive sync because active build sync is already running signature=\(requestedContentSignature)"
+                )
+                return
+            }
+
+            if syncTaskAutoBuildIndex == autoBuildIndex {
+                EditorDebugTrace.log(
+                    "SemanticSearchViewModel",
+                    "ignoring duplicate sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
+                )
+                print(
+                    "[SemanticIndex] Ignoring duplicate sync request signature=\(requestedContentSignature) autoBuildIndex=\(autoBuildIndex)"
+                )
+                return
+            }
+        }
+
+        self.syncTask?.cancel()
         EditorDebugTrace.log(
             "SemanticSearchViewModel",
             "queue imported media sync videoCount=\(queuedVideoCount) autoBuildIndex=\(autoBuildIndex)"
         )
+        syncTaskContentSignature = requestedContentSignature
+        syncTaskAutoBuildIndex = autoBuildIndex
         syncTask = Task(priority: .background) { [weak self] in
             guard let self else { return }
             await self.syncImportedMedia(media, autoBuildIndex: autoBuildIndex)
+            await MainActor.run {
+                if self.syncTaskContentSignature == requestedContentSignature,
+                   self.syncTaskAutoBuildIndex == autoBuildIndex {
+                    self.syncTask = nil
+                    self.syncTaskContentSignature = nil
+                    self.syncTaskAutoBuildIndex = false
+                }
+            }
         }
     }
 
@@ -300,9 +353,7 @@ final class SemanticSearchViewModel: ObservableObject {
         let syncStart = EditorDebugTrace.mark()
         let candidateMedia = Media.deduplicatedForImportPresentation(media)
             .filter { $0.kind == .video }
-        let nextKeys = candidateMedia.map(\.mediaId)
         let nextContentSignatures = candidateMedia.map(\.semanticSearchContentSignature)
-        let currentKeys = model.videos.map(\.localKey)
         let currentContentSignatures = model.videos.map(\.contentSignature)
 
         EditorDebugTrace.log(
@@ -324,7 +375,6 @@ final class SemanticSearchViewModel: ObservableObject {
             return
         }
 
-        let hasSameVideoKeys = nextKeys == currentKeys
         let importedVideos: [SemanticImportedVideo]
         do {
             importedVideos = try await coordinator.resolveSearchableVideos(from: candidateMedia)
@@ -337,11 +387,15 @@ final class SemanticSearchViewModel: ObservableObject {
             model.searchErrorMessage = error.localizedDescription
             model.importErrorMessage = error.localizedDescription
             model.indexedFrameCount = 0
-            indexedVideoKeys = []
+            indexedVisualSignature = nil
+            indexBuildInProgressSignature = nil
             model.statusMessage = "Could not prepare videos for semantic search."
             await coordinator.reset()
             return
         }
+
+        let currentVisualSignature = visualIndexSignature(for: model.videos)
+        let nextVisualSignature = visualIndexSignature(for: importedVideos)
 
         liveSearchTask?.cancel()
         model.videos = importedVideos
@@ -349,10 +403,19 @@ final class SemanticSearchViewModel: ObservableObject {
         model.audioResults = []
         model.searchErrorMessage = nil
         model.importErrorMessage = nil
-        if !hasSameVideoKeys {
+        if currentVisualSignature != nextVisualSignature {
+            buildTask?.cancel()
             model.indexedFrameCount = 0
-            indexedVideoKeys = []
+            indexedVisualSignature = nil
+            indexBuildInProgressSignature = nil
             await coordinator.reset()
+            print(
+                "[SemanticIndex] visual signature changed old=\(currentVisualSignature) new=\(nextVisualSignature) reset=true"
+            )
+        } else {
+            print(
+                "[SemanticIndex] visual signature unchanged signature=\(nextVisualSignature) preserveExistingIndex=\(model.indexedFrameCount > 0)"
+            )
         }
 
         if importedVideos.isEmpty {
@@ -425,12 +488,14 @@ final class SemanticSearchViewModel: ObservableObject {
     private func buildIndex(options: SemanticIndexBuildOptions) async {
         guard model.canBuildIndex else { return }
         let videos = model.videos
-        let requestedVideoKeys = videos.map(\.localKey)
+        let requestedVisualSignature = visualIndexSignature(for: videos)
+        guard !requestedVisualSignature.isEmpty else { return }
         print("[SemanticIndex] Starting chunk index build for \(videos.count) video(s)")
         model.isBuildingIndex = true
         model.searchErrorMessage = nil
         model.visualResults = []
         model.audioResults = []
+        indexBuildInProgressSignature = requestedVisualSignature
 
         do {
             let indexedFrameCount = try await coordinator.buildIndex(videos: videos, onProgress: { message in
@@ -438,16 +503,21 @@ final class SemanticSearchViewModel: ObservableObject {
                     self.model.statusMessage = message
                 }
             }, options: options)
-            guard requestedVideoKeys == model.videos.map(\.localKey) else {
+            guard requestedVisualSignature == visualIndexSignature(for: model.videos) else {
                 model.isBuildingIndex = false
+                indexBuildInProgressSignature = nil
                 return
             }
             model.indexedFrameCount = indexedFrameCount
-            indexedVideoKeys = requestedVideoKeys
+            indexedVisualSignature = requestedVisualSignature
+            indexBuildInProgressSignature = nil
             model.statusMessage = "Index built. Enter a query to find clip ranges."
-            print("[SemanticIndex] Index build succeeded. indexedFrameCount=\(model.indexedFrameCount)")
+            print(
+                "[SemanticIndex] Index build succeeded. indexedFrameCount=\(model.indexedFrameCount) signature=\(requestedVisualSignature)"
+            )
         } catch is CancellationError {
             model.isBuildingIndex = false
+            indexBuildInProgressSignature = nil
             return
         } catch {
             print("[SemanticIndex] Index build failed with error: \(error)")
@@ -455,7 +525,8 @@ final class SemanticSearchViewModel: ObservableObject {
             model.searchErrorMessage = error.localizedDescription
             model.statusMessage = "Index build failed."
             model.indexedFrameCount = 0
-            indexedVideoKeys = []
+            indexedVisualSignature = nil
+            indexBuildInProgressSignature = nil
         }
 
         model.isBuildingIndex = false
@@ -549,8 +620,27 @@ final class SemanticSearchViewModel: ObservableObject {
 
     private func buildIndexIfNeeded(options: SemanticIndexBuildOptions) async {
         guard !model.videos.isEmpty else { return }
-        guard indexedVideoKeys != model.videos.map(\.localKey) || model.indexedFrameCount == 0 else { return }
-        await buildIndex(options: options)
+        let requestedVisualSignature = visualIndexSignature(for: model.videos)
+        guard !requestedVisualSignature.isEmpty else { return }
+        if indexBuildInProgressSignature == requestedVisualSignature, let buildTask {
+            print("[SemanticIndex] Awaiting existing build; index build already in progress signature=\(requestedVisualSignature)")
+            await buildTask.value
+            return
+        }
+        if indexedVisualSignature == requestedVisualSignature, model.indexedFrameCount > 0 {
+            print("[SemanticIndex] Skipping rebuild; index already available signature=\(requestedVisualSignature)")
+            return
+        }
+        buildTask?.cancel()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.buildIndex(options: options)
+            if self.indexBuildInProgressSignature == nil {
+                self.buildTask = nil
+            }
+        }
+        buildTask = task
+        await task.value
     }
 
     private func logSearchResults(
@@ -578,6 +668,18 @@ final class SemanticSearchViewModel: ObservableObject {
             return "Search ready. Start typing to search clips."
         }
         return "Tap search to build an index for imported clips."
+    }
+
+    private func visualIndexSignature(for videos: [SemanticImportedVideo]) -> String {
+        videos
+            .map { video in
+                [
+                    video.localKey,
+                    video.fileURL.path,
+                    String(format: "%.3f", video.durationSeconds)
+                ].joined(separator: "::")
+            }
+            .joined(separator: "|")
     }
 
     private func formatTime(_ seconds: Double) -> String {

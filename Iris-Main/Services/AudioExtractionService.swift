@@ -21,7 +21,7 @@ enum AudioExtractionError: LocalizedError {
     }
 }
 
-struct AudioExtractionService {
+struct AudioExtractionService: Sendable {
     func extractCompressedAudio(from video: SelectedVideoAsset) async throws -> ProcessedAudioAsset {
         let asset = AVURLAsset(url: video.originalURL)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)

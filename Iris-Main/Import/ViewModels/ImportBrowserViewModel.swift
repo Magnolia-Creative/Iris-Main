@@ -384,19 +384,23 @@ final class ImportBrowserViewModel: ObservableObject {
                     print("[ImportBrowser] transcript task skipped localKey=\(localKey)")
                     return
                 }
+                let audioExtractionService = self.audioExtractionService
+                let clipTranscriptService = self.clipTranscriptService
                 print(
                     "[ImportBrowser] transcript task started localKey=\(localKey) mediaID=\(request.mediaID) " +
                     "file=\(request.video.displayName)"
                 )
-                let processedAsset = try await self.audioExtractionService.extractCompressedAudio(from: request.video)
-                print(
-                    "[ImportBrowser] transcript audio extracted localKey=\(localKey) audioURL=\(processedAsset.audioURL.lastPathComponent)"
-                )
+                let (processedAsset, transcript) = try await Task.detached(priority: .utility) {
+                    let processedAsset = try await audioExtractionService.extractCompressedAudio(from: request.video)
+                    print(
+                        "[ImportBrowser] transcript audio extracted localKey=\(localKey) audioURL=\(processedAsset.audioURL.lastPathComponent)"
+                    )
+                    let transcript = try await clipTranscriptService.transcribe(processedAsset)
+                    return (processedAsset, transcript)
+                }.value
                 defer {
                     self.cleanupProcessedAssets([processedAsset])
                 }
-
-                let transcript = try await self.clipTranscriptService.transcribe(processedAsset)
                 print(
                     "[ImportBrowser] transcript response ready localKey=\(localKey) transcriptID=\(transcript.transcriptID) " +
                     "sentences=\(transcript.sentences.count)"
