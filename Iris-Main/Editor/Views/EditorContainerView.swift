@@ -99,7 +99,7 @@ struct EditorContainerView: View {
                                 ImportPanelContent(
                                     controller: controller,
                                     onOpenVideoImport: {
-                                        presentEditorImport(.timeline(kind: .video))
+                                        presentEditorImport(.library)
                                     }
                                 )
                                     .transition(.opacity)
