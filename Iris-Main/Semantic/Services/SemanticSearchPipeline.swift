@@ -165,6 +165,11 @@ final class SemanticSearchPipeline {
         indexedChunkCount = 0
     }
 
+    func prewarmEmbeddingServices() async {
+        print("[SemanticIndex] prewarming embedding services")
+        await embeddingService.prewarm()
+    }
+
     func buildChunkIndex(
         videos: [SemanticImportedVideo],
         onProgress: @escaping @Sendable (String) async -> Void,

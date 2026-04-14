@@ -29,6 +29,7 @@ enum MobileCLIPEmbeddingError: LocalizedError {
 }
 
 protocol MobileCLIPEmbeddingProviding: Sendable {
+    func prewarm() async
     func textEmbedding(for text: String) async throws -> [Float]
     func imageEmbedding(for image: CGImage) async throws -> [Float]
 }
@@ -93,6 +94,19 @@ actor MobileCLIPEmbeddingService: MobileCLIPEmbeddingProviding {
         return encoder
     }
     #endif
+
+    func prewarm() async {
+        #if canImport(MobileCLIP)
+        do {
+            _ = try encoder()
+            print("[SemanticIndex] encoder prewarm ready uri=\(encoderURI)")
+        } catch {
+            print("[SemanticIndex] encoder prewarm failed uri=\(encoderURI) error=\(error.localizedDescription)")
+        }
+        #else
+        print("[SemanticIndex] encoder prewarm skipped: package unavailable")
+        #endif
+    }
 
     func textEmbedding(for text: String) async throws -> [Float] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -170,6 +184,16 @@ actor MobileCLIPEmbeddingPool: MobileCLIPEmbeddingProviding {
         let service = services[nextServiceIndex]
         nextServiceIndex = (nextServiceIndex + 1) % services.count
         return service
+    }
+
+    func prewarm() async {
+        await withTaskGroup(of: Void.self) { group in
+            for service in services {
+                group.addTask {
+                    await service.prewarm()
+                }
+            }
+        }
     }
 
     func textEmbedding(for text: String) async throws -> [Float] {

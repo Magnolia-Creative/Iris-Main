@@ -136,6 +136,11 @@ struct EditorContainerView: View {
             .presentationDragIndicator(.visible)
         }
         .task {
+            await MainActor.run {
+                SemanticSearchViewModel.shared.prewarmEmbeddingServicesIfNeeded()
+            }
+        }
+        .task {
             await controller.loadTimelineData()
             if let initialImportSeed {
                 await controller.applyInitialImportSeedIfNeeded(initialImportSeed)

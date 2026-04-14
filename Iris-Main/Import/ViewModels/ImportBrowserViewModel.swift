@@ -623,6 +623,9 @@ final class ImportBrowserViewModel: ObservableObject {
             updateClip(localKey: localKey) { clip in
                 clip.embeddingState = .succeeded("Embeddings queued locally")
             }
+            if model.processingMode.runsEmbeddings {
+                await resyncSemanticIndexIfNeeded()
+            }
             return
         }
         guard let originalURL = clip.originalURL else {

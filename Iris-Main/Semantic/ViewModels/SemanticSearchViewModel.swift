@@ -177,6 +177,10 @@ private actor SemanticSearchCoordinator {
     func search(query: String, videos: [SemanticImportedVideo]) async throws -> [SemanticRangeCandidate] {
         try await pipeline.search(query: query, videos: videos)
     }
+
+    func prewarmEmbeddingServices() async {
+        await pipeline.prewarmEmbeddingServices()
+    }
 }
 
 @MainActor
@@ -194,6 +198,7 @@ final class SemanticSearchViewModel: ObservableObject {
     private var syncTaskAutoBuildIndex = false
     private var indexedVisualSignature: String?
     private var indexBuildInProgressSignature: String?
+    private var hasQueuedEmbeddingPrewarm = false
 
     init(
         frameSampler: VideoFrameSampler? = nil,
@@ -220,6 +225,15 @@ final class SemanticSearchViewModel: ObservableObject {
             thumbnailService: thumbnailService ?? .shared
         )
         self.resultSelectionMode = resultSelectionMode
+    }
+
+    func prewarmEmbeddingServicesIfNeeded() {
+        guard !hasQueuedEmbeddingPrewarm else { return }
+        hasQueuedEmbeddingPrewarm = true
+        print("[SemanticIndex] queueing embedding prewarm from editor open")
+        Task(priority: .background) { [coordinator] in
+            await coordinator.prewarmEmbeddingServices()
+        }
     }
 
     func beginVideoImport() {
