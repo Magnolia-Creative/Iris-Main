@@ -19,7 +19,7 @@ struct EditorCanvasView: View {
     }
 
     private var previewHeight: CGFloat {
-        switch activeSpace {
+        switch activeSpace {    
         case .importMedia, .chat:
             140
         case .edit, .export:

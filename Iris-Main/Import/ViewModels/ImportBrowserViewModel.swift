@@ -2,6 +2,16 @@ internal import Combine
 import Foundation
 import Photos
 
+func orderedProcessedAssetsForUpload(
+    _ processedAssets: [ProcessedAudioAsset],
+    matching videos: [SelectedVideoAsset]
+) -> [ProcessedAudioAsset] {
+    var assetsByLocalKey = Dictionary(uniqueKeysWithValues: processedAssets.map { ($0.localKey, $0) })
+    var orderedAssets = videos.compactMap { assetsByLocalKey.removeValue(forKey: $0.localKey) }
+    orderedAssets.append(contentsOf: assetsByLocalKey.values.sorted { $0.localKey < $1.localKey })
+    return orderedAssets
+}
+
 @MainActor
 final class ImportBrowserViewModel: ObservableObject {
     @Published private(set) var model = ImportBrowserModel()
@@ -582,7 +592,7 @@ final class ImportBrowserViewModel: ObservableObject {
             for try await asset in group {
                 processedAssets.append(asset)
             }
-            return processedAssets
+            return orderedProcessedAssetsForUpload(processedAssets, matching: videos)
         }
     }
 

@@ -79,4 +79,47 @@ struct ImportBrowserModelTests {
         #expect(model.committedVideos.count == 1)
         #expect(model.committedVideos.first?.localMediaID == "media-123")
     }
+
+    @Test func processedAssetsAreReorderedToMatchClipSelectionOrder() {
+        let first = SelectedVideoAsset(
+            localKey: "local-1",
+            assetLocalIdentifier: nil,
+            localMediaID: nil,
+            originalURL: URL(fileURLWithPath: "/tmp/clip-1.mov"),
+            displayName: "clip-1.mov",
+            fileSize: 11,
+            remoteClipID: nil
+        )
+        let second = SelectedVideoAsset(
+            localKey: "local-2",
+            assetLocalIdentifier: nil,
+            localMediaID: nil,
+            originalURL: URL(fileURLWithPath: "/tmp/clip-2.mov"),
+            displayName: "clip-2.mov",
+            fileSize: 22,
+            remoteClipID: nil
+        )
+
+        let processedSecond = ProcessedAudioAsset(
+            source: second,
+            localKey: second.localKey,
+            audioURL: URL(fileURLWithPath: "/tmp/clip-2.m4a"),
+            mimeType: "audio/mp4",
+            fileName: "clip-2.m4a"
+        )
+        let processedFirst = ProcessedAudioAsset(
+            source: first,
+            localKey: first.localKey,
+            audioURL: URL(fileURLWithPath: "/tmp/clip-1.m4a"),
+            mimeType: "audio/mp4",
+            fileName: "clip-1.m4a"
+        )
+
+        let ordered = orderedProcessedAssetsForUpload(
+            [processedSecond, processedFirst],
+            matching: [first, second]
+        )
+
+        #expect(ordered.map(\.localKey) == ["local-1", "local-2"])
+    }
 }
