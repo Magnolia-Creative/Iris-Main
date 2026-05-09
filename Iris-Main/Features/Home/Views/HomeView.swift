@@ -28,6 +28,20 @@ struct HomeView: View {
             .navigationDestination(item: $viewModel.selectedProject) { project in
                 editorDestination(for: project)
             }
+            .sheet(isPresented: $viewModel.isPresentingRealtimeTranscription) {
+                NavigationStack {
+                    RealtimeTranscriptionView()
+                        .navigationTitle("Live transcription")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") {
+                                    viewModel.dismissRealtimeTranscription()
+                                }
+                            }
+                        }
+                }
+            }
             .onAppear { viewModel.loadProjects() }
         }
     }
@@ -63,23 +77,47 @@ struct HomeView: View {
                     .frame(maxWidth: 320, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Button {
-                    viewModel.presentProjectSetup()
-                } label: {
-                    HStack(spacing: .spacing(.sp2)) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+                    Button {
+                        viewModel.presentProjectSetup()
+                    } label: {
+                        HStack(spacing: .spacing(.sp2)) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 14, weight: .semibold))
 
-                        Text("New Project")
-                            .typography(.action)
+                            Text("New Project")
+                                .typography(.action)
+                        }
+                        .foregroundStyle(Color.ds.accentBg)
+                        .padding(.horizontal, .sp4)
+                        .padding(.vertical, .sp3)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
                     }
-                    .foregroundStyle(Color.ds.accentBg)
-                    .padding(.horizontal, .sp4)
-                    .padding(.vertical, .sp3)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                    .buttonStyle(.plain)
+
+                    Button {
+                        viewModel.presentRealtimeTranscription()
+                    } label: {
+                        HStack(spacing: .spacing(.sp2)) {
+                            Image(systemName: "waveform.and.mic")
+                                .font(.system(size: 14, weight: .semibold))
+
+                            Text("Test live transcription")
+                                .typography(.action)
+                        }
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, .sp4)
+                        .padding(.vertical, .sp3)
+                        .background(Color.white.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.sp6)
         }

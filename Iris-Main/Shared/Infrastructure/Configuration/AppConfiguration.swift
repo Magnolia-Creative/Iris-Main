@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfiguration {
-    static let backendBaseURL = URL(string: "http://172.20.10.3:8000")!
+    static let backendBaseURL = URL(string: "http://127.0.0.1:8000")!
     static let ingestEndpoint = backendBaseURL.appending(path: "sessions/upload")
     static let transcriptSentencesEndpoint = backendBaseURL.appending(path: "transcriptions/sentences")
     static let agentSessionEndpoint = backendBaseURL.appending(path: "projects/agent-sessions")
@@ -85,6 +85,22 @@ enum AppConfiguration {
         components.scheme = components.scheme == "https" ? "wss" : "ws"
         components.path = "/ws/sessions/\(sessionID)"
         components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    /// OpenAI Realtime transcription proxy (`stream_transcription`); client sends PCM16 mono @ 24 kHz as base64 JSON frames.
+    static func transcriptionWebSocketEndpoint(
+        model: String = "gpt-realtime-whisper",
+        basedOn baseURL: URL = backendBaseURL
+    ) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.path = "/ws/transcribe"
+        components.queryItems = [URLQueryItem(name: "model", value: model)]
         components.fragment = nil
         return components.url
     }

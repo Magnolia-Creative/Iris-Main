@@ -6,6 +6,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var projects: [Project] = []
     @Published private(set) var loadErrorMessage: String?
     @Published var isPresentingProjectSetup = false
+    @Published var isPresentingRealtimeTranscription = false
     @Published var selectedProject: Project?
 
     private let db: DatabaseManager
@@ -34,6 +35,14 @@ final class HomeViewModel: ObservableObject {
 
     func presentProjectSetup() {
         isPresentingProjectSetup = true
+    }
+
+    func presentRealtimeTranscription() {
+        isPresentingRealtimeTranscription = true
+    }
+
+    func dismissRealtimeTranscription() {
+        isPresentingRealtimeTranscription = false
     }
 
     func openProject(_ project: Project) {

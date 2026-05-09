@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Iris uses the microphone to stream audio for live transcription testing against your backend.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Iris needs access to your photo library to import videos and images into your projects.</string>
 	<key>UTExportedTypeDeclarations</key>
