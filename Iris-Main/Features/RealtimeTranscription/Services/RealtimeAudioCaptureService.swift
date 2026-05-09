@@ -1,17 +1,18 @@
 import AVFoundation
-import Darwin
 import Foundation
 
-/// Captures microphone audio, converts to mono PCM Int16 @ 24 kHz, and emits fixed-size chunks for the transcription WebSocket.
+/// Captures microphone audio and mirrors the React AudioWorklet: buffer ~100 ms,
+/// linearly resample to 2400 mono Int16 samples, then emit one PCM chunk.
 final class RealtimeAudioCaptureService {
     static let outputSampleRate: Double = 24_000
     /// 100 ms of mono Int16 @ 24 kHz (matches Iris-Testing-App worklet chunk size).
-    private static let chunkByteCount = 2_400 * MemoryLayout<Int16>.size
+    private static let chunkSampleCount = 2_400
+    private static let chunkByteCount = chunkSampleCount * MemoryLayout<Int16>.size
 
     private var engine: AVAudioEngine?
-    private var converter: AVAudioConverter?
-    private var outputFormat: AVAudioFormat?
-    private var pcmScratch = Data()
+    private var inputScratch: [Float] = []
+    private var inputSamplesNeeded = 0
+    private var hasLoggedInputFormat = false
     private var onPCMChunk: (@Sendable (Data) -> Void)?
 
     /// Request microphone access. Call before `start`.
@@ -28,37 +29,32 @@ final class RealtimeAudioCaptureService {
         stop()
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
         try session.setPreferredSampleRate(Self.outputSampleRate)
+        try? session.setPreferredInputNumberOfChannels(1)
         try session.setActive(true)
-
-        guard let outputFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: Self.outputSampleRate,
-            channels: 1,
-            interleaved: true
-        ) else {
-            throw RealtimeAudioCaptureError.invalidOutputFormat
-        }
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
-
-        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            throw RealtimeAudioCaptureError.converterInitFailed
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw RealtimeAudioCaptureError.invalidInputFormat(
+                sampleRate: inputFormat.sampleRate,
+                channelCount: inputFormat.channelCount
+            )
         }
 
         self.engine = engine
-        self.converter = converter
-        self.outputFormat = outputFormat
-        self.pcmScratch = Data()
+        self.inputSamplesNeeded = max(1, Int(floor(inputFormat.sampleRate * 0.1)))
+        self.inputScratch = []
+        self.inputScratch.reserveCapacity(inputSamplesNeeded * 2)
+        self.hasLoggedInputFormat = false
         self.onPCMChunk = onChunk
 
         let bufferSize: AVAudioFrameCount = 4_096
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
-            self?.processInputBuffer(buffer, converter: converter, outputFormat: outputFormat)
+            self?.processInputBuffer(buffer)
         }
 
         engine.prepare()
@@ -73,73 +69,96 @@ final class RealtimeAudioCaptureService {
             engine.stop()
         }
         engine = nil
-        converter = nil
-        outputFormat = nil
-        pcmScratch.removeAll(keepingCapacity: false)
+        inputScratch.removeAll(keepingCapacity: false)
+        inputSamplesNeeded = 0
 
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    private func processInputBuffer(
-        _ buffer: AVAudioPCMBuffer,
-        converter: AVAudioConverter,
-        outputFormat: AVAudioFormat
-    ) {
+    private func processInputBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let onPCMChunk else { return }
-
-        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
-        let outCapacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 32
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outCapacity) else {
+        guard inputSamplesNeeded > 0,
+              buffer.frameLength > 0,
+              let channelData = buffer.floatChannelData else {
             return
         }
 
-        var didSupplyInput = false
-        var error: NSError?
-        _ = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
-            if didSupplyInput {
-                outStatus.pointee = .noDataNow
-                return nil
+        let sampleCount = Int(buffer.frameLength)
+        let channelCount = max(1, Int(buffer.format.channelCount))
+        if !hasLoggedInputFormat {
+            hasLoggedInputFormat = true
+            print(
+                "[RealtimeAudioCaptureService] input sampleRate=\(buffer.format.sampleRate) " +
+                "channels=\(channelCount) interleaved=\(buffer.format.isInterleaved) frames=\(sampleCount)"
+            )
+        }
+        inputScratch.reserveCapacity(inputScratch.count + sampleCount)
+
+        for index in 0 ..< sampleCount {
+            inputScratch.append(monoSample(at: index, channelData: channelData, channelCount: channelCount, isInterleaved: buffer.format.isInterleaved))
+        }
+
+        while inputScratch.count >= inputSamplesNeeded {
+            let source = Array(inputScratch.prefix(inputSamplesNeeded))
+            inputScratch.removeFirst(inputSamplesNeeded)
+            onPCMChunk(makePCM16Chunk(from: source))
+        }
+    }
+
+    private func monoSample(
+        at frameIndex: Int,
+        channelData: UnsafePointer<UnsafeMutablePointer<Float>>,
+        channelCount: Int,
+        isInterleaved: Bool
+    ) -> Float {
+        guard channelCount > 1 else {
+            return channelData[0][frameIndex]
+        }
+
+        var sum: Float = 0
+        if isInterleaved {
+            let base = frameIndex * channelCount
+            for channel in 0 ..< channelCount {
+                sum += channelData[0][base + channel]
             }
-            didSupplyInput = true
-            outStatus.pointee = .haveData
-            return buffer
+        } else {
+            for channel in 0 ..< channelCount {
+                sum += channelData[channel][frameIndex]
+            }
+        }
+        return sum / Float(channelCount)
+    }
+
+    private func makePCM16Chunk(from source: [Float]) -> Data {
+        var pcm = Data()
+        pcm.reserveCapacity(Self.chunkByteCount)
+
+        let lenM1 = max(source.count - 1, 0)
+        for j in 0 ..< Self.chunkSampleCount {
+            let t = (Float(j) + 0.5) * Float(lenM1) / Float(Self.chunkSampleCount)
+            let i0 = Int(floor(t))
+            let f = t - Float(i0)
+            let s0 = source[min(i0, source.count - 1)]
+            let s1 = source[min(i0 + 1, source.count - 1)]
+            let interpolated = s0 * (1 - f) + s1 * f
+            let x = interpolated * Float(Int16.max)
+            var sample = Int16(max(Float(Int16.min), min(Float(Int16.max), x + 0.5)))
+            withUnsafeBytes(of: &sample) { bytes in
+                pcm.append(contentsOf: bytes)
+            }
         }
 
-        if error != nil {
-            return
-        }
-
-        guard outputBuffer.frameLength > 0, let channelData = outputBuffer.int16ChannelData else {
-            return
-        }
-
-        let byteCount = Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
-        var block = Data(count: byteCount)
-        block.withUnsafeMutableBytes { raw in
-            guard let dst = raw.baseAddress else { return }
-            memcpy(dst, channelData[0], byteCount)
-        }
-        pcmScratch.append(block)
-
-        let chunkSize = Self.chunkByteCount
-        while pcmScratch.count >= chunkSize {
-            let chunk = pcmScratch.prefix(chunkSize)
-            pcmScratch.removeFirst(chunkSize)
-            onPCMChunk(Data(chunk))
-        }
+        return pcm
     }
 }
 
 enum RealtimeAudioCaptureError: LocalizedError {
-    case invalidOutputFormat
-    case converterInitFailed
+    case invalidInputFormat(sampleRate: Double, channelCount: AVAudioChannelCount)
 
     var errorDescription: String? {
         switch self {
-        case .invalidOutputFormat:
-            return "Could not create 24 kHz PCM output format."
-        case .converterInitFailed:
-            return "Could not create audio converter for the microphone format."
+        case let .invalidInputFormat(sampleRate, channelCount):
+            return "Simulator microphone is unavailable or misconfigured (sample rate \(sampleRate), channels \(channelCount)). Choose a valid Simulator audio input or test on a device."
         }
     }
 }

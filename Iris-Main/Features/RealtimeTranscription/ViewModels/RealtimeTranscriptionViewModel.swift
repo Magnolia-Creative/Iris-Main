@@ -9,6 +9,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
     @Published private(set) var partialTranscript = ""
     @Published private(set) var statusMessage = "Tap the microphone to stream speech to the backend."
     @Published private(set) var errorMessage: String?
+    @Published private(set) var audioChunkCount = 0
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
@@ -45,6 +46,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         errorMessage = nil
         finalizedTranscript = ""
         partialTranscript = ""
+        audioChunkCount = 0
 
         let allowed = await RealtimeAudioCaptureService.requestRecordPermission()
         guard allowed else {
@@ -58,16 +60,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         }
 
         tearDown()
-
-        let task = urlSession.webSocketTask(with: socketURL)
-        webSocketTask = task
-        task.resume()
-        isSocketActive = true
-        statusMessage = "Connecting…"
-
-        receiveTask = Task { @MainActor [weak self] in
-            await self?.receiveLoop()
-        }
+        statusMessage = "Starting microphone…"
 
         do {
             try audioCapture.start { [weak self] pcmData in
@@ -77,10 +70,21 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
                 }
             }
             isRecording = true
-            statusMessage = "Listening…"
         } catch {
             tearDown()
             errorMessage = error.localizedDescription
+            statusMessage = "Microphone could not start."
+            return
+        }
+
+        let task = urlSession.webSocketTask(with: socketURL)
+        webSocketTask = task
+        task.resume()
+        isSocketActive = true
+        statusMessage = "Connecting…"
+
+        receiveTask = Task { @MainActor [weak self] in
+            await self?.receiveLoop()
         }
     }
 
@@ -116,12 +120,22 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
 
     private func sendAudioPCM(_ pcmData: Data) async {
         guard isRecording, let webSocketTask else { return }
-        let payload = RealtimeTranscriptionClientAudioMessage(audio: pcmData.base64EncodedString())
+        let ts = Int(Date().timeIntervalSince1970 * 1_000)
+        let payload = RealtimeTranscriptionClientAudioMessage(
+            audio: pcmData.base64EncodedString(),
+            clientSentTimestamp: ts
+        )
         guard let data = try? encoder.encode(payload), let text = String(data: data, encoding: .utf8) else {
             return
         }
         do {
             try await webSocketTask.send(.string(text))
+            audioChunkCount += 1
+            if audioChunkCount == 1 {
+                statusMessage = "Streaming audio to backend…"
+            } else if audioChunkCount.isMultiple(of: 20) {
+                statusMessage = "Streaming audio to backend… \(audioChunkCount) chunks sent"
+            }
         } catch {
             if isRecording {
                 errorMessage = error.localizedDescription
@@ -131,11 +145,11 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
     }
 
     private func receiveLoop() async {
-        guard let webSocketTask else { return }
+        guard let task = webSocketTask else { return }
 
         do {
             while !Task.isCancelled {
-                let message = try await webSocketTask.receive()
+                let message = try await task.receive()
                 if Task.isCancelled { break }
 
                 switch message {
@@ -157,7 +171,14 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         }
 
         isSocketActive = false
-        if !isRecording {
+        if isRecording, !Task.isCancelled {
+            audioCapture.stop()
+            webSocketTask = nil
+            isRecording = false
+            if errorMessage == nil {
+                statusMessage = "Connection closed before transcription completed."
+            }
+        } else {
             partialTranscript = ""
         }
     }

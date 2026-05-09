@@ -5,10 +5,18 @@ import Foundation
 struct RealtimeTranscriptionClientAudioMessage: Encodable {
     let type: String
     let audio: String
+    let clientSentTimestamp: Int
 
-    init(audio: String) {
+    init(audio: String, clientSentTimestamp: Int) {
         self.type = "audio"
         self.audio = audio
+        self.clientSentTimestamp = clientSentTimestamp
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case audio
+        case clientSentTimestamp = "client_sent_ts"
     }
 }
 

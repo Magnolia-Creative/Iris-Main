@@ -62,6 +62,12 @@ struct RealtimeTranscriptionView: View {
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
 
+            if viewModel.audioChunkCount > 0 {
+                Text("\(viewModel.audioChunkCount) audio chunks sent")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+            }
+
             if let error = viewModel.errorMessage {
                 Text(error)
                     .typography(.bodySmall)
