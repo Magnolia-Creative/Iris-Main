@@ -158,51 +158,14 @@ struct TimelineState {
 
     mutating func deleteSelectedClip() {
         guard let clipId = selectedClipId else { return }
-        guard let clip = clips.first(where: { $0.clipId == clipId }) else { return }
-        clips.removeAll { $0.clipId == clipId }
-        packTrackClips(trackId: clip.trackId, animate: true)
-        let maxScrollTimeUs = max(0, calculatedTimelineDurationUs) + scrollBufferUs
-        if currentTimeAtCenter > maxScrollTimeUs {
-            requestScrollTo(timeUs: maxScrollTimeUs)
-        }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            selectedClipId = nil
-        }
+        _ = apply([Action.removeClip(timelineId: timelineId, clipId: clipId)])
     }
 
     mutating func splitSelectedClip() {
         guard let clipId = selectedClipId else { return }
-        guard let index = clips.firstIndex(where: { $0.clipId == clipId }) else { return }
-        let clip = clips[index]
-        let cutTimeUs = currentTimeAtCenter
-        guard cutTimeUs > clip.timelineRange.start, cutTimeUs < clip.timelineRange.end else {
-            return
-        }
-
-        let leftDuration = cutTimeUs - clip.timelineRange.start
-        let rightDuration = clip.timelineRange.end - cutTimeUs
-        guard leftDuration > 0, rightDuration > 0 else { return }
-
-        let sourceMid = clip.sourceRange.start + leftDuration
-        let leftClip = Clip(
-            trackId: clip.trackId,
-            mediaId: clip.mediaId,
-            sourceRange: TimeRange(start: clip.sourceRange.start, end: sourceMid),
-            timelineRange: TimeRange(start: clip.timelineRange.start, end: cutTimeUs)
-        )
-        let rightClip = Clip(
-            trackId: clip.trackId,
-            mediaId: clip.mediaId,
-            sourceRange: TimeRange(start: sourceMid, end: clip.sourceRange.end),
-            timelineRange: TimeRange(start: cutTimeUs, end: clip.timelineRange.end)
-        )
-
-        clips.remove(at: index)
-        clips.append(leftClip)
-        clips.append(rightClip)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            selectedClipId = nil
-        }
+        _ = apply([
+            Action.splitClip(timelineId: timelineId, clipId: clipId, atTimeUs: currentTimeAtCenter)
+        ])
     }
 
     mutating func addClip(of kind: TrackKind, at timeUs: Int64, media: Media? = nil) {

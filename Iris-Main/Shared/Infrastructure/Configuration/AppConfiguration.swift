@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfiguration {
-    static let backendBaseURL = URL(string: "http://192.168.1.87:8000")!
+    static let backendBaseURL = URL(string: "http://172.20.10.3:8000")!
     static let ingestEndpoint = backendBaseURL.appending(path: "sessions/upload")
     static let transcriptSentencesEndpoint = backendBaseURL.appending(path: "transcriptions/sentences")
     static let agentSessionEndpoint = backendBaseURL.appending(path: "projects/agent-sessions")

@@ -1,13 +1,26 @@
 import Foundation
 import GRDB
 
-struct Action: Codable, Identifiable, FetchableRecord, PersistableRecord {
+// MARK: - Payload
+
+enum ActionPayload: Equatable, Codable {
+    case splitClip(clipId: String, atTimeUs: Int64)
+    case removeClip(clipId: String)
+    case addClip(clip: Clip)
+    case trimClip(clipId: String, sourceRange: TimeRange, timelineRange: TimeRange)
+    case moveClip(clipId: String, orderedClipIds: [String])
+    /// Restores the ordered clip list for a single track (used for undo/redo and inverse actions).
+    case replaceTrackClips(trackId: String, clips: [Clip])
+}
+
+// MARK: - Action
+
+struct Action: Codable, Equatable, Identifiable, FetchableRecord, PersistableRecord {
     let actionId: String
     let timelineId: String
     let createdAt: Date
     let type: ActionType
-    let targetId: String?
-    var parameters: [String: AnyCodable]?
+    let payload: ActionPayload
     let groupId: String?
 
     var id: String { actionId }
@@ -17,17 +30,32 @@ struct Action: Codable, Identifiable, FetchableRecord, PersistableRecord {
         timelineId: String = "",
         createdAt: Date = Date(),
         type: ActionType,
-        targetId: String? = nil,
-        parameters: [String: AnyCodable]? = nil,
+        payload: ActionPayload,
         groupId: String? = nil
     ) {
         self.actionId = actionId
         self.timelineId = timelineId
         self.createdAt = createdAt
         self.type = type
-        self.targetId = targetId
-        self.parameters = parameters
+        self.payload = payload
         self.groupId = groupId
+    }
+
+    init(
+        actionId: String = UUID().uuidString,
+        timelineId: String = "",
+        createdAt: Date = Date(),
+        payload: ActionPayload,
+        groupId: String? = nil
+    ) {
+        self.init(
+            actionId: actionId,
+            timelineId: timelineId,
+            createdAt: createdAt,
+            type: Self.actionType(for: payload),
+            payload: payload,
+            groupId: groupId
+        )
     }
 
     enum CodingKeys: String, CodingKey {
@@ -35,8 +63,7 @@ struct Action: Codable, Identifiable, FetchableRecord, PersistableRecord {
         case timelineId = "timeline_id"
         case createdAt = "created_at"
         case type
-        case targetId = "target_id"
-        case parameters
+        case payload
         case groupId = "group_id"
     }
 
@@ -50,6 +77,142 @@ struct Action: Codable, Identifiable, FetchableRecord, PersistableRecord {
         case targetId = "target_id"
         case parameters
         case groupId = "group_id"
+        case payloadJson = "payload_json"
+    }
+
+    init(row: Row) throws {
+        actionId = row[Columns.actionId]
+        timelineId = row[Columns.timelineId]
+        createdAt = row[Columns.createdAt]
+        type = row[Columns.type]
+        groupId = row[Columns.groupId]
+
+        if let jsonString: String = row[Columns.payloadJson], !jsonString.isEmpty,
+           let data = jsonString.data(using: .utf8) {
+            payload = try Self.decodePayload(from: data)
+        } else {
+            // Legacy rows without `payload_json`: no-op when applied.
+            payload = .removeClip(clipId: "")
+        }
+    }
+
+    func encode(to container: inout PersistenceContainer) throws {
+        container[Columns.actionId] = actionId
+        container[Columns.timelineId] = timelineId
+        container[Columns.createdAt] = createdAt
+        container[Columns.type] = type
+        container[Columns.targetId] = nil
+        container[Columns.parameters] = nil
+        container[Columns.groupId] = groupId
+
+        let data = try Self.encodePayloadData(payload)
+        guard let jsonString = String(data: data, encoding: .utf8) else {
+            throw EncodingError.invalidValue(
+                payload,
+                EncodingError.Context(codingPath: [], debugDescription: "payload JSON encoding failed")
+            )
+        }
+        container[Columns.payloadJson] = jsonString
+    }
+
+    static func actionType(for payload: ActionPayload) -> ActionType {
+        switch payload {
+        case .splitClip: return .splitClip
+        case .removeClip: return .removeClip
+        case .addClip: return .addClip
+        case .trimClip: return .trimClip
+        case .moveClip: return .moveClip
+        case .replaceTrackClips: return .replaceTrackClips
+        }
+    }
+
+    nonisolated private static func decodePayload(from data: Data) throws -> ActionPayload {
+        try JSONDecoder().decode(ActionPayload.self, from: data)
+    }
+
+    nonisolated private static func encodePayloadData(_ payload: ActionPayload) throws -> Data {
+        try JSONEncoder().encode(payload)
+    }
+}
+
+// MARK: - Factories
+
+extension Action {
+    static func splitClip(
+        timelineId: String,
+        clipId: String,
+        atTimeUs: Int64,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .splitClip(clipId: clipId, atTimeUs: atTimeUs),
+            groupId: groupId
+        )
+    }
+
+    static func removeClip(
+        timelineId: String,
+        clipId: String,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .removeClip(clipId: clipId),
+            groupId: groupId
+        )
+    }
+
+    static func addClip(
+        timelineId: String,
+        clip: Clip,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .addClip(clip: clip),
+            groupId: groupId
+        )
+    }
+
+    static func trimClip(
+        timelineId: String,
+        clipId: String,
+        sourceRange: TimeRange,
+        timelineRange: TimeRange,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange),
+            groupId: groupId
+        )
+    }
+
+    static func moveClip(
+        timelineId: String,
+        clipId: String,
+        orderedClipIds: [String],
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .moveClip(clipId: clipId, orderedClipIds: orderedClipIds),
+            groupId: groupId
+        )
+    }
+
+    static func replaceTrackClips(
+        timelineId: String,
+        trackId: String,
+        clips: [Clip],
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .replaceTrackClips(trackId: trackId, clips: clips),
+            groupId: groupId
+        )
     }
 }
 
@@ -60,6 +223,7 @@ enum ActionType: String, Codable {
     case trimClip = "TRIM_CLIP"
     case splitClip = "SPLIT_CLIP"
     case moveClip = "MOVE_CLIP"
+    case replaceTrackClips = "REPLACE_TRACK_CLIPS"
     case applyEffect = "APPLY_EFFECT"
     case removeEffect = "REMOVE_EFFECT"
     case updateEffectParams = "UPDATE_EFFECT_PARAMS"
@@ -68,6 +232,8 @@ enum ActionType: String, Codable {
 }
 
 extension ActionType: DatabaseValueConvertible {}
+
+// MARK: - AnyCodable (shared with analysis artifacts)
 
 struct AnyCodable: Codable {
     let value: Any

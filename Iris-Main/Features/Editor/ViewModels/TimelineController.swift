@@ -4,6 +4,13 @@ import PhotosUI
 import SwiftUI
 internal import Combine
 
+private struct TimelineActionGroup {
+    /// What was applied in this step (for redo).
+    let forwardActions: [Action]
+    /// Apply these in order to undo `forwardActions`.
+    let inverseActions: [Action]
+}
+
 final class TimelineController: ObservableObject {
     @Published private(set) var state: TimelineState
     @Published private(set) var cutReview: TimelineCutReviewSession?
@@ -14,6 +21,12 @@ final class TimelineController: ObservableObject {
     private var hasAppliedInitialImportSeed = false
     private var debouncedSaveTask: Task<Void, Never>?
     private var importedMediaBySeedLocalKey: [String: Media] = [:]
+
+    private var undoStack: [TimelineActionGroup] = []
+    private var redoStack: [TimelineActionGroup] = []
+
+    var canUndo: Bool { !undoStack.isEmpty }
+    var canRedo: Bool { !redoStack.isEmpty }
 
     init(
         timelineId: String,
@@ -175,6 +188,44 @@ final class TimelineController: ObservableObject {
         state.clearSelection()
     }
 
+    /// Applies timeline commands, persists clip changes, and records an undo group.
+    func applyActions(_ actions: [Action], recordUndo: Bool = true) {
+        guard !actions.isEmpty else { return }
+        let before = state.clips
+        let inverseActions = state.apply(actions)
+        persistClipChanges(before: before, after: state.clips)
+
+        if recordUndo, !inverseActions.isEmpty {
+            undoStack.append(
+                TimelineActionGroup(forwardActions: actions, inverseActions: inverseActions)
+            )
+            redoStack.removeAll()
+        }
+        objectWillChange.send()
+    }
+
+    func undoLastActionGroup() {
+        guard let group = undoStack.popLast() else { return }
+        let before = state.clips
+        let redoForward = state.apply(group.inverseActions)
+        persistClipChanges(before: before, after: state.clips)
+        redoStack.append(
+            TimelineActionGroup(forwardActions: redoForward, inverseActions: group.inverseActions)
+        )
+        objectWillChange.send()
+    }
+
+    func redoLastActionGroup() {
+        guard let group = redoStack.popLast() else { return }
+        let before = state.clips
+        let undoInverse = state.apply(group.forwardActions)
+        persistClipChanges(before: before, after: state.clips)
+        undoStack.append(
+            TimelineActionGroup(forwardActions: group.forwardActions, inverseActions: undoInverse)
+        )
+        objectWillChange.send()
+    }
+
     func handleAddSelection(kind: TrackKind, source: ImportSource) {
         switch source {
         case .photos:
@@ -193,28 +244,46 @@ final class TimelineController: ObservableObject {
     }
 
     func moveClip(clipId: String, toStartTimeUs timeUs: Int64, orderedClipIds: [String]) {
-        let before = state.clips
-        state.moveClip(clipId: clipId, toStartTimeUs: timeUs, orderedClipIds: orderedClipIds)
-        persistClipChanges(before: before, after: state.clips)
+        _ = timeUs
+        applyActions([
+            Action.moveClip(
+                timelineId: state.timelineId,
+                clipId: clipId,
+                orderedClipIds: orderedClipIds
+            )
+        ])
     }
 
     func trimClip(clipId: String, sourceRange: TimeRange, timelineRange: TimeRange, commit: Bool) {
-        let before = state.clips
-        state.trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange, commit: commit)
-        guard commit else { return }
-        persistClipChanges(before: before, after: state.clips)
+        if !commit {
+            state.trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange, commit: false)
+            objectWillChange.send()
+            return
+        }
+        applyActions([
+            Action.trimClip(
+                timelineId: state.timelineId,
+                clipId: clipId,
+                sourceRange: sourceRange,
+                timelineRange: timelineRange
+            )
+        ])
     }
 
     func deleteSelectedClip() {
-        let before = state.clips
-        state.deleteSelectedClip()
-        persistClipChanges(before: before, after: state.clips)
+        guard let clipId = state.selectedClipId else { return }
+        applyActions([Action.removeClip(timelineId: state.timelineId, clipId: clipId)])
     }
 
     func splitSelectedClip() {
-        let before = state.clips
-        state.splitSelectedClip()
-        persistClipChanges(before: before, after: state.clips)
+        guard let clipId = state.selectedClipId else { return }
+        applyActions([
+            Action.splitClip(
+                timelineId: state.timelineId,
+                clipId: clipId,
+                atTimeUs: state.currentTimeAtCenter
+            )
+        ])
     }
 
     func updateCurrentTime(_ timeUs: Int64) {

@@ -90,8 +90,22 @@ struct EditorContainerView: View {
                     EditorTabBar(
                         activeSpace: $activeSpace,
                         isClipSelected: state.selectedClipId != nil,
-                        onSplitClip: { controller.splitSelectedClip() },
-                        onDeleteClip: { controller.deleteSelectedClip() }
+                        onSplitClip: {
+                            guard let clipId = controller.state.selectedClipId else { return }
+                            controller.applyActions([
+                                Action.splitClip(
+                                    timelineId: controller.state.timelineId,
+                                    clipId: clipId,
+                                    atTimeUs: controller.state.currentTimeAtCenter
+                                )
+                            ])
+                        },
+                        onDeleteClip: {
+                            guard let clipId = controller.state.selectedClipId else { return }
+                            controller.applyActions([
+                                Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
+                            ])
+                        }
                     ) {
                         ZStack {
                             switch activeSpace {

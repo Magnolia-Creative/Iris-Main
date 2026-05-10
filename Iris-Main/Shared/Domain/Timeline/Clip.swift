@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-struct Clip: Codable, Identifiable, FetchableRecord, PersistableRecord {
+struct Clip: Codable, Equatable, Identifiable, FetchableRecord, PersistableRecord {
     let clipId: String
     let trackId: String
     let mediaId: String
@@ -85,7 +85,7 @@ struct Clip: Codable, Identifiable, FetchableRecord, PersistableRecord {
     }
 }
 
-struct TimeRange: Codable {
+struct TimeRange: Codable, Equatable {
     var start: Int64
     var end: Int64
 

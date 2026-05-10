@@ -215,6 +215,12 @@ extension DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v4_timelineActionsPayloadJson") { db in
+            try db.alter(table: "timeline_actions") { t in
+                t.add(column: "payload_json", .text)
+            }
+        }
+
         return migrator
     }
 }
