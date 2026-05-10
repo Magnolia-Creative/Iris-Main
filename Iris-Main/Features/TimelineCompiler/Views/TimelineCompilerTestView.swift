@@ -29,6 +29,15 @@ private extension TimelineCompilerTestView {
                 .typography(.heading)
                 .foregroundStyle(Color.ds.text)
 
+            if viewModel.canConfigureLLMBackend {
+                Picker("LLM backend", selection: $viewModel.llmBackend) {
+                    ForEach(TimelineLLMBackend.selectableCases) { backend in
+                        Text(backend.title).tag(backend)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             TextEditor(text: $viewModel.prompt)
                 .font(.body)
                 .foregroundStyle(Color.ds.text)

@@ -4,9 +4,19 @@ import Foundation
 @MainActor
 final class TimelineCompilerTestViewModel: ObservableObject {
     @Published var prompt = "cut this clip in half"
+    @Published var llmBackend: TimelineLLMBackend = .zeticGemma {
+        didSet {
+            if llmBackend != oldValue {
+                outputText = ""
+                errorMessage = nil
+            }
+        }
+    }
     @Published private(set) var outputText = ""
     @Published private(set) var isCompiling = false
     @Published private(set) var errorMessage: String?
+
+    private(set) var canConfigureLLMBackend: Bool
 
     let sampleContextSummary = """
     Selected clip: clip-b
@@ -15,21 +25,31 @@ final class TimelineCompilerTestViewModel: ObservableObject {
     Playhead: 10s
     """
 
-    private let compiler: TimelinePromptActionCompiler
+    private let injectedCompiler: TimelinePromptActionCompiler?
     private let context: TimelineCompilerContext
     private let encoder: JSONEncoder
 
     init(
         compiler: TimelinePromptActionCompiler? = nil,
-        context: TimelineCompilerContext? = nil
+        context: TimelineCompilerContext? = nil,
+        llmBackend: TimelineLLMBackend = .zeticGemma
     ) {
-        self.compiler = compiler ?? TimelinePromptActionCompiler(
-            embeddingProvider: StubEmbeddingProvider(),
-            llmProvider: ZeticGemmaTimelineLLMProvider()
-        )
+        self.injectedCompiler = compiler
+        self.canConfigureLLMBackend = compiler == nil
+        self.llmBackend = llmBackend
         self.context = context ?? TimelineCompilerTestViewModel.makeSampleContext()
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    }
+
+    private func compilerForCurrentBackend() -> TimelinePromptActionCompiler {
+        if let injectedCompiler {
+            return injectedCompiler
+        }
+        return TimelinePromptActionCompiler(
+            embeddingProvider: StubEmbeddingProvider(),
+            llmProvider: llmBackend.makeProvider()
+        )
     }
 
     func compilePrompt() async {
@@ -45,7 +65,7 @@ final class TimelineCompilerTestViewModel: ObservableObject {
         defer { isCompiling = false }
 
         do {
-            let result = try await compiler.compilePromptToActions(
+            let result = try await compilerForCurrentBackend().compilePromptToActions(
                 prompt: trimmedPrompt,
                 context: context
             )
