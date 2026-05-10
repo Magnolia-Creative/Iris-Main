@@ -32,7 +32,7 @@ struct ZeticGemmaTimelineLLMProvider: TimelineLLMProvider {
             modelMode: LLMModelMode.RUN_AUTO,
             onDownload: nil
         )
-        try model.run(prompt)
+        _ = try model.run(prompt)
 
         var buffer = ""
         while true {

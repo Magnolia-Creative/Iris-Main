@@ -1,3 +1,4 @@
+internal import Combine
 import Foundation
 
 @MainActor
