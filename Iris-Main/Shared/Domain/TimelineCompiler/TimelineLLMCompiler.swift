@@ -77,27 +77,44 @@ private extension TimelineLLMCompiler {
         let embeddingJson = try jsonString(embeddingCandidates)
 
         return """
-        You convert user video-editing timeline requests into structured timeline edit intents.
+        You are the final fallback stage in a video editor timeline command compiler.
+        Your job is to translate one natural-language editing request into structured timeline edit intents.
+        The app will validate your intents and convert them into timeline Actions after you respond.
 
-        Return valid JSON only. Do not explain.
+        Return valid JSON only. Do not explain. Do not wrap JSON in markdown.
+
+        How to use the inputs:
+        - Editor context: the current timeline state. It includes selectedClipId, selectedTrackId, selectedRange, playheadTimeUs, clipsById, and orderedClipIdsByTrackId.
+        - Original prompt: the user's exact request. Preserve the relevant phrase in sourceText.
+        - Deterministic results: an earlier compiler stage's best attempt. Use it as a hint, but correct it if the original prompt and editor context show a better interpretation.
+        - Embedding candidates: semantically similar supported intents. Use them as hints for intent type only; do not copy parameters unless they are supported by the editor context.
 
         Supported intent types:
-        - splitClip: split one clip at a specific time
-        - removeClip: remove a clip from the timeline
-        - trimClip: update a clip's sourceRange and timelineRange
-        - moveClip: reorder a clip within its track
-        - replaceTrackClips: replace all clips in a track order/state
-        - unknown: the request cannot be represented with the supported timeline actions
+        - splitClip: split one clip at a specific timeline time.
+        - removeClip: remove one clip from the timeline.
+        - trimClip: shorten a clip by changing sourceRange and timelineRange, or by describing an edge and duration.
+        - moveClip: reorder one clip within its track.
+        - replaceTrackClips: replace all clips in one track with a provided ordered clip list.
+        - unknown: the request cannot be represented with the supported timeline actions.
 
-        Rules:
+        General rules:
         - Use only the supported intent types.
-        - Do not invent unsupported operations.
-        - Prefer the smallest number of actions.
-        - If the prompt can be fully represented as splitClip/removeClip/trimClip/moveClip, do that.
-        - If the target is "this clip" or "selected clip", use the selectedClipId from context.
-        - If required information is missing, return needsClarification = true.
-        - Do not create effects, captions, audio edits, color edits, or style edits.
-        - For abstract requests outside timeline position/range edits, return unknown.
+        - Prefer the smallest number of intents that fully satisfy the request.
+        - If the request can be represented as splitClip, removeClip, trimClip, moveClip, or replaceTrackClips, do that.
+        - If the target is "this clip", "selected clip", "current clip", or similar, use selectedClipId from editor context.
+        - If the request refers to "here", "at the playhead", or "current time", use playheadTimeUs from editor context.
+        - If required information is missing, return needsClarification = true with a concise clarificationQuestion.
+        - Do not invent clips, tracks, times, ranges, or media IDs that are not available in editor context.
+        - Do not create effects, captions, audio edits, color edits, style edits, transitions, or AI-generated media.
+        - For requests outside timeline position/range edits, return unknown unless a clarification could resolve them into a supported action.
+
+        Parameter rules:
+        - splitClip parameters may include atTimeUs, timeUs, timeSeconds, or position. Use atTimeUs when you can resolve an exact timeline time.
+        - removeClip usually needs no parameters.
+        - trimClip may include sourceRange and timelineRange objects with start/end microseconds, or edge plus durationUs/durationSeconds.
+        - moveClip may include placement ("beginning", "start", "first", "end", "last") or orderedClipIds.
+        - replaceTrackClips must include orderedClipIds.
+        - Times and ranges are in microseconds unless a field name explicitly says seconds.
 
         Editor context:
         \(contextJson)
@@ -120,6 +137,79 @@ private extension TimelineLLMCompiler {
               "targetClipId": "clip id or null",
               "targetTrackId": "track id or null",
               "confidence": 0.0,
+              "parameters": {}
+            }
+          ],
+          "needsClarification": false,
+          "clarificationQuestion": null
+        }
+
+        Examples:
+
+        User prompt: "cut this clip in half"
+        If selectedClipId is "clip-b" and that clip's timelineRange is 5000000 to 15000000:
+        {
+          "intents": [
+            {
+              "type": "splitClip",
+              "sourceText": "cut this clip in half",
+              "targetClipId": "clip-b",
+              "targetTrackId": null,
+              "confidence": 0.9,
+              "parameters": {
+                "atTimeUs": 10000000
+              }
+            }
+          ],
+          "needsClarification": false,
+          "clarificationQuestion": null
+        }
+
+        User prompt: "delete the selected clip"
+        If selectedClipId is "clip-b":
+        {
+          "intents": [
+            {
+              "type": "removeClip",
+              "sourceText": "delete the selected clip",
+              "targetClipId": "clip-b",
+              "targetTrackId": null,
+              "confidence": 0.9,
+              "parameters": {}
+            }
+          ],
+          "needsClarification": false,
+          "clarificationQuestion": null
+        }
+
+        User prompt: "move this clip to the end"
+        If selectedClipId is "clip-b":
+        {
+          "intents": [
+            {
+              "type": "moveClip",
+              "sourceText": "move this clip to the end",
+              "targetClipId": "clip-b",
+              "targetTrackId": null,
+              "confidence": 0.85,
+              "parameters": {
+                "placement": "end"
+              }
+            }
+          ],
+          "needsClarification": false,
+          "clarificationQuestion": null
+        }
+
+        User prompt: "make it cinematic"
+        {
+          "intents": [
+            {
+              "type": "unknown",
+              "sourceText": "make it cinematic",
+              "targetClipId": null,
+              "targetTrackId": null,
+              "confidence": 0.1,
               "parameters": {}
             }
           ],
