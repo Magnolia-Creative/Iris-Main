@@ -52,7 +52,7 @@ struct TimelineCompileResult: Codable, Equatable {
     }
 }
 
-enum CompileSource: String, Codable {
+enum CompileSource: String, Codable, Equatable {
     case deterministic
     case embedding
     case llm
@@ -79,7 +79,7 @@ enum TimelineCompileWarning: String, Codable, Equatable, Hashable {
     case destructiveActionNeedsClarification
 }
 
-enum TimelineEditIntentType: String, Codable {
+enum TimelineEditIntentType: String, Codable, Equatable {
     case splitClip
     case removeClip
     case trimClip
