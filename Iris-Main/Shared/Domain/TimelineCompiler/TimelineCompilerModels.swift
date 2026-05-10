@@ -59,7 +59,7 @@ enum CompileSource: String, Codable {
     case mixed
 }
 
-enum TimelineCompileWarning: String, Codable, Equatable {
+enum TimelineCompileWarning: String, Codable, Equatable, Hashable {
     case missingSelectedClip
     case missingPlayhead
     case missingSelectedTrack
