@@ -8,6 +8,16 @@ enum AppConfiguration {
     static let uploadFieldName = "videos"
     static let uploadLocalKeyFieldName = "local_key"
     static let simulateImportProcessing = false
+    static var zeticPersonalKey: String? {
+        if let key = Bundle.main.object(forInfoDictionaryKey: "ZETIC_PERSONAL_KEY") as? String,
+           key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return key
+        }
+
+        let envKey = ProcessInfo.processInfo.environment["ZETIC_PERSONAL_KEY"]
+        return envKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? envKey : nil
+    }
+
     nonisolated static var semanticMobileCLIPEncoderURI: String {
         guard let modelsDirectoryURL = semanticMobileCLIPModelsDirectoryURL else {
             return ""
