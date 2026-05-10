@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		1FBF36972F80DBC200086810 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FBF36962F80DBC200086810 /* GRDB */; };
-		2A3B4C5D6E7F8091A2B3C401 /* ZeticMLange in Frameworks */ = {isa = PBXBuildFile; productRef = 2A3B4C5D6E7F8091A2B3C402 /* ZeticMLange */; };
 		9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */ = {isa = PBXBuildFile; productRef = 9A1B2C3D4E5F60718293A002 /* MobileCLIP */; };
 /* End PBXBuildFile section */
 
@@ -72,7 +71,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				1FBF36972F80DBC200086810 /* GRDB in Frameworks */,
-				2A3B4C5D6E7F8091A2B3C401 /* ZeticMLange in Frameworks */,
 				9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -137,7 +135,6 @@
 			packageProductDependencies = (
 				1FBF36962F80DBC200086810 /* GRDB */,
 				9A1B2C3D4E5F60718293A002 /* MobileCLIP */,
-				2A3B4C5D6E7F8091A2B3C402 /* ZeticMLange */,
 			);
 			productName = "Iris-Main";
 			productReference = 1F77B7992F64B22C00C813F6 /* Iris-Main.app */;
@@ -225,7 +222,6 @@
 				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
 				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
 				1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */,
-				2A3B4C5D6E7F8091A2B3C403 /* XCRemoteSwiftPackageReference "ZeticMLangeiOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1F77B79A2F64B22C00C813F6 /* Products */;
@@ -469,7 +465,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = "$(inherited) -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = "Magnolia-Creative.Iris-Main";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -508,7 +503,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = "$(inherited) -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = "Magnolia-Creative.Iris-Main";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -667,14 +661,6 @@
 				minimumVersion = 1.5.2;
 			};
 		};
-		2A3B4C5D6E7F8091A2B3C403 /* XCRemoteSwiftPackageReference "ZeticMLangeiOS" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/zetic-ai/ZeticMLangeiOS.git";
-			requirement = {
-				kind = exactVersion;
-				version = 1.6.0;
-			};
-		};
 		9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "file:///Users/abdur-rahmanrana/irismainpkg/swift-mobileclip";
@@ -690,11 +676,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
-		};
-		2A3B4C5D6E7F8091A2B3C402 /* ZeticMLange */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2A3B4C5D6E7F8091A2B3C403 /* XCRemoteSwiftPackageReference "ZeticMLangeiOS" */;
-			productName = ZeticMLange;
 		};
 		9A1B2C3D4E5F60718293A002 /* MobileCLIP */ = {
 			isa = XCSwiftPackageProductDependency;
