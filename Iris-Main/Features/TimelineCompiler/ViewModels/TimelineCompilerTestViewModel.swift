@@ -20,14 +20,14 @@ final class TimelineCompilerTestViewModel: ObservableObject {
     private let encoder: JSONEncoder
 
     init(
-        compiler: TimelinePromptActionCompiler = TimelinePromptActionCompiler(
+        compiler: TimelinePromptActionCompiler? = nil,
+        context: TimelineCompilerContext? = nil
+    ) {
+        self.compiler = compiler ?? TimelinePromptActionCompiler(
             embeddingProvider: StubEmbeddingProvider(),
             llmProvider: ZeticGemmaTimelineLLMProvider()
-        ),
-        context: TimelineCompilerContext = TimelineCompilerTestViewModel.makeSampleContext()
-    ) {
-        self.compiler = compiler
-        self.context = context
+        )
+        self.context = context ?? TimelineCompilerTestViewModel.makeSampleContext()
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
