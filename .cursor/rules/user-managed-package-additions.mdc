@@ -1,0 +1,17 @@
+---
+description: Require user confirmation and installation for new Iris-Main packages
+alwaysApply: true
+---
+
+# User-Managed Package Additions
+
+When work in `Iris-Main` requires adding a new package or dependency:
+
+1. Do not add, install, or modify package dependencies yourself.
+2. Tell the user exactly which package is needed and why.
+3. Ask the user to add the package themselves.
+4. Pause the current execution loop until the user resumes.
+5. After resume, verify that the package is present before continuing.
+6. If the package is missing, ask the user to add it and pause again.
+
+Continue with the remaining implementation only after the dependency is available.
