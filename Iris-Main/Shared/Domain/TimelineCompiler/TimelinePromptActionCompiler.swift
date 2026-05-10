@@ -35,7 +35,9 @@ final class TimelinePromptActionCompiler {
         context: TimelineCompilerContext
     ) async throws -> TimelineCompileResult {
         let normalizedPrompt = TimelinePromptNormalizer.normalize(prompt)
+        print("[TimelineCompiler] Compile start prompt='\(prompt)' normalized='\(normalizedPrompt)'")
         guard normalizedPrompt.isEmpty == false else {
+            print("[TimelineCompiler] Empty prompt after normalization.")
             return TimelineCompileResult(
                 actions: [],
                 confidence: 0,
@@ -49,18 +51,25 @@ final class TimelinePromptActionCompiler {
         let deterministicResult = deterministicCompiler.compile(prompt: normalizedPrompt, context: context)
         if let deterministicResult {
             let validated = validator.validatedResult(deterministicResult, context: context)
+            print("[TimelineCompiler] Deterministic result actions=\(validated.actions.count) confidence=\(validated.confidence) needsClarification=\(validated.needsClarification) warnings=\(validated.warnings)")
             if shouldEarlyExit(validated, minimumConfidence: 0.95, context: context) {
+                print("[TimelineCompiler] Early exit with deterministic result.")
                 return validated
             }
             if validated.needsClarification {
+                print("[TimelineCompiler] Returning deterministic clarification.")
                 return validated
             }
+        } else {
+            print("[TimelineCompiler] Deterministic compiler produced no result.")
         }
 
         let embeddingCandidates: [TimelineEmbeddingCandidate]
         do {
             embeddingCandidates = try await embeddingRetriever.candidates(for: normalizedPrompt)
+            print("[TimelineCompiler] Embedding candidates count=\(embeddingCandidates.count) topScore=\(embeddingCandidates.first?.score.description ?? "nil") topType=\(embeddingCandidates.first?.type.rawValue ?? "nil")")
         } catch {
+            print("[TimelineCompiler] Embedding retrieval failed: \(error)")
             embeddingCandidates = []
         }
 
@@ -71,12 +80,17 @@ final class TimelinePromptActionCompiler {
                context: context
            ) {
             let validated = validator.validatedResult(embeddingResult, context: context)
+            print("[TimelineCompiler] Embedding result actions=\(validated.actions.count) confidence=\(validated.confidence) needsClarification=\(validated.needsClarification) warnings=\(validated.warnings)")
             if shouldEarlyExit(validated, minimumConfidence: TimelineEmbeddingIntentRetriever.earlyExitThreshold, context: context) {
+                print("[TimelineCompiler] Early exit with embedding result.")
                 return validated
             }
             if validated.needsClarification {
+                print("[TimelineCompiler] Returning embedding clarification.")
                 return validated
             }
+        } else {
+            print("[TimelineCompiler] No high-confidence embedding action resolved; falling back to LLM.")
         }
 
         let llmResult = await llmCompiler.compile(
@@ -85,6 +99,7 @@ final class TimelinePromptActionCompiler {
             deterministicResult: deterministicResult,
             embeddingCandidates: embeddingCandidates
         )
+        print("[TimelineCompiler] LLM result actions=\(llmResult.actions.count) confidence=\(llmResult.confidence) needsClarification=\(llmResult.needsClarification) warnings=\(llmResult.warnings)")
         return validator.validatedResult(llmResult, context: context)
     }
 }

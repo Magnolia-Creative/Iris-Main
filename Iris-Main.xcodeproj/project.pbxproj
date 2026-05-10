@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		1FBF36972F80DBC200086810 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FBF36962F80DBC200086810 /* GRDB */; };
+		1FCBE22C2FB12D96006A178E /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1FCBE22B2FB12D96006A178E /* Accelerate.framework */; };
+		1FCBE22E2FB12E6B006A178E /* ZeticMLange in Frameworks */ = {isa = PBXBuildFile; productRef = 1FCBE22D2FB12E6B006A178E /* ZeticMLange */; };
 		9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */ = {isa = PBXBuildFile; productRef = 9A1B2C3D4E5F60718293A002 /* MobileCLIP */; };
 /* End PBXBuildFile section */
 
@@ -32,6 +34,7 @@
 		1F77B7992F64B22C00C813F6 /* Iris-Main.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Iris-Main.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F77B7A62F64B22F00C813F6 /* Iris-MainTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Iris-MainTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F77B7B02F64B22F00C813F6 /* Iris-MainUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Iris-MainUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		1FCBE22B2FB12D96006A178E /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -70,7 +73,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1FCBE22C2FB12D96006A178E /* Accelerate.framework in Frameworks */,
 				1FBF36972F80DBC200086810 /* GRDB in Frameworks */,
+				1FCBE22E2FB12E6B006A178E /* ZeticMLange in Frameworks */,
 				9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -98,6 +103,7 @@
 				1F77B79B2F64B22C00C813F6 /* Iris-Main */,
 				1F77B7A92F64B22F00C813F6 /* Iris-MainTests */,
 				1F77B7B32F64B22F00C813F6 /* Iris-MainUITests */,
+				1FCBE22A2FB12D96006A178E /* Frameworks */,
 				1F77B79A2F64B22C00C813F6 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -110,6 +116,14 @@
 				1F77B7B02F64B22F00C813F6 /* Iris-MainUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		1FCBE22A2FB12D96006A178E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1FCBE22B2FB12D96006A178E /* Accelerate.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -135,6 +149,7 @@
 			packageProductDependencies = (
 				1FBF36962F80DBC200086810 /* GRDB */,
 				9A1B2C3D4E5F60718293A002 /* MobileCLIP */,
+				1FCBE22D2FB12E6B006A178E /* ZeticMLange */,
 			);
 			productName = "Iris-Main";
 			productReference = 1F77B7992F64B22C00C813F6 /* Iris-Main.app */;
@@ -222,6 +237,7 @@
 				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
 				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
 				1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */,
+				1FCBE2292FB12D57006A178E /* XCRemoteSwiftPackageReference "ZeticMLangeiOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1F77B79A2F64B22C00C813F6 /* Products */;
@@ -661,6 +677,14 @@
 				minimumVersion = 1.5.2;
 			};
 		};
+		1FCBE2292FB12D57006A178E /* XCRemoteSwiftPackageReference "ZeticMLangeiOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/zetic-ai/ZeticMLangeiOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.6.0;
+			};
+		};
 		9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "file:///Users/abdur-rahmanrana/irismainpkg/swift-mobileclip";
@@ -676,6 +700,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
+		};
+		1FCBE22D2FB12E6B006A178E /* ZeticMLange */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1FCBE2292FB12D57006A178E /* XCRemoteSwiftPackageReference "ZeticMLangeiOS" */;
+			productName = ZeticMLange;
 		};
 		9A1B2C3D4E5F60718293A002 /* MobileCLIP */ = {
 			isa = XCSwiftPackageProductDependency;

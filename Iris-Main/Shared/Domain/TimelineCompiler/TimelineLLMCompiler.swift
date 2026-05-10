@@ -22,16 +22,21 @@ struct TimelineLLMCompiler {
         embeddingCandidates: [TimelineEmbeddingCandidate]
     ) async -> TimelineCompileResult {
         do {
+            print("[TimelineLLM] Building fallback prompt originalPrompt='\(prompt)' embeddingCandidateCount=\(embeddingCandidates.count)")
             let llmPrompt = try makePrompt(
                 prompt: prompt,
                 context: context,
                 deterministicResult: deterministicResult,
                 embeddingCandidates: embeddingCandidates
             )
+            print("[TimelineLLM] Sending fallback prompt length=\(llmPrompt.count)")
             let response = try await provider.complete(prompt: llmPrompt)
+            print("[TimelineLLM] Received provider response length=\(response.count)")
             let payload = try decodePayload(from: response)
+            print("[TimelineLLM] Decoded intents count=\(payload.intents.count) needsClarification=\(payload.needsClarification)")
             return compilePayload(payload, originalPrompt: prompt, context: context)
         } catch TimelineCompilerError.llmUnavailable {
+            print("[TimelineLLM] Provider reported llmUnavailable for prompt='\(prompt)'")
             return TimelineCompileResult(
                 actions: [],
                 confidence: 0,
@@ -41,6 +46,7 @@ struct TimelineLLMCompiler {
                 needsClarification: true
             )
         } catch {
+            print("[TimelineLLM] Fallback failed with error: \(error)")
             return TimelineCompileResult(
                 actions: [],
                 confidence: 0,
