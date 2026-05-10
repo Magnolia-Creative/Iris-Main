@@ -25,6 +25,9 @@ struct HomeView: View {
             .navigationDestination(isPresented: $viewModel.isPresentingProjectSetup) {
                 ProjectSetupView()
             }
+            .navigationDestination(isPresented: $viewModel.isPresentingTimelineCompilerTest) {
+                TimelineCompilerTestView()
+            }
             .navigationDestination(item: $viewModel.selectedProject) { project in
                 editorDestination(for: project)
             }
@@ -117,12 +120,34 @@ struct HomeView: View {
                         }
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        viewModel.presentTimelineCompilerTest()
+                    } label: {
+                        HStack(spacing: .spacing(.sp2)) {
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 14, weight: .semibold))
+
+                            Text("Test timeline compiler")
+                                .typography(.action)
+                        }
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, .sp4)
+                        .padding(.vertical, .sp3)
+                        .background(Color.white.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.sp6)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 224)
+        .frame(height: 276)
     }
 
     private var recentsSection: some View {

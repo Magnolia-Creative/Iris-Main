@@ -7,6 +7,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var loadErrorMessage: String?
     @Published var isPresentingProjectSetup = false
     @Published var isPresentingRealtimeTranscription = false
+    @Published var isPresentingTimelineCompilerTest = false
     @Published var selectedProject: Project?
 
     private let db: DatabaseManager
@@ -39,6 +40,10 @@ final class HomeViewModel: ObservableObject {
 
     func presentRealtimeTranscription() {
         isPresentingRealtimeTranscription = true
+    }
+
+    func presentTimelineCompilerTest() {
+        isPresentingTimelineCompilerTest = true
     }
 
     func dismissRealtimeTranscription() {
