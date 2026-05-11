@@ -74,13 +74,6 @@
             ReferencedContainer = "container:Iris-Main.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "ZETIC_PERSONAL_KEY"
-            value = "ztp_1d4e9c306951486189e6e1c53037e96b"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

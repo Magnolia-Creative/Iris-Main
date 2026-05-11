@@ -9,7 +9,7 @@ final class TimelinePromptActionCompiler {
     init(
         deterministicCompiler: TimelineDeterministicCompiler = TimelineDeterministicCompiler(),
         embeddingProvider: EmbeddingProvider = MobileCLIPTextEmbeddingProvider(),
-        llmProvider: TimelineLLMProvider = ZeticGemmaTimelineLLMProvider(),
+        llmProvider: TimelineLLMProvider = TimelineLLMBackend.appleFoundation.makeProvider(),
         validator: TimelineActionValidator = TimelineActionValidator()
     ) {
         self.deterministicCompiler = deterministicCompiler

@@ -4,19 +4,9 @@ import Foundation
 @MainActor
 final class TimelineCompilerTestViewModel: ObservableObject {
     @Published var prompt = "cut this clip in half"
-    @Published var llmBackend: TimelineLLMBackend = .zeticGemma {
-        didSet {
-            if llmBackend != oldValue {
-                outputText = ""
-                errorMessage = nil
-            }
-        }
-    }
     @Published private(set) var outputText = ""
     @Published private(set) var isCompiling = false
     @Published private(set) var errorMessage: String?
-
-    private(set) var canConfigureLLMBackend: Bool
 
     let sampleContextSummary = """
     Selected clip: clip-b
@@ -31,12 +21,9 @@ final class TimelineCompilerTestViewModel: ObservableObject {
 
     init(
         compiler: TimelinePromptActionCompiler? = nil,
-        context: TimelineCompilerContext? = nil,
-        llmBackend: TimelineLLMBackend = .zeticGemma
+        context: TimelineCompilerContext? = nil
     ) {
         self.injectedCompiler = compiler
-        self.canConfigureLLMBackend = compiler == nil
-        self.llmBackend = llmBackend
         self.context = context ?? TimelineCompilerTestViewModel.makeSampleContext()
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -48,7 +35,7 @@ final class TimelineCompilerTestViewModel: ObservableObject {
         }
         return TimelinePromptActionCompiler(
             embeddingProvider: StubEmbeddingProvider(),
-            llmProvider: llmBackend.makeProvider()
+            llmProvider: TimelineLLMBackend.appleFoundation.makeProvider()
         )
     }
 
