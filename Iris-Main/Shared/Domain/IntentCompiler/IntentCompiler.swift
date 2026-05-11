@@ -471,14 +471,21 @@ private extension IntentCompiler {
 
 private extension IntentCompiler {
     func durationExpression(from value: JSONValue) -> DurationExpression? {
-        guard case .object(let object) = value,
-              let type = object["type"]?.stringValue else { return nil }
+        guard case .object(let object) = value else { return nil }
+
+        if let amount = object["value"]?.doubleValue,
+           let unitValue = object["unit"]?.stringValue,
+           let unit = unit(from: unitValue) {
+            return .duration(value: amount, unit: unit)
+        }
+
+        guard let type = object["type"]?.stringValue else { return nil }
 
         switch type {
         case "duration":
             guard let amount = object["value"]?.doubleValue,
                   let unitValue = object["unit"]?.stringValue,
-                  let unit = DurationUnit(rawValue: unitValue) else { return nil }
+                  let unit = unit(from: unitValue) else { return nil }
             return .duration(value: amount, unit: unit)
         case "percentage":
             guard let amount = object["value"]?.doubleValue else { return nil }
