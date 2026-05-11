@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct TimelineCompilerTestView: View {
-    @StateObject private var viewModel = TimelineCompilerTestViewModel()
+struct IntentCompilerTestView: View {
+    @StateObject private var viewModel = IntentCompilerTestViewModel()
 
     var body: some View {
         ZStack {
@@ -17,12 +17,12 @@ struct TimelineCompilerTestView: View {
                 .padding(.vertical, .sp6)
             }
         }
-        .navigationTitle("Timeline Compiler")
+        .navigationTitle("Intent Compiler")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-private extension TimelineCompilerTestView {
+private extension IntentCompilerTestView {
     var promptSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp3)) {
             Text("Prompt")
@@ -130,6 +130,6 @@ private extension TimelineCompilerTestView {
 
 #Preview {
     NavigationStack {
-        TimelineCompilerTestView()
+        IntentCompilerTestView()
     }
 }

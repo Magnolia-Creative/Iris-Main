@@ -1,11 +1,11 @@
 import Foundation
 
-struct TimelineIntentCompiler {
+struct IntentCompiler {
     func compile(
         _ plan: SemanticEditPlan,
         originalPrompt: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         if plan.needsClarification {
             return clarification(
                 originalPrompt: originalPrompt,
@@ -14,12 +14,12 @@ struct TimelineIntentCompiler {
             )
         }
 
-        var simulator = TimelineIntentTimelineSimulator(context: context)
+        var simulator = IntentTimelineSimulator(context: context)
         var previousClipId: String?
         var previousTrackId: String?
         var actions: [Action] = []
         var confidences: [Double] = []
-        var warnings: [TimelineCompileWarning] = []
+        var warnings: [IntentCompileWarning] = []
 
         for operation in plan.operations {
             let resolved: IntentResolutionResult
@@ -58,7 +58,7 @@ struct TimelineIntentCompiler {
         }
 
         if actions.isEmpty {
-            return TimelineCompileResult(
+            return IntentCompileResult(
                 actions: [],
                 confidence: 0,
                 source: .llm,
@@ -69,7 +69,7 @@ struct TimelineIntentCompiler {
         }
 
         let confidence = confidences.reduce(0, +) / Double(confidences.count)
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: actions,
             confidence: confidence,
             source: .llm,
@@ -82,12 +82,12 @@ struct TimelineIntentCompiler {
 
 private enum IntentResolutionResult {
     case success(ResolvedIntentOperation)
-    case clarification(TimelineCompileWarning, String)
+    case clarification(IntentCompileWarning, String)
     case unsupported
 }
 
 private struct ResolvedIntentOperation {
-    let type: TimelineEditIntentType
+    let type: IntentEditType
     let sourceText: String
     let targetClipId: String?
     let targetTrackId: String?
@@ -103,11 +103,11 @@ private enum ResolvedIntentParameters {
     case replaceTrackClips(clips: [Clip])
 }
 
-private extension TimelineIntentCompiler {
+private extension IntentCompiler {
     func resolveSplit(
         _ operation: SemanticEditOperation,
-        context: TimelineCompilerContext,
-        simulator: TimelineIntentTimelineSimulator,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
         previousClipId: String?
     ) -> IntentResolutionResult {
         guard let clip = resolveClip(operation.target, context: context, simulator: simulator, previousClipId: previousClipId) else {
@@ -141,8 +141,8 @@ private extension TimelineIntentCompiler {
 
     func resolveRemove(
         _ operation: SemanticEditOperation,
-        context: TimelineCompilerContext,
-        simulator: TimelineIntentTimelineSimulator,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
         previousClipId: String?
     ) -> IntentResolutionResult {
         guard let clip = resolveClip(operation.target, context: context, simulator: simulator, previousClipId: previousClipId) else {
@@ -163,8 +163,8 @@ private extension TimelineIntentCompiler {
 
     func resolveTrim(
         _ operation: SemanticEditOperation,
-        context: TimelineCompilerContext,
-        simulator: TimelineIntentTimelineSimulator,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
         previousClipId: String?
     ) -> IntentResolutionResult {
         guard let clip = resolveClip(operation.target, context: context, simulator: simulator, previousClipId: previousClipId) else {
@@ -208,8 +208,8 @@ private extension TimelineIntentCompiler {
 
     func resolveMove(
         _ operation: SemanticEditOperation,
-        context: TimelineCompilerContext,
-        simulator: TimelineIntentTimelineSimulator,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
         previousClipId: String?
     ) -> IntentResolutionResult {
         guard let clip = resolveClip(operation.target, context: context, simulator: simulator, previousClipId: previousClipId) else {
@@ -258,8 +258,8 @@ private extension TimelineIntentCompiler {
 
     func resolveReplaceTrackClips(
         _ operation: SemanticEditOperation,
-        context: TimelineCompilerContext,
-        simulator: TimelineIntentTimelineSimulator,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
         previousTrackId: String?
     ) -> IntentResolutionResult {
         guard let trackId = resolveTrackId(operation.target, context: context, previousTrackId: previousTrackId) else {
@@ -295,7 +295,7 @@ private extension TimelineIntentCompiler {
         )
     }
 
-    func makeAction(from operation: ResolvedIntentOperation, context: TimelineCompilerContext) -> Action? {
+    func makeAction(from operation: ResolvedIntentOperation, context: IntentCompilerContext) -> Action? {
         switch operation.parameters {
         case .splitClip(let atTimeUs):
             guard let clipId = operation.targetClipId else { return nil }
@@ -318,9 +318,9 @@ private extension TimelineIntentCompiler {
     func clarification(
         originalPrompt: String,
         question: String?,
-        warnings: [TimelineCompileWarning]
-    ) -> TimelineCompileResult {
-        TimelineCompileResult(
+        warnings: [IntentCompileWarning]
+    ) -> IntentCompileResult {
+        IntentCompileResult(
             actions: [],
             confidence: 0,
             source: .llm,
@@ -330,17 +330,17 @@ private extension TimelineIntentCompiler {
         )
     }
 
-    func uniqueWarnings(_ warnings: [TimelineCompileWarning]) -> [TimelineCompileWarning] {
-        var seen = Set<TimelineCompileWarning>()
+    func uniqueWarnings(_ warnings: [IntentCompileWarning]) -> [IntentCompileWarning] {
+        var seen = Set<IntentCompileWarning>()
         return warnings.filter { seen.insert($0).inserted }
     }
 }
 
-private extension TimelineIntentCompiler {
+private extension IntentCompiler {
     func resolveClip(
         _ target: SemanticEditTarget?,
-        context: TimelineCompilerContext,
-        simulator: TimelineIntentTimelineSimulator,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
         previousClipId: String?
     ) -> Clip? {
         guard let target else {
@@ -381,7 +381,7 @@ private extension TimelineIntentCompiler {
 
     func resolveTrackId(
         _ target: SemanticEditTarget?,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         previousTrackId: String? = nil
     ) -> String? {
         guard let target else {
@@ -391,7 +391,7 @@ private extension TimelineIntentCompiler {
         return resolveTrackId(reference, context: context) ?? previousTrackId
     }
 
-    func resolveTrackId(_ reference: SemanticTrackReference?, context: TimelineCompilerContext) -> String? {
+    func resolveTrackId(_ reference: SemanticTrackReference?, context: IntentCompilerContext) -> String? {
         guard let reference else { return nil }
         switch reference.type {
         case .selectedTrack:
@@ -402,7 +402,7 @@ private extension TimelineIntentCompiler {
     }
 }
 
-private extension TimelineIntentCompiler {
+private extension IntentCompiler {
     func durationExpression(from value: JSONValue) -> DurationExpression? {
         guard case .object(let object) = value,
               let type = object["type"]?.stringValue else { return nil }
@@ -463,7 +463,7 @@ private extension TimelineIntentCompiler {
         }
     }
 
-    func resolveTimeUs(_ expression: TimeExpression, clip: Clip, context: TimelineCompilerContext) -> Int64? {
+    func resolveTimeUs(_ expression: TimeExpression, clip: Clip, context: IntentCompilerContext) -> Int64? {
         switch expression {
         case .playhead:
             return context.playheadTimeUs
@@ -494,11 +494,11 @@ private extension TimelineIntentCompiler {
     }
 }
 
-private struct TimelineIntentTimelineSimulator {
+private struct IntentTimelineSimulator {
     private(set) var clipsById: [String: Clip]
     private(set) var orderedClipIdsByTrackId: [String: [String]]
 
-    init(context: TimelineCompilerContext) {
+    init(context: IntentCompilerContext) {
         self.clipsById = context.clipsById
         self.orderedClipIdsByTrackId = context.orderedClipIdsByTrackId
     }

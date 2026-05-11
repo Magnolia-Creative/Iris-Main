@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Iris_Main
 
-struct TimelinePromptActionCompilerTests {
+struct IntentPromptActionCompilerTests {
     @Test func cutClipInHalfUsesDeterministicEarlyExit() async throws {
         let embeddingProvider = TestEmbeddingProvider()
         let llmProvider = TestLLMProvider(response: unknownLLMResponse)
@@ -332,27 +332,27 @@ private let overTrimLLMResponse = """
 private func makeCompiler(
     embeddingProvider: TestEmbeddingProvider = TestEmbeddingProvider(),
     llmProvider: TestLLMProvider = TestLLMProvider(response: unknownLLMResponse)
-) -> TimelinePromptActionCompiler {
-    TimelinePromptActionCompiler(
-        embeddingRetriever: TimelineEmbeddingIntentRetriever(embeddingProvider: embeddingProvider),
-        llmCompiler: TimelineLLMCompiler(provider: llmProvider)
+) -> IntentPromptActionCompiler {
+    IntentPromptActionCompiler(
+        embeddingRetriever: IntentEmbeddingRetriever(embeddingProvider: embeddingProvider),
+        llmCompiler: IntentLLMCompiler(provider: llmProvider)
     )
 }
 
-private func makeLLMOnlyCompiler(llmProvider: TestLLMProvider) -> TimelinePromptActionCompiler {
-    TimelinePromptActionCompiler(
-        embeddingRetriever: TimelineEmbeddingIntentRetriever(
+private func makeLLMOnlyCompiler(llmProvider: TestLLMProvider) -> IntentPromptActionCompiler {
+    IntentPromptActionCompiler(
+        embeddingRetriever: IntentEmbeddingRetriever(
             embeddingProvider: TestEmbeddingProvider(),
             examplesByType: [:]
         ),
-        llmCompiler: TimelineLLMCompiler(provider: llmProvider)
+        llmCompiler: IntentLLMCompiler(provider: llmProvider)
     )
 }
 
 private func makeContext(
     selectedClipId: String? = "clip-b",
     playheadTimeUs: Int64 = 10_000_000
-) -> TimelineCompilerContext {
+) -> IntentCompilerContext {
     let clips = [
         Clip(
             clipId: "clip-a",
@@ -377,7 +377,7 @@ private func makeContext(
         )
     ]
 
-    return TimelineCompilerContext(
+    return IntentCompilerContext(
         timelineId: "timeline-1",
         selectedClipId: selectedClipId,
         selectedTrackId: "track-video",
@@ -388,21 +388,21 @@ private func makeContext(
     )
 }
 
-private func splitTimeUs(from result: TimelineCompileResult, at index: Int = 0) -> Int64? {
+private func splitTimeUs(from result: IntentCompileResult, at index: Int = 0) -> Int64? {
     guard case .splitClip(_, let atTimeUs) = result.actions[safe: index]?.payload else {
         return nil
     }
     return atTimeUs
 }
 
-private func removeClipId(from result: TimelineCompileResult) -> String? {
+private func removeClipId(from result: IntentCompileResult) -> String? {
     guard case .removeClip(let clipId) = result.actions.first?.payload else {
         return nil
     }
     return clipId
 }
 
-private func trimPayload(from result: TimelineCompileResult, at index: Int = 0) -> (
+private func trimPayload(from result: IntentCompileResult, at index: Int = 0) -> (
     clipId: String,
     sourceRange: TimeRange,
     timelineRange: TimeRange
@@ -413,7 +413,7 @@ private func trimPayload(from result: TimelineCompileResult, at index: Int = 0) 
     return (clipId, sourceRange, timelineRange)
 }
 
-private func movePayload(from result: TimelineCompileResult) -> (
+private func movePayload(from result: IntentCompileResult) -> (
     clipId: String,
     orderedClipIds: [String]
 )? {
@@ -428,7 +428,7 @@ private actor TestEmbeddingProvider: EmbeddingProvider {
 
     func embed(_ text: String) async throws -> [Float] {
         calls += 1
-        return TimelineKeywordEmbedding.vector(for: text)
+        return IntentKeywordEmbedding.vector(for: text)
     }
 
     func callCount() -> Int {
@@ -436,7 +436,7 @@ private actor TestEmbeddingProvider: EmbeddingProvider {
     }
 }
 
-private actor TestLLMProvider: TimelineLLMProvider {
+private actor TestLLMProvider: IntentLLMProvider {
     private let response: String
     private var calls = 0
 

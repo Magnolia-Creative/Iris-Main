@@ -1,6 +1,6 @@
 import Foundation
 
-struct TimelineCompilerContext: Codable, Equatable {
+struct IntentCompilerContext: Codable, Equatable {
     let timelineId: String
     let selectedClipId: String?
     let selectedTrackId: String?
@@ -28,20 +28,20 @@ struct TimelineCompilerContext: Codable, Equatable {
     }
 }
 
-struct TimelineCompileResult: Codable, Equatable {
+struct IntentCompileResult: Codable, Equatable {
     let actions: [Action]
     let confidence: Double
     let source: CompileSource
     let unresolvedText: String?
-    let warnings: [TimelineCompileWarning]
+    let warnings: [IntentCompileWarning]
     let needsClarification: Bool
 
     static func unsupported(
         source: CompileSource,
         unresolvedText: String,
-        warnings: [TimelineCompileWarning] = [.unsupportedIntent]
-    ) -> TimelineCompileResult {
-        TimelineCompileResult(
+        warnings: [IntentCompileWarning] = [.unsupportedIntent]
+    ) -> IntentCompileResult {
+        IntentCompileResult(
             actions: [],
             confidence: 0,
             source: source,
@@ -59,7 +59,7 @@ enum CompileSource: String, Codable, Equatable {
     case mixed
 }
 
-enum TimelineCompileWarning: String, Codable, Equatable, Hashable {
+enum IntentCompileWarning: String, Codable, Equatable, Hashable {
     case missingSelectedClip
     case missingPlayhead
     case missingSelectedTrack
@@ -79,7 +79,7 @@ enum TimelineCompileWarning: String, Codable, Equatable, Hashable {
     case destructiveActionNeedsClarification
 }
 
-enum TimelineEditIntentType: String, Codable, Equatable {
+enum IntentEditType: String, Codable, Equatable {
     case splitClip
     case removeClip
     case trimClip
@@ -88,25 +88,10 @@ enum TimelineEditIntentType: String, Codable, Equatable {
     case unknown
 }
 
-struct TimelineEditIntent: Codable, Equatable {
-    let type: TimelineEditIntentType
-    let sourceText: String
-    let targetClipId: String?
-    let targetTrackId: String?
-    let confidence: Double
-    let parameters: [String: JSONValue]
-}
-
-struct TimelineEmbeddingCandidate: Codable, Equatable {
-    let type: TimelineEditIntentType
+struct IntentEmbeddingCandidate: Codable, Equatable {
+    let type: IntentEditType
     let example: String
     let score: Double
-}
-
-struct TimelineLLMCompilePayload: Codable, Equatable {
-    let intents: [TimelineEditIntent]
-    let needsClarification: Bool
-    let clarificationQuestion: String?
 }
 
 enum JSONValue: Codable, Equatable {
@@ -200,28 +185,28 @@ protocol EmbeddingProvider {
     func embed(_ text: String) async throws -> [Float]
 }
 
-protocol TimelineLLMProvider {
+protocol IntentLLMProvider {
     func complete(prompt: String) async throws -> String
 }
 
 struct StubEmbeddingProvider: EmbeddingProvider {
     func embed(_ text: String) async throws -> [Float] {
-        TimelineKeywordEmbedding.vector(for: text)
+        IntentKeywordEmbedding.vector(for: text)
     }
 }
 
-struct UnavailableTimelineLLMProvider: TimelineLLMProvider {
+struct UnavailableIntentLLMProvider: IntentLLMProvider {
     func complete(prompt: String) async throws -> String {
-        throw TimelineCompilerError.llmUnavailable
+        throw IntentCompilerError.llmUnavailable
     }
 }
 
-enum TimelineCompilerError: Error, Equatable {
+enum IntentCompilerError: Error, Equatable {
     case llmUnavailable
     case invalidLLMResponse
 }
 
-enum TimelineKeywordEmbedding {
+enum IntentKeywordEmbedding {
     static func vector(for text: String) -> [Float] {
         let normalized = text.lowercased()
         let keywordGroups = [

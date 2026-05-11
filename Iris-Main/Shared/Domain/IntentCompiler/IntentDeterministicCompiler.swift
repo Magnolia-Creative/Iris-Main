@@ -1,11 +1,11 @@
 import Foundation
 
-struct TimelineDeterministicCompiler {
+struct IntentDeterministicCompiler {
     func compile(
         prompt: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult? {
-        let normalized = TimelinePromptNormalizer.normalize(prompt)
+        context: IntentCompilerContext
+    ) -> IntentCompileResult? {
+        let normalized = IntentPromptNormalizer.normalize(prompt)
 
         if isRemoveSelectedClipCommand(normalized) {
             return removeSelectedClip(prompt: prompt, context: context)
@@ -40,7 +40,7 @@ struct TimelineDeterministicCompiler {
         }
 
         if isMoveBeforeAfterCommand(normalized) {
-            return TimelineCompileResult(
+            return IntentCompileResult(
                 actions: [],
                 confidence: 0.6,
                 source: .deterministic,
@@ -54,7 +54,7 @@ struct TimelineDeterministicCompiler {
     }
 }
 
-enum TimelinePromptNormalizer {
+enum IntentPromptNormalizer {
     static func normalize(_ prompt: String) -> String {
         prompt
             .lowercased()
@@ -64,7 +64,7 @@ enum TimelinePromptNormalizer {
     }
 }
 
-private extension TimelineDeterministicCompiler {
+private extension IntentDeterministicCompiler {
     enum MovePlacement {
         case beginning
         case end
@@ -138,8 +138,8 @@ private extension TimelineDeterministicCompiler {
 
     func removeSelectedClip(
         prompt: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         guard let selectedClipId = context.selectedClipId else {
             return clarification(prompt: prompt, warnings: [.missingSelectedClip])
         }
@@ -147,7 +147,7 @@ private extension TimelineDeterministicCompiler {
             return clarification(prompt: prompt, warnings: [.clipNotFound])
         }
 
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: [
                 Action.removeClip(timelineId: context.timelineId, clipId: selectedClipId)
             ],
@@ -161,8 +161,8 @@ private extension TimelineDeterministicCompiler {
 
     func splitSelectedClipAtPlayhead(
         prompt: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         guard let playheadTimeUs = context.playheadTimeUs else {
             return clarification(prompt: prompt, warnings: [.missingPlayhead])
         }
@@ -172,8 +172,8 @@ private extension TimelineDeterministicCompiler {
 
     func splitSelectedClipInHalf(
         prompt: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         guard let clip = context.selectedClip else {
             return clarification(prompt: prompt, warnings: [.missingSelectedClip])
         }
@@ -184,10 +184,10 @@ private extension TimelineDeterministicCompiler {
 
     func splitSelectedClip(
         prompt: String,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         atTimeUs: Int64,
         confidence: Double
-    ) -> TimelineCompileResult {
+    ) -> IntentCompileResult {
         guard let selectedClipId = context.selectedClipId else {
             return clarification(prompt: prompt, warnings: [.missingSelectedClip])
         }
@@ -198,7 +198,7 @@ private extension TimelineDeterministicCompiler {
             return clarification(prompt: prompt, warnings: [.splitTimeOutsideClip])
         }
 
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: [
                 Action.splitClip(timelineId: context.timelineId, clipId: selectedClipId, atTimeUs: atTimeUs)
             ],
@@ -213,8 +213,8 @@ private extension TimelineDeterministicCompiler {
     func trimSelectedClipStart(
         prompt: String,
         normalized: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         guard let clip = context.selectedClip else {
             return clarification(prompt: prompt, warnings: [.missingSelectedClip])
         }
@@ -240,8 +240,8 @@ private extension TimelineDeterministicCompiler {
     func trimSelectedClipEnd(
         prompt: String,
         normalized: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         guard let clip = context.selectedClip else {
             return clarification(prompt: prompt, warnings: [.missingSelectedClip])
         }
@@ -266,12 +266,12 @@ private extension TimelineDeterministicCompiler {
 
     func trimResult(
         prompt: String,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         clip: Clip,
         sourceRange: TimeRange,
         timelineRange: TimeRange
-    ) -> TimelineCompileResult {
-        TimelineCompileResult(
+    ) -> IntentCompileResult {
+        IntentCompileResult(
             actions: [
                 Action.trimClip(
                     timelineId: context.timelineId,
@@ -290,9 +290,9 @@ private extension TimelineDeterministicCompiler {
 
     func moveSelectedClip(
         prompt: String,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         placement: MovePlacement
-    ) -> TimelineCompileResult {
+    ) -> IntentCompileResult {
         guard let clip = context.selectedClip else {
             return clarification(prompt: prompt, warnings: [.missingSelectedClip])
         }
@@ -310,7 +310,7 @@ private extension TimelineDeterministicCompiler {
             newOrder.append(clip.clipId)
         }
 
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: [
                 Action.moveClip(
                     timelineId: context.timelineId,
@@ -328,9 +328,9 @@ private extension TimelineDeterministicCompiler {
 
     func clarification(
         prompt: String,
-        warnings: [TimelineCompileWarning]
-    ) -> TimelineCompileResult {
-        TimelineCompileResult(
+        warnings: [IntentCompileWarning]
+    ) -> IntentCompileResult {
+        IntentCompileResult(
             actions: [],
             confidence: 0,
             source: .deterministic,

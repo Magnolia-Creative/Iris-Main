@@ -25,8 +25,8 @@ struct HomeView: View {
             .navigationDestination(isPresented: $viewModel.isPresentingProjectSetup) {
                 ProjectSetupView()
             }
-            .navigationDestination(isPresented: $viewModel.isPresentingTimelineCompilerTest) {
-                TimelineCompilerTestView()
+            .navigationDestination(isPresented: $viewModel.isPresentingIntentCompilerTest) {
+                IntentCompilerTestView()
             }
             .navigationDestination(item: $viewModel.selectedProject) { project in
                 editorDestination(for: project)
@@ -122,13 +122,13 @@ struct HomeView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        viewModel.presentTimelineCompilerTest()
+                        viewModel.presentIntentCompilerTest()
                     } label: {
                         HStack(spacing: .spacing(.sp2)) {
                             Image(systemName: "arrow.triangle.branch")
                                 .font(.system(size: 14, weight: .semibold))
 
-                            Text("Test timeline compiler")
+                            Text("Test intent compiler")
                                 .typography(.action)
                         }
                         .foregroundStyle(Color.white)

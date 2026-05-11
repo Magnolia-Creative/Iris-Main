@@ -4,7 +4,7 @@ import Foundation
 import FoundationModels
 #endif
 
-enum TimelineLLMBackend: String, CaseIterable, Identifiable {
+enum IntentLLMBackend: String, CaseIterable, Identifiable {
     case appleFoundation
 
     var id: String { rawValue }
@@ -16,19 +16,19 @@ enum TimelineLLMBackend: String, CaseIterable, Identifiable {
         }
     }
 
-    static var selectableCases: [TimelineLLMBackend] {
+    static var selectableCases: [IntentLLMBackend] {
         [.appleFoundation]
     }
 
-    func makeProvider() -> TimelineLLMProvider {
+    func makeProvider() -> IntentLLMProvider {
         switch self {
         case .appleFoundation:
             #if canImport(FoundationModels)
             if #available(iOS 26.0, *) {
-                return AppleFoundationTimelineLLMProvider()
+                return AppleFoundationIntentLLMProvider()
             }
             #endif
-            return UnavailableTimelineLLMProvider()
+            return UnavailableIntentLLMProvider()
         }
     }
 }

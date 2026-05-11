@@ -4,13 +4,13 @@ import Foundation
 import FoundationModels
 
 @available(iOS 26.0, *)
-struct AppleFoundationTimelineLLMProvider: TimelineLLMProvider {
+struct AppleFoundationIntentLLMProvider: IntentLLMProvider {
     func complete(prompt: String) async throws -> String {
-        print("[TimelineLLM][AppleFM] Starting completion promptLength=\(prompt.count)")
+        print("[IntentLLM][AppleFM] Starting completion promptLength=\(prompt.count)")
 
         guard SystemLanguageModel.default.isAvailable else {
-            print("[TimelineLLM][AppleFM] System language model unavailable. Enable Apple Intelligence on a supported device.")
-            throw TimelineCompilerError.llmUnavailable
+            print("[IntentLLM][AppleFM] System language model unavailable. Enable Apple Intelligence on a supported device.")
+            throw IntentCompilerError.llmUnavailable
         }
 
         let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
@@ -22,10 +22,10 @@ struct AppleFoundationTimelineLLMProvider: TimelineLLMProvider {
         do {
             let response = try await session.respond(to: prompt)
             let text = response.content
-            print("[TimelineLLM][AppleFM] Completed outputLength=\(text.count)")
+            print("[IntentLLM][AppleFM] Completed outputLength=\(text.count)")
             return text
         } catch {
-            print("[TimelineLLM][AppleFM] Generation failed: \(error)")
+            print("[IntentLLM][AppleFM] Generation failed: \(error)")
             throw error
         }
     }

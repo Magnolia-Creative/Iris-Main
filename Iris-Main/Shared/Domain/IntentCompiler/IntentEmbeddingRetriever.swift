@@ -1,23 +1,23 @@
 import Foundation
 
-struct TimelineEmbeddingIntentRetriever {
+struct IntentEmbeddingRetriever {
     static let acceptableCandidateThreshold = 0.88
     static let earlyExitThreshold = 0.92
 
     let embeddingProvider: EmbeddingProvider
-    let examplesByType: [TimelineEditIntentType: [String]]
+    let examplesByType: [IntentEditType: [String]]
 
     init(
         embeddingProvider: EmbeddingProvider,
-        examplesByType: [TimelineEditIntentType: [String]] = Self.defaultExamplesByType
+        examplesByType: [IntentEditType: [String]] = Self.defaultExamplesByType
     ) {
         self.embeddingProvider = embeddingProvider
         self.examplesByType = examplesByType
     }
 
-    func candidates(for prompt: String, limit: Int = 5) async throws -> [TimelineEmbeddingCandidate] {
+    func candidates(for prompt: String, limit: Int = 5) async throws -> [IntentEmbeddingCandidate] {
         let promptEmbedding = try await embeddingProvider.embed(prompt)
-        var candidates: [TimelineEmbeddingCandidate] = []
+        var candidates: [IntentEmbeddingCandidate] = []
 
         for (type, examples) in examplesByType {
             for example in examples {
@@ -26,7 +26,7 @@ struct TimelineEmbeddingIntentRetriever {
                 guard score.isFinite, score >= Self.acceptableCandidateThreshold else { continue }
 
                 candidates.append(
-                    TimelineEmbeddingCandidate(
+                    IntentEmbeddingCandidate(
                         type: type,
                         example: example,
                         score: score
@@ -42,10 +42,10 @@ struct TimelineEmbeddingIntentRetriever {
     }
 
     func compileHighConfidenceCandidate(
-        _ candidate: TimelineEmbeddingCandidate,
+        _ candidate: IntentEmbeddingCandidate,
         prompt: String,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult? {
+        context: IntentCompilerContext
+    ) -> IntentCompileResult? {
         guard candidate.score >= Self.earlyExitThreshold else { return nil }
 
         switch candidate.type {
@@ -63,8 +63,8 @@ struct TimelineEmbeddingIntentRetriever {
     }
 }
 
-extension TimelineEmbeddingIntentRetriever {
-    static let defaultExamplesByType: [TimelineEditIntentType: [String]] = [
+extension IntentEmbeddingRetriever {
+    static let defaultExamplesByType: [IntentEditType: [String]] = [
         .splitClip: [
             "split this clip",
             "cut this in half",
@@ -94,13 +94,13 @@ extension TimelineEmbeddingIntentRetriever {
     ]
 }
 
-private extension TimelineEmbeddingIntentRetriever {
+private extension IntentEmbeddingRetriever {
     func compileSplit(
         prompt: String,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         score: Double
-    ) -> TimelineCompileResult? {
-        let normalized = TimelinePromptNormalizer.normalize(prompt)
+    ) -> IntentCompileResult? {
+        let normalized = IntentPromptNormalizer.normalize(prompt)
         guard normalized.contains("two")
             || normalized.contains("half")
             || normalized.contains("divide")
@@ -110,7 +110,7 @@ private extension TimelineEmbeddingIntentRetriever {
         }
 
         guard let clip = context.selectedClip else {
-            return TimelineCompileResult(
+            return IntentCompileResult(
                 actions: [],
                 confidence: score,
                 source: .embedding,
@@ -121,7 +121,7 @@ private extension TimelineEmbeddingIntentRetriever {
         }
 
         let midpoint = clip.timelineRange.start + (clip.timelineRange.duration / 2)
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: [
                 Action.splitClip(timelineId: context.timelineId, clipId: clip.clipId, atTimeUs: midpoint)
             ],
@@ -135,10 +135,10 @@ private extension TimelineEmbeddingIntentRetriever {
 
     func compileRemove(
         prompt: String,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         score: Double
-    ) -> TimelineCompileResult? {
-        let normalized = TimelinePromptNormalizer.normalize(prompt)
+    ) -> IntentCompileResult? {
+        let normalized = IntentPromptNormalizer.normalize(prompt)
         guard normalized.contains("delete")
             || normalized.contains("remove")
             || normalized.contains("rid")
@@ -147,7 +147,7 @@ private extension TimelineEmbeddingIntentRetriever {
         }
 
         guard let clip = context.selectedClip else {
-            return TimelineCompileResult(
+            return IntentCompileResult(
                 actions: [],
                 confidence: score,
                 source: .embedding,
@@ -157,7 +157,7 @@ private extension TimelineEmbeddingIntentRetriever {
             )
         }
 
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: [
                 Action.removeClip(timelineId: context.timelineId, clipId: clip.clipId)
             ],
@@ -171,16 +171,16 @@ private extension TimelineEmbeddingIntentRetriever {
 
     func compileMove(
         prompt: String,
-        context: TimelineCompilerContext,
+        context: IntentCompilerContext,
         score: Double
-    ) -> TimelineCompileResult? {
-        let normalized = TimelinePromptNormalizer.normalize(prompt)
+    ) -> IntentCompileResult? {
+        let normalized = IntentPromptNormalizer.normalize(prompt)
         let movesToBeginning = normalized.contains("beginning") || normalized.contains("start") || normalized.contains("first")
         let movesToEnd = normalized.contains("end") || normalized.contains("last")
         guard movesToBeginning || movesToEnd else { return nil }
 
         guard let clip = context.selectedClip else {
-            return TimelineCompileResult(
+            return IntentCompileResult(
                 actions: [],
                 confidence: score,
                 source: .embedding,
@@ -192,7 +192,7 @@ private extension TimelineEmbeddingIntentRetriever {
 
         let originalOrder = context.orderedClipIds(for: clip)
         guard originalOrder.contains(clip.clipId), !originalOrder.isEmpty else {
-            return TimelineCompileResult(
+            return IntentCompileResult(
                 actions: [],
                 confidence: score,
                 source: .embedding,
@@ -209,7 +209,7 @@ private extension TimelineEmbeddingIntentRetriever {
             newOrder.append(clip.clipId)
         }
 
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: [
                 Action.moveClip(timelineId: context.timelineId, clipId: clip.clipId, orderedClipIds: newOrder)
             ],

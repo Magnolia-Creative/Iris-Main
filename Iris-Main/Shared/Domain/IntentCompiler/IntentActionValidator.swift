@@ -1,10 +1,10 @@
 import Foundation
 
-struct TimelineActionValidator {
+struct IntentActionValidator {
     func validatedResult(
-        _ result: TimelineCompileResult,
-        context: TimelineCompilerContext
-    ) -> TimelineCompileResult {
+        _ result: IntentCompileResult,
+        context: IntentCompilerContext
+    ) -> IntentCompileResult {
         guard result.actions.isEmpty == false else { return result }
 
         var validActions: [Action] = []
@@ -19,7 +19,7 @@ struct TimelineActionValidator {
             }
         }
 
-        return TimelineCompileResult(
+        return IntentCompileResult(
             actions: validActions,
             confidence: validActions.isEmpty ? 0 : result.confidence,
             source: result.source,
@@ -29,7 +29,7 @@ struct TimelineActionValidator {
         )
     }
 
-    func isExecutable(_ result: TimelineCompileResult, context: TimelineCompilerContext) -> Bool {
+    func isExecutable(_ result: IntentCompileResult, context: IntentCompilerContext) -> Bool {
         guard result.actions.isEmpty == false, result.needsClarification == false else {
             return false
         }
@@ -38,8 +38,8 @@ struct TimelineActionValidator {
     }
 }
 
-private extension TimelineActionValidator {
-    func validate(_ action: Action, context: TimelineCompilerContext) -> [TimelineCompileWarning] {
+private extension IntentActionValidator {
+    func validate(_ action: Action, context: IntentCompilerContext) -> [IntentCompileWarning] {
         guard action.timelineId == context.timelineId else {
             return [.unsupportedAction]
         }
@@ -68,8 +68,8 @@ private extension TimelineActionValidator {
     func validateSplit(
         clipId: String,
         atTimeUs: Int64,
-        context: TimelineCompilerContext
-    ) -> [TimelineCompileWarning] {
+        context: IntentCompilerContext
+    ) -> [IntentCompileWarning] {
         guard let clip = context.clipsById[clipId] else {
             return [.clipNotFound]
         }
@@ -85,8 +85,8 @@ private extension TimelineActionValidator {
         clipId: String,
         sourceRange: TimeRange,
         timelineRange: TimeRange,
-        context: TimelineCompilerContext
-    ) -> [TimelineCompileWarning] {
+        context: IntentCompilerContext
+    ) -> [IntentCompileWarning] {
         guard context.clipsById[clipId] != nil else {
             return [.clipNotFound]
         }
@@ -103,8 +103,8 @@ private extension TimelineActionValidator {
     func validateMove(
         clipId: String,
         orderedClipIds: [String],
-        context: TimelineCompilerContext
-    ) -> [TimelineCompileWarning] {
+        context: IntentCompilerContext
+    ) -> [IntentCompileWarning] {
         guard let clip = context.clipsById[clipId] else {
             return [.clipNotFound]
         }
@@ -122,8 +122,8 @@ private extension TimelineActionValidator {
     func validateReplaceTrackClips(
         trackId: String,
         clips: [Clip],
-        context: TimelineCompilerContext
-    ) -> [TimelineCompileWarning] {
+        context: IntentCompilerContext
+    ) -> [IntentCompileWarning] {
         guard let existingClipIds = context.orderedClipIdsByTrackId[trackId] else {
             return [.trackNotFound]
         }
@@ -138,8 +138,8 @@ private extension TimelineActionValidator {
         return []
     }
 
-    func uniqueWarnings(_ warnings: [TimelineCompileWarning]) -> [TimelineCompileWarning] {
-        var seen = Set<TimelineCompileWarning>()
+    func uniqueWarnings(_ warnings: [IntentCompileWarning]) -> [IntentCompileWarning] {
+        var seen = Set<IntentCompileWarning>()
         return warnings.filter { seen.insert($0).inserted }
     }
 }

@@ -7,7 +7,7 @@ struct SemanticEditPlan: Codable, Equatable {
 }
 
 struct SemanticEditOperation: Codable, Equatable {
-    let type: TimelineEditIntentType
+    let type: IntentEditType
     let sourceText: String
     let target: SemanticEditTarget?
     let parameters: [String: JSONValue]
@@ -80,7 +80,7 @@ struct SemanticClipReference: Codable, Equatable {
     init(object: [String: JSONValue]) throws {
         guard let typeValue = object["type"]?.stringValue,
               let type = Kind(rawValue: typeValue) else {
-            throw TimelineCompilerError.invalidLLMResponse
+            throw IntentCompilerError.invalidLLMResponse
         }
 
         self.type = type
@@ -111,7 +111,7 @@ struct SemanticTrackReference: Codable, Equatable {
     init(object: [String: JSONValue]) throws {
         guard let typeValue = object["type"]?.stringValue,
               let type = Kind(rawValue: typeValue) else {
-            throw TimelineCompilerError.invalidLLMResponse
+            throw IntentCompilerError.invalidLLMResponse
         }
 
         self.type = type

@@ -2,7 +2,7 @@ internal import Combine
 import Foundation
 
 @MainActor
-final class TimelineCompilerTestViewModel: ObservableObject {
+final class IntentCompilerTestViewModel: ObservableObject {
     @Published var prompt = "cut this clip in half"
     @Published private(set) var outputText = ""
     @Published private(set) var isCompiling = false
@@ -15,27 +15,27 @@ final class TimelineCompilerTestViewModel: ObservableObject {
     Playhead: 10s
     """
 
-    private let injectedCompiler: TimelinePromptActionCompiler?
-    private let context: TimelineCompilerContext
+    private let injectedCompiler: IntentPromptActionCompiler?
+    private let context: IntentCompilerContext
     private let encoder: JSONEncoder
 
     init(
-        compiler: TimelinePromptActionCompiler? = nil,
-        context: TimelineCompilerContext? = nil
+        compiler: IntentPromptActionCompiler? = nil,
+        context: IntentCompilerContext? = nil
     ) {
         self.injectedCompiler = compiler
-        self.context = context ?? TimelineCompilerTestViewModel.makeSampleContext()
+        self.context = context ?? IntentCompilerTestViewModel.makeSampleContext()
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
-    private func compilerForCurrentBackend() -> TimelinePromptActionCompiler {
+    private func compilerForCurrentBackend() -> IntentPromptActionCompiler {
         if let injectedCompiler {
             return injectedCompiler
         }
-        return TimelinePromptActionCompiler(
+        return IntentPromptActionCompiler(
             embeddingProvider: StubEmbeddingProvider(),
-            llmProvider: TimelineLLMBackend.appleFoundation.makeProvider()
+            llmProvider: IntentLLMBackend.appleFoundation.makeProvider()
         )
     }
 
@@ -64,8 +64,8 @@ final class TimelineCompilerTestViewModel: ObservableObject {
     }
 }
 
-private extension TimelineCompilerTestViewModel {
-    static func makeSampleContext() -> TimelineCompilerContext {
+private extension IntentCompilerTestViewModel {
+    static func makeSampleContext() -> IntentCompilerContext {
         let clips = [
             Clip(
                 clipId: "clip-a",
@@ -90,7 +90,7 @@ private extension TimelineCompilerTestViewModel {
             )
         ]
 
-        return TimelineCompilerContext(
+        return IntentCompilerContext(
             timelineId: "timeline-test",
             selectedClipId: "clip-b",
             selectedTrackId: "track-video",
@@ -101,7 +101,7 @@ private extension TimelineCompilerTestViewModel {
         )
     }
 
-    func formattedOutput(for result: TimelineCompileResult) throws -> String {
+    func formattedOutput(for result: IntentCompileResult) throws -> String {
         let data = try encoder.encode(result)
         return String(data: data, encoding: .utf8) ?? "{}"
     }
