@@ -13,7 +13,8 @@ struct EditorTabBar<SpaceExtension: View>: View {
     @Namespace private var toolNamespace
     @State private var expandedToolId: Int = -1
 
-    private let tabItemWidth: CGFloat = 62
+    private let tabItemWidth: CGFloat = 48
+    private let tabItemSpacing: CGFloat = .spacing(.sp2)
     private let tabRowHeight: CGFloat = 48
     private let toolItemWidth: CGFloat = 48
     private let outerCornerRadius: CGFloat = 24
@@ -37,7 +38,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
     private var navWidth: CGFloat {
         let count = CGFloat(EditorSpace.allCases.count)
         let hPad = CGFloat.spacing(.sp2) * 2
-        return count * tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
+        return count * tabItemWidth + (count - 1) * tabItemSpacing + hPad
     }
 
     private var shellWidth: CGFloat {
@@ -48,7 +49,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
         GlassEffectContainer(spacing: shellInset * 2) {
             VStack(spacing: 0) {
                 Group {
-                    if activeSpace == .edit {
+                    if activeSpace.showsMainEditor {
                         toolsRow
                     } else {
                         spaceExtension
@@ -62,7 +63,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
                     .padding(.horizontal, shellInset)
                     .padding(.bottom, shellInset)
             }
-            .frame(width: activeSpace == .edit ? shellWidth : nil)
+            .frame(width: activeSpace.showsMainEditor ? shellWidth : nil)
             .glassEffect(
                 .regular.tint(shellTint),
                 in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
@@ -115,7 +116,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
     // MARK: - Navigation Row
 
     private var navigationRow: some View {
-        HStack(spacing: .spacing(.sp3)) {
+        HStack(spacing: tabItemSpacing) {
             ForEach(EditorSpace.allCases) { space in
                 Button {
                     let transitionMark = "space-transition-\(space.rawValue)"
@@ -134,10 +135,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
                         activeSpace = space
                     }
                 } label: {
-                    Image(systemName: activeSpace == space ? space.selectedIconName : space.unselectedIconName)
-                        .font(.system(size: 21, weight: .medium))
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundStyle(Color.white)
+                    tabIcon(for: space, isActive: activeSpace == space)
                         .frame(width: tabItemWidth, height: tabRowHeight)
                         .background {
                             if activeSpace == space {
@@ -154,6 +152,25 @@ struct EditorTabBar<SpaceExtension: View>: View {
         }
         .padding(.horizontal, .spacing(.sp2))
         .padding(.vertical, .spacing(.sp2))
+    }
+
+    @ViewBuilder
+    private func tabIcon(for space: EditorSpace, isActive: Bool) -> some View {
+        let iconName = isActive ? space.selectedIconName : space.unselectedIconName
+
+        if space.usesAssetIcon {
+            Image(iconName)
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .foregroundStyle(Color.white)
+                .frame(width: 24, height: 24)
+        } else {
+            Image(systemName: iconName)
+                .font(.system(size: 21, weight: .medium))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(Color.white)
+        }
     }
 
     // MARK: - Edit Tools Row
