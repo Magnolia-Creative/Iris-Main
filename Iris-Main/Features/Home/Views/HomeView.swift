@@ -45,6 +45,18 @@ struct HomeView: View {
                         }
                 }
             }
+            .sheet(isPresented: $viewModel.isPresentingVoiceIntentCompiler) {
+                NavigationStack {
+                    VoiceIntentCompilerView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") {
+                                    viewModel.dismissVoiceIntentCompiler()
+                                }
+                            }
+                        }
+                }
+            }
             .onAppear { viewModel.loadProjects() }
         }
     }
@@ -96,6 +108,28 @@ struct HomeView: View {
                         .padding(.vertical, .sp3)
                         .background(Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        viewModel.presentVoiceIntentCompiler()
+                    } label: {
+                        HStack(spacing: .spacing(.sp2)) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14, weight: .semibold))
+
+                            Text("Test voice effects")
+                                .typography(.action)
+                        }
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, .sp4)
+                        .padding(.vertical, .sp3)
+                        .background(Color.white.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: .spacing(.sp3))
+                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                        }
                     }
                     .buttonStyle(.plain)
 

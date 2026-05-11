@@ -7,6 +7,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var loadErrorMessage: String?
     @Published var isPresentingProjectSetup = false
     @Published var isPresentingRealtimeTranscription = false
+    @Published var isPresentingVoiceIntentCompiler = false
     @Published var isPresentingIntentCompilerTest = false
     @Published var selectedProject: Project?
 
@@ -42,12 +43,20 @@ final class HomeViewModel: ObservableObject {
         isPresentingRealtimeTranscription = true
     }
 
+    func presentVoiceIntentCompiler() {
+        isPresentingVoiceIntentCompiler = true
+    }
+
     func presentIntentCompilerTest() {
         isPresentingIntentCompilerTest = true
     }
 
     func dismissRealtimeTranscription() {
         isPresentingRealtimeTranscription = false
+    }
+
+    func dismissVoiceIntentCompiler() {
+        isPresentingVoiceIntentCompiler = false
     }
 
     func openProject(_ project: Project) {
