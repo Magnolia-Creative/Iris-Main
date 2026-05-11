@@ -79,6 +79,17 @@ struct HomeView: View {
                         .stroke(Color.ds.accentFg.opacity(0.38), lineWidth: 1)
                 }
 
+            Image("Iris_Outline")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .foregroundStyle(Color.white)
+                .frame(width: 112, height: 112)
+                .opacity(0.22)
+                .padding(.top, .sp5)
+                .padding(.trailing, .sp5)
+                .frame(maxWidth: .infinity, alignment: .topTrailing)
+
             VStack(alignment: .leading, spacing: .spacing(.sp4)) {
                 Text("What will you\ncreate today?")
                     .typography(.heading)
