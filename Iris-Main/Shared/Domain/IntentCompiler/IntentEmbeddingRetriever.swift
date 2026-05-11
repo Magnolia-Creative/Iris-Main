@@ -250,7 +250,7 @@ final class IntentEffectCapabilityRetriever {
     init(
         embeddingProvider: any IntentTextEmbeddingProvider = NLContextualEffectEmbeddingProvider(),
         capabilities: [EffectCapability] = IntentEffectCapabilityCatalog.defaultCapabilities,
-        scoreThreshold: Double = Self.defaultScoreThreshold
+        scoreThreshold: Double = IntentEffectCapabilityRetriever.defaultScoreThreshold
     ) {
         self.embeddingProvider = embeddingProvider
         self.capabilities = capabilities
@@ -338,7 +338,7 @@ final class NLContextualEffectEmbeddingProvider: IntentTextEmbeddingProvider {
                 return
             }
 
-            try await withCheckedThrowingContinuation { continuation in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 model.requestAssets { result, error in
                     if let error {
                         continuation.resume(throwing: error)
