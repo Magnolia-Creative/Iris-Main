@@ -66,13 +66,18 @@ private struct LLMEditorContext: Codable {
     let selectedTrackId: String?
     let playheadTimeUs: Int64?
     let currentClipAtPlayheadId: String?
+    let currentClip: LLMCurrentClipContext?
     let orderedClipIdsByTrackId: [String: [String]]
 
     init(context: IntentCompilerContext) {
+        let currentClipAtPlayheadId = Self.currentClipAtPlayheadId(in: context)
+
         self.selectedClipId = context.selectedClipId
         self.selectedTrackId = context.selectedTrackId
         self.playheadTimeUs = context.playheadTimeUs
-        self.currentClipAtPlayheadId = Self.currentClipAtPlayheadId(in: context)
+        self.currentClipAtPlayheadId = currentClipAtPlayheadId
+        self.currentClip = (context.selectedClip ?? context.clip(withId: currentClipAtPlayheadId))
+            .map(LLMCurrentClipContext.init)
         self.orderedClipIdsByTrackId = context.orderedClipIdsByTrackId
     }
 
@@ -103,6 +108,18 @@ private struct LLMEditorContext: Codable {
     }
 }
 
+private struct LLMCurrentClipContext: Codable {
+    let clipId: String
+    let durationUs: Int64
+    let trackId: String
+
+    init(clip: Clip) {
+        self.clipId = clip.clipId
+        self.durationUs = clip.timelineRange.duration
+        self.trackId = clip.trackId
+    }
+}
+
 private extension IntentLLMCompiler {
     static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -125,9 +142,9 @@ private extension IntentLLMCompiler {
         {"operations":[{"type":"splitClip|removeClip|trimClip|moveClip|replaceTrackClips|unknown","sourceText":"exact user clause","target":null,"confidence":0.0,"parameters":{}}],"needsClarification":false,"clarificationQuestion":null}
 
         Ops: splitClip, removeClip, trimClip, moveClip, replaceTrackClips, unknown.
-        Rules: split compound requests into ordered operations. Use fewest ops. Use only IDs in ctx. Never invent IDs/ranges/microseconds. sourceText is the exact clause. If missing required info, set needsClarification true and ask a short clarificationQuestion. Effects/captions/audio/color/style/transitions/generative media => unknown.
+        Rules: every op must include type, sourceText, target, confidence, parameters. Never output placeholders. split compound requests into ordered operations. Use fewest ops. Use only IDs in ctx. Never invent IDs/ranges/microseconds. sourceText is copied from the user clause. If missing required info, set needsClarification true and ask a short clarificationQuestion. Effects/captions/audio/color/style/transitions/generative media => unknown.
         Targets: this/selected/current clip => {"type":"selectedClip"}; it/same/that after prior op => {"type":"sameAsPrevious"}; first/second/third/last clip => {"type":"ordinal","value":"first|second|third|last","track":{"type":"selectedTrack"}}; clip under playhead => {"type":"currentClipAtPlayhead"}; track => {"type":"selectedTrack"} or {"type":"trackId","trackId":"id"}; known clip => {"type":"clipId","clipId":"id"}.
-        Params: splitClip needs position. "in half"/middle => {"type":"fractionOfClip","value":0.5,"relativeTo":"postPreviousOperations"}. trimClip needs edge start|end and amount. Durations => {"type":"duration","value":2,"unit":"microsecond|millisecond|second|minute"}. Percent => {"type":"percentage","value":50}. Vague => {"type":"vague","phrase":"a little"}. moveClip can use placement beginning|start|first|end|last or orderedClipIds. replaceTrackClips needs orderedClipIds. Here/playhead/current time => {"type":"playhead"}. Absolute times => {"type":"absoluteTimelineTime","value":10,"unit":"second"}. Relative split/trim times may use afterStart/beforeEnd with amount.
+        Params: splitClip needs {"position":time}. "in half"/middle => {"type":"fractionOfClip","value":0.5,"relativeTo":"postPreviousOperations"}. trimClip parameters are exactly {"edge":"start|end","amount":duration}; never edgeStart/edgeEnd. Durations => {"type":"duration","value":2,"unit":"microsecond|millisecond|second|minute"}. Percent => {"type":"percentage","value":50}. Vague => {"type":"vague","phrase":"a little"}. moveClip can use placement beginning|start|first|end|last or orderedClipIds. replaceTrackClips needs orderedClipIds. Here/playhead/current time => {"type":"playhead"}. Absolute times => {"type":"absoluteTimelineTime","value":10,"unit":"second"}. Relative split/trim times may use afterStart/beforeEnd with amount.
         ctx=\(contextJson)
         user=\(prompt)
         """

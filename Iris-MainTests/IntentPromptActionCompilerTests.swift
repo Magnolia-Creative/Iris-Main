@@ -142,6 +142,7 @@ struct IntentPromptActionCompilerTests {
         #expect(prompt?.contains("Return JSON only") == true)
         #expect(prompt?.contains("split compound requests into ordered operations") == true)
         #expect(prompt?.contains("\"selectedClipId\":\"clip-b\"") == true)
+        #expect(prompt?.contains("\"currentClip\":{\"clipId\":\"clip-b\",\"durationUs\":10000000,\"trackId\":\"track-video\"}") == true)
         #expect(prompt?.contains("created_at") == false)
         #expect(prompt?.contains("updated_at") == false)
         #expect(prompt?.contains("source_range") == false)

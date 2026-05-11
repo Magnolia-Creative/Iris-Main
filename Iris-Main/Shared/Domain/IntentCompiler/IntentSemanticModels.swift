@@ -12,6 +12,35 @@ struct SemanticEditOperation: Codable, Equatable {
     let target: SemanticEditTarget?
     let parameters: [String: JSONValue]
     let confidence: Double
+
+    init(
+        type: IntentEditType,
+        sourceText: String,
+        target: SemanticEditTarget?,
+        parameters: [String: JSONValue],
+        confidence: Double
+    ) {
+        self.type = type
+        self.sourceText = sourceText
+        self.target = target
+        self.parameters = parameters
+        self.confidence = confidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(IntentEditType.self, forKey: .type)
+        self.type = type
+        self.sourceText = try container.decode(String.self, forKey: .sourceText)
+        self.target = try container.decodeIfPresent(SemanticEditTarget.self, forKey: .target)
+        self.parameters = try container.decodeIfPresent([String: JSONValue].self, forKey: .parameters) ?? [:]
+        self.confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
+            ?? Self.defaultConfidence(for: type)
+    }
+
+    private static func defaultConfidence(for type: IntentEditType) -> Double {
+        type == .unknown ? 0.1 : 0.8
+    }
 }
 
 enum SemanticEditTarget: Codable, Equatable {
