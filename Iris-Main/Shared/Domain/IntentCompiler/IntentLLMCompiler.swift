@@ -32,8 +32,10 @@ struct IntentLLMCompiler {
             print("[IntentLLM] Sending fallback prompt length=\(llmPrompt.count)")
             let response = try await provider.complete(prompt: llmPrompt)
             print("[IntentLLM] Received provider response length=\(response.count)")
+            print("[IntentLLM] Raw provider response:\n\(response)")
             let payload = try decodePayload(from: response)
             print("[IntentLLM] Decoded semantic operations count=\(payload.operations.count) needsClarification=\(payload.needsClarification)")
+            print("[IntentLLM] Decoded semantic IR:\n\(IntentCompilerLog.json(payload))")
             return IntentCompiler().compile(payload, originalPrompt: prompt, context: context)
         } catch IntentCompilerError.llmUnavailable {
             print("[IntentLLM] Provider reported llmUnavailable for prompt='\(prompt)'")

@@ -223,3 +223,20 @@ enum IntentKeywordEmbedding {
         }
     }
 }
+
+enum IntentCompilerLog {
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }()
+
+    static func json<T: Encodable>(_ value: T) -> String {
+        do {
+            let data = try encoder.encode(value)
+            return String(data: data, encoding: .utf8) ?? "<invalid utf8>"
+        } catch {
+            return "<failed to encode \(T.self): \(error)>"
+        }
+    }
+}

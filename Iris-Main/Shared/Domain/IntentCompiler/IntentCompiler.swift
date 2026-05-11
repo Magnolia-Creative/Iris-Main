@@ -6,12 +6,15 @@ struct IntentCompiler {
         originalPrompt: String,
         context: IntentCompilerContext
     ) -> IntentCompileResult {
+        print("[IntentCompiler][SemanticIR] Input plan:\n\(IntentCompilerLog.json(plan))")
         if plan.needsClarification {
-            return clarification(
+            let result = clarification(
                 originalPrompt: originalPrompt,
                 question: plan.clarificationQuestion,
                 warnings: [.ambiguousTarget]
             )
+            print("[IntentCompiler][SemanticIR] Plan requested clarification; result:\n\(IntentCompilerLog.json(result))")
+            return result
         }
 
         var simulator = IntentTimelineSimulator(context: context)
@@ -22,6 +25,7 @@ struct IntentCompiler {
         var warnings: [IntentCompileWarning] = []
 
         for operation in plan.operations {
+            print("[IntentCompiler][SemanticIR] Resolving operation:\n\(IntentCompilerLog.json(operation))")
             let resolved: IntentResolutionResult
             switch operation.type {
             case .splitClip:
@@ -36,29 +40,36 @@ struct IntentCompiler {
                 resolved = resolveReplaceTrackClips(operation, context: context, simulator: simulator, previousTrackId: previousTrackId)
             case .unknown:
                 warnings.append(.unsupportedIntent)
+                print("[IntentCompiler][SemanticIR] Unsupported unknown operation sourceText='\(operation.sourceText)'")
                 continue
             }
 
             switch resolved {
             case .success(let resolvedOperation):
+                print("[IntentCompiler][ActionResolution] Resolved deterministic operation:\n\(IntentCompilerLog.json(resolvedOperation.logValue))")
                 guard let action = makeAction(from: resolvedOperation, context: context) else {
                     warnings.append(.unsupportedIntent)
+                    print("[IntentCompiler][ActionResolution] Failed to create Action from resolved operation.")
                     continue
                 }
+                print("[IntentCompiler][ActionResolution] Final Action emitted:\n\(IntentCompilerLog.json(action))")
                 actions.append(action)
                 confidences.append(operation.confidence)
                 simulator.apply(resolvedOperation)
                 previousClipId = resolvedOperation.targetClipId ?? previousClipId
                 previousTrackId = resolvedOperation.targetTrackId ?? previousTrackId
             case .clarification(let warning, let question):
-                return clarification(originalPrompt: originalPrompt, question: question, warnings: [warning])
+                let result = clarification(originalPrompt: originalPrompt, question: question, warnings: [warning])
+                print("[IntentCompiler][ActionResolution] Clarification required warning=\(warning) question='\(question)' result:\n\(IntentCompilerLog.json(result))")
+                return result
             case .unsupported:
                 warnings.append(.unsupportedIntent)
+                print("[IntentCompiler][ActionResolution] Operation resolved as unsupported.")
             }
         }
 
         if actions.isEmpty {
-            return IntentCompileResult(
+            let result = IntentCompileResult(
                 actions: [],
                 confidence: 0,
                 source: .llm,
@@ -66,10 +77,12 @@ struct IntentCompiler {
                 warnings: warnings.isEmpty ? [.noActionProduced] : uniqueWarnings(warnings),
                 needsClarification: false
             )
+            print("[IntentCompiler][ActionResolution] No actions produced; result:\n\(IntentCompilerLog.json(result))")
+            return result
         }
 
         let confidence = confidences.reduce(0, +) / Double(confidences.count)
-        return IntentCompileResult(
+        let result = IntentCompileResult(
             actions: actions,
             confidence: confidence,
             source: .llm,
@@ -77,6 +90,8 @@ struct IntentCompiler {
             warnings: uniqueWarnings(warnings),
             needsClarification: false
         )
+        print("[IntentCompiler][ActionResolution] Final compiled result before validation:\n\(IntentCompilerLog.json(result))")
+        return result
     }
 }
 
@@ -101,6 +116,58 @@ private enum ResolvedIntentParameters {
     case trimClip(sourceRange: TimeRange, timelineRange: TimeRange)
     case moveClip(orderedClipIds: [String])
     case replaceTrackClips(clips: [Clip])
+}
+
+private struct ResolvedIntentOperationLog: Codable {
+    let type: IntentEditType
+    let sourceText: String
+    let targetClipId: String?
+    let targetTrackId: String?
+    let confidence: Double
+    let parameters: [String: JSONValue]
+}
+
+private extension ResolvedIntentOperation {
+    var logValue: ResolvedIntentOperationLog {
+        ResolvedIntentOperationLog(
+            type: type,
+            sourceText: sourceText,
+            targetClipId: targetClipId,
+            targetTrackId: targetTrackId,
+            confidence: confidence,
+            parameters: parameters.logValue
+        )
+    }
+}
+
+private extension ResolvedIntentParameters {
+    var logValue: [String: JSONValue] {
+        switch self {
+        case .splitClip(let atTimeUs):
+            return ["atTimeUs": .int(atTimeUs)]
+        case .removeClip:
+            return [:]
+        case .trimClip(let sourceRange, let timelineRange):
+            return [
+                "sourceRange": sourceRange.logValue,
+                "timelineRange": timelineRange.logValue
+            ]
+        case .moveClip(let orderedClipIds):
+            return ["orderedClipIds": .array(orderedClipIds.map { .string($0) })]
+        case .replaceTrackClips(let clips):
+            return ["clipIds": .array(clips.map { .string($0.clipId) })]
+        }
+    }
+}
+
+private extension TimeRange {
+    var logValue: JSONValue {
+        .object([
+            "start": .int(start),
+            "end": .int(end),
+            "duration": .int(duration)
+        ])
+    }
 }
 
 private extension IntentCompiler {

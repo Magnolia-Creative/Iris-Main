@@ -50,7 +50,9 @@ final class IntentPromptActionCompiler {
 
         let deterministicResult = deterministicCompiler.compile(prompt: normalizedPrompt, context: context)
         if let deterministicResult {
+            print("[IntentCompiler][Deterministic] Raw parsed result:\n\(IntentCompilerLog.json(deterministicResult))")
             let validated = validator.validatedResult(deterministicResult, context: context)
+            print("[IntentCompiler][Deterministic] Validated result passed forward:\n\(IntentCompilerLog.json(validated))")
             print("[IntentCompiler] Deterministic result actions=\(validated.actions.count) confidence=\(validated.confidence) needsClarification=\(validated.needsClarification) warnings=\(validated.warnings)")
             if shouldEarlyExit(validated, minimumConfidence: 0.95, context: context) {
                 print("[IntentCompiler] Early exit with deterministic result.")
@@ -68,6 +70,7 @@ final class IntentPromptActionCompiler {
         do {
             embeddingCandidates = try await embeddingRetriever.candidates(for: normalizedPrompt)
             print("[IntentCompiler] Embedding candidates count=\(embeddingCandidates.count) topScore=\(embeddingCandidates.first?.score.description ?? "nil") topType=\(embeddingCandidates.first?.type.rawValue ?? "nil")")
+            print("[IntentCompiler][Embedding] Candidates passed to resolver/LLM:\n\(IntentCompilerLog.json(embeddingCandidates))")
         } catch {
             print("[IntentCompiler] Embedding retrieval failed: \(error)")
             embeddingCandidates = []
@@ -79,7 +82,9 @@ final class IntentPromptActionCompiler {
                prompt: normalizedPrompt,
                context: context
            ) {
+            print("[IntentCompiler][Embedding] Raw compiled result:\n\(IntentCompilerLog.json(embeddingResult))")
             let validated = validator.validatedResult(embeddingResult, context: context)
+            print("[IntentCompiler][Embedding] Validated result passed forward:\n\(IntentCompilerLog.json(validated))")
             print("[IntentCompiler] Embedding result actions=\(validated.actions.count) confidence=\(validated.confidence) needsClarification=\(validated.needsClarification) warnings=\(validated.warnings)")
             if shouldEarlyExit(validated, minimumConfidence: IntentEmbeddingRetriever.earlyExitThreshold, context: context) {
                 print("[IntentCompiler] Early exit with embedding result.")
@@ -93,6 +98,8 @@ final class IntentPromptActionCompiler {
             print("[IntentCompiler] No high-confidence embedding action resolved; falling back to LLM.")
         }
 
+        print("[IntentCompiler][LLM] Deterministic hint passed to LLM:\n\(IntentCompilerLog.json(deterministicResult))")
+        print("[IntentCompiler][LLM] Embedding hints passed to LLM:\n\(IntentCompilerLog.json(embeddingCandidates))")
         let llmResult = await llmCompiler.compile(
             prompt: prompt,
             context: context,
@@ -100,7 +107,10 @@ final class IntentPromptActionCompiler {
             embeddingCandidates: embeddingCandidates
         )
         print("[IntentCompiler] LLM result actions=\(llmResult.actions.count) confidence=\(llmResult.confidence) needsClarification=\(llmResult.needsClarification) warnings=\(llmResult.warnings)")
-        return validator.validatedResult(llmResult, context: context)
+        print("[IntentCompiler][LLM] Raw action result:\n\(IntentCompilerLog.json(llmResult))")
+        let validatedLLMResult = validator.validatedResult(llmResult, context: context)
+        print("[IntentCompiler][LLM] Validated final result:\n\(IntentCompilerLog.json(validatedLLMResult))")
+        return validatedLLMResult
     }
 }
 
