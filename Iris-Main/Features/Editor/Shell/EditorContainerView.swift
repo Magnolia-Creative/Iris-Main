@@ -30,7 +30,7 @@ struct EditorContainerView: View {
 
     /// Canvas fills for edit/export; panels fill for import/chat.
     private var canvasExpandsVertically: Bool {
-        isAgentCutReviewActive || activeSpace.showsMainEditor || activeSpace == .export
+        isAgentCutReviewActive || activeSpace == .edit || activeSpace == .export
     }
 
     private var isAgentCutReviewActive: Bool {
@@ -123,7 +123,7 @@ struct EditorContainerView: View {
                             case .export:
                                 ExportPanelContent(controller: controller)
                                     .transition(.opacity)
-                            case .edit, .iris:
+                            case .edit:
                                 EmptyView()
                             }
                         }
@@ -132,7 +132,7 @@ struct EditorContainerView: View {
                     .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
                     .transition(.opacity)
                     .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
-                    .padding(.horizontal, activeSpace.showsMainEditor ? 0 : .spacing(.sp3))
+                    .padding(.horizontal, activeSpace != .edit ? .spacing(.sp3) : 0)
                     .padding(.bottom, .spacing(.sp2))
                 }
             }

@@ -11,18 +11,18 @@ struct EditorCanvasView: View {
     var isReviewInteractionDisabled = false
 
     private var showsPlaybackControls: Bool {
-        activeSpace.showsMainEditor || activeSpace == .export
+        activeSpace == .edit || activeSpace == .export
     }
 
     private var expandsVertically: Bool {
-        activeSpace.showsMainEditor || activeSpace == .export
+        activeSpace == .edit || activeSpace == .export
     }
 
     private var previewHeight: CGFloat {
         switch activeSpace {    
         case .importMedia, .chat:
             140
-        case .edit, .iris, .export:
+        case .edit, .export:
             220
         }
     }
@@ -36,11 +36,11 @@ struct EditorCanvasView: View {
     }
 
     private var timelineLayout: TimelineLayout {
-        activeSpace.showsMainEditor ? .expanded : .compressed
+        activeSpace == .edit ? .expanded : .compressed
     }
 
     private var allowsTimelineAdditions: Bool {
-        activeSpace.showsMainEditor && !isReviewInteractionDisabled
+        activeSpace == .edit && !isReviewInteractionDisabled
     }
 
     private var rulerVerticalOffset: CGFloat {
