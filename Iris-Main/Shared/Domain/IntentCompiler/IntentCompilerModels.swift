@@ -235,6 +235,7 @@ struct UnavailableIntentLLMProvider: IntentLLMProvider {
 }
 
 enum IntentCompilerError: Error, Equatable {
+    case embeddingUnavailable
     case llmUnavailable
     case invalidLLMResponse
 }
