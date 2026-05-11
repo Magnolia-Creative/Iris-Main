@@ -2,8 +2,33 @@ import Foundation
 
 struct SemanticEditPlan: Codable, Equatable {
     let operations: [SemanticEditOperation]
+    let effectRequests: [SemanticEffectRequest]
+    let experimentalEffectOperations: [ExperimentalEffectOperation]
     let needsClarification: Bool
     let clarificationQuestion: String?
+
+    init(
+        operations: [SemanticEditOperation],
+        effectRequests: [SemanticEffectRequest] = [],
+        experimentalEffectOperations: [ExperimentalEffectOperation] = [],
+        needsClarification: Bool,
+        clarificationQuestion: String?
+    ) {
+        self.operations = operations
+        self.effectRequests = effectRequests
+        self.experimentalEffectOperations = experimentalEffectOperations
+        self.needsClarification = needsClarification
+        self.clarificationQuestion = clarificationQuestion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.operations = try container.decodeIfPresent([SemanticEditOperation].self, forKey: .operations) ?? []
+        self.effectRequests = try container.decodeIfPresent([SemanticEffectRequest].self, forKey: .effectRequests) ?? []
+        self.experimentalEffectOperations = try container.decodeIfPresent([ExperimentalEffectOperation].self, forKey: .experimentalEffectOperations) ?? []
+        self.needsClarification = try container.decodeIfPresent(Bool.self, forKey: .needsClarification) ?? false
+        self.clarificationQuestion = try container.decodeIfPresent(String.self, forKey: .clarificationQuestion)
+    }
 }
 
 struct SemanticEditOperation: Codable, Equatable {
@@ -40,6 +65,90 @@ struct SemanticEditOperation: Codable, Equatable {
 
     private static func defaultConfidence(for type: IntentEditType) -> Double {
         type == .unknown ? 0.1 : 0.8
+    }
+}
+
+struct SemanticEffectRequest: Codable, Equatable {
+    let sourceText: String
+    let target: SemanticEditTarget?
+    let intent: String
+    let attributes: [String]
+    let confidence: Double
+
+    init(
+        sourceText: String,
+        target: SemanticEditTarget?,
+        intent: String,
+        attributes: [String] = [],
+        confidence: Double
+    ) {
+        self.sourceText = sourceText
+        self.target = target
+        self.intent = intent
+        self.attributes = attributes
+        self.confidence = confidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.sourceText = try container.decode(String.self, forKey: .sourceText)
+        self.target = try container.decodeIfPresent(SemanticEditTarget.self, forKey: .target)
+        self.intent = try container.decodeIfPresent(String.self, forKey: .intent) ?? sourceText
+        self.attributes = try container.decodeIfPresent([String].self, forKey: .attributes) ?? []
+        self.confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0.7
+    }
+}
+
+struct EffectCapability: Codable, Equatable {
+    let operation: String
+    let description: String
+    let parameters: [EffectCapabilityParameter]
+    let retrievalText: String
+    let examples: [String]
+}
+
+struct EffectCapabilityParameter: Codable, Equatable {
+    let name: String
+    let valueType: String
+    let minimum: Double?
+    let maximum: Double?
+    let description: String
+}
+
+struct RelevantEffectCapability: Codable, Equatable {
+    let capability: EffectCapability
+    let score: Double
+}
+
+struct ExperimentalEffectPlan: Codable, Equatable {
+    let operations: [ExperimentalEffectOperation]
+    let rationale: String?
+
+    init(operations: [ExperimentalEffectOperation], rationale: String? = nil) {
+        self.operations = operations
+        self.rationale = rationale
+    }
+}
+
+struct ExperimentalEffectOperation: Codable, Equatable {
+    let operation: String
+    let sourceText: String
+    let target: SemanticEditTarget?
+    let confidence: Double
+    let parameters: [String: JSONValue]
+
+    init(
+        operation: String,
+        sourceText: String,
+        target: SemanticEditTarget?,
+        confidence: Double,
+        parameters: [String: JSONValue]
+    ) {
+        self.operation = operation
+        self.sourceText = sourceText
+        self.target = target
+        self.confidence = confidence
+        self.parameters = parameters
     }
 }
 

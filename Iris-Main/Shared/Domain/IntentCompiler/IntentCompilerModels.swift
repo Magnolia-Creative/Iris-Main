@@ -35,6 +35,39 @@ struct IntentCompileResult: Codable, Equatable {
     let unresolvedText: String?
     let warnings: [IntentCompileWarning]
     let needsClarification: Bool
+    let experimentalEffectOperations: [ExperimentalEffectOperation]
+
+    init(
+        actions: [Action],
+        confidence: Double,
+        source: CompileSource,
+        unresolvedText: String?,
+        warnings: [IntentCompileWarning],
+        needsClarification: Bool,
+        experimentalEffectOperations: [ExperimentalEffectOperation] = []
+    ) {
+        self.actions = actions
+        self.confidence = confidence
+        self.source = source
+        self.unresolvedText = unresolvedText
+        self.warnings = warnings
+        self.needsClarification = needsClarification
+        self.experimentalEffectOperations = experimentalEffectOperations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.actions = try container.decode([Action].self, forKey: .actions)
+        self.confidence = try container.decode(Double.self, forKey: .confidence)
+        self.source = try container.decode(CompileSource.self, forKey: .source)
+        self.unresolvedText = try container.decodeIfPresent(String.self, forKey: .unresolvedText)
+        self.warnings = try container.decode([IntentCompileWarning].self, forKey: .warnings)
+        self.needsClarification = try container.decode(Bool.self, forKey: .needsClarification)
+        self.experimentalEffectOperations = try container.decodeIfPresent(
+            [ExperimentalEffectOperation].self,
+            forKey: .experimentalEffectOperations
+        ) ?? []
+    }
 
     static func unsupported(
         source: CompileSource,
