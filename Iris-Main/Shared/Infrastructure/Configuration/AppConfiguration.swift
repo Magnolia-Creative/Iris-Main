@@ -93,7 +93,7 @@ enum AppConfiguration {
 
     /// OpenAI Realtime transcription proxy (`stream_transcription`); client sends PCM16 mono @ 24 kHz as base64 JSON frames.
     static func transcriptionWebSocketEndpoint(
-        model: String = "gpt-realtime-whisper",
+        model: String = "gpt-whisper-realtime",
         basedOn baseURL: URL = backendBaseURL
     ) -> URL? {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
@@ -120,7 +120,7 @@ enum AppConfiguration {
     }
 
     static func voiceIntentWebSocketEndpoint(
-        model: String = "gpt-4o-mini-transcribe",
+        model: String = "gpt-whisper-realtime",
         basedOn baseURL: URL = backendBaseURL
     ) -> URL? {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
