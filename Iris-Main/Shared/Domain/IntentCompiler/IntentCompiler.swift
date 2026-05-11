@@ -11,7 +11,8 @@ struct IntentCompiler {
             let result = clarification(
                 originalPrompt: originalPrompt,
                 question: plan.clarificationQuestion,
-                warnings: [.ambiguousTarget]
+                warnings: [.ambiguousTarget],
+                experimentalEffectOperations: plan.experimentalEffectOperations
             )
             print("[IntentCompiler][SemanticIR] Plan requested clarification; result:\n\(IntentCompilerLog.json(result))")
             return result
@@ -59,13 +60,23 @@ struct IntentCompiler {
                 previousClipId = resolvedOperation.targetClipId ?? previousClipId
                 previousTrackId = resolvedOperation.targetTrackId ?? previousTrackId
             case .clarification(let warning, let question):
-                let result = clarification(originalPrompt: originalPrompt, question: question, warnings: [warning])
+                let result = clarification(
+                    originalPrompt: originalPrompt,
+                    question: question,
+                    warnings: [warning],
+                    experimentalEffectOperations: plan.experimentalEffectOperations
+                )
                 print("[IntentCompiler][ActionResolution] Clarification required warning=\(warning) question='\(question)' result:\n\(IntentCompilerLog.json(result))")
                 return result
             case .unsupported:
                 warnings.append(.unsupportedIntent)
                 print("[IntentCompiler][ActionResolution] Operation resolved as unsupported.")
             }
+        }
+
+        if plan.experimentalEffectOperations.isEmpty == false {
+            warnings.append(.unsupportedAction)
+            print("[IntentCompiler][EffectResolution] Experimental effect operations flowed through action builder without executable actions:\n\(IntentCompilerLog.json(plan.experimentalEffectOperations))")
         }
 
         if actions.isEmpty {
@@ -75,7 +86,8 @@ struct IntentCompiler {
                 source: .llm,
                 unresolvedText: originalPrompt,
                 warnings: warnings.isEmpty ? [.noActionProduced] : uniqueWarnings(warnings),
-                needsClarification: false
+                needsClarification: false,
+                experimentalEffectOperations: plan.experimentalEffectOperations
             )
             print("[IntentCompiler][ActionResolution] No actions produced; result:\n\(IntentCompilerLog.json(result))")
             return result
@@ -88,7 +100,8 @@ struct IntentCompiler {
             source: .llm,
             unresolvedText: nil,
             warnings: uniqueWarnings(warnings),
-            needsClarification: false
+            needsClarification: false,
+            experimentalEffectOperations: plan.experimentalEffectOperations
         )
         print("[IntentCompiler][ActionResolution] Final compiled result before validation:\n\(IntentCompilerLog.json(result))")
         return result
@@ -385,7 +398,8 @@ private extension IntentCompiler {
     func clarification(
         originalPrompt: String,
         question: String?,
-        warnings: [IntentCompileWarning]
+        warnings: [IntentCompileWarning],
+        experimentalEffectOperations: [ExperimentalEffectOperation] = []
     ) -> IntentCompileResult {
         IntentCompileResult(
             actions: [],
@@ -393,7 +407,8 @@ private extension IntentCompiler {
             source: .llm,
             unresolvedText: question ?? originalPrompt,
             warnings: warnings,
-            needsClarification: true
+            needsClarification: true,
+            experimentalEffectOperations: experimentalEffectOperations
         )
     }
 

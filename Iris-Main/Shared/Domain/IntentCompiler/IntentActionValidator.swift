@@ -25,7 +25,8 @@ struct IntentActionValidator {
             source: result.source,
             unresolvedText: validActions.isEmpty ? (result.unresolvedText ?? "Invalid timeline action") : result.unresolvedText,
             warnings: uniqueWarnings(warnings),
-            needsClarification: result.needsClarification || validActions.isEmpty
+            needsClarification: result.needsClarification || validActions.isEmpty,
+            experimentalEffectOperations: result.experimentalEffectOperations
         )
     }
 
