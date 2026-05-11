@@ -126,7 +126,7 @@ private struct ResolvedIntentOperation {
 private enum ResolvedIntentParameters {
     case splitClip(atTimeUs: Int64)
     case removeClip
-    case trimClip(sourceRange: TimeRange, timelineRange: TimeRange)
+    case trimClip(sourceRange: TimeRange)
     case moveClip(orderedClipIds: [String])
     case replaceTrackClips(clips: [Clip])
 }
@@ -160,10 +160,9 @@ private extension ResolvedIntentParameters {
             return ["atTimeUs": .int(atTimeUs)]
         case .removeClip:
             return [:]
-        case .trimClip(let sourceRange, let timelineRange):
+        case .trimClip(let sourceRange):
             return [
-                "sourceRange": sourceRange.logValue,
-                "timelineRange": timelineRange.logValue
+                "sourceRange": sourceRange.logValue
             ]
         case .moveClip(let orderedClipIds):
             return ["orderedClipIds": .array(orderedClipIds.map { .string($0) })]
@@ -263,13 +262,10 @@ private extension IntentCompiler {
         }
 
         let sourceRange: TimeRange
-        let timelineRange: TimeRange
         if edge == "start" || edge == "beginning" {
             sourceRange = TimeRange(start: clip.sourceRange.start + durationUs, end: clip.sourceRange.end)
-            timelineRange = TimeRange(start: clip.timelineRange.start + durationUs, end: clip.timelineRange.end)
         } else if edge == "end" || edge == "final" {
             sourceRange = TimeRange(start: clip.sourceRange.start, end: clip.sourceRange.end - durationUs)
-            timelineRange = TimeRange(start: clip.timelineRange.start, end: clip.timelineRange.end - durationUs)
         } else {
             return .clarification(.invalidTrimRange, "Should I trim the start or end of the clip?")
         }
@@ -281,7 +277,7 @@ private extension IntentCompiler {
                 targetClipId: clip.clipId,
                 targetTrackId: nil,
                 confidence: operation.confidence,
-                parameters: .trimClip(sourceRange: sourceRange, timelineRange: timelineRange)
+                parameters: .trimClip(sourceRange: sourceRange)
             )
         )
     }
@@ -383,9 +379,9 @@ private extension IntentCompiler {
         case .removeClip:
             guard let clipId = operation.targetClipId else { return nil }
             return Action.removeClip(timelineId: context.timelineId, clipId: clipId)
-        case .trimClip(let sourceRange, let timelineRange):
+        case .trimClip(let sourceRange):
             guard let clipId = operation.targetClipId else { return nil }
-            return Action.trimClip(timelineId: context.timelineId, clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange)
+            return Action.trimClip(timelineId: context.timelineId, clipId: clipId, sourceRange: sourceRange)
         case .moveClip(let orderedClipIds):
             guard let clipId = operation.targetClipId else { return nil }
             return Action.moveClip(timelineId: context.timelineId, clipId: clipId, orderedClipIds: orderedClipIds)
@@ -666,9 +662,9 @@ private struct IntentTimelineSimulator {
         case .removeClip:
             guard let clipId = operation.targetClipId else { return }
             applyRemove(clipId: clipId)
-        case .trimClip(let sourceRange, let timelineRange):
+        case .trimClip(let sourceRange):
             guard let clipId = operation.targetClipId else { return }
-            applyTrim(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange)
+            applyTrim(clipId: clipId, sourceRange: sourceRange)
         case .moveClip(let orderedClipIds):
             guard let clipId = operation.targetClipId,
                   let trackId = clipsById[clipId]?.trackId else { return }
@@ -718,11 +714,16 @@ private struct IntentTimelineSimulator {
         packTrack(trackId: clip.trackId)
     }
 
-    private mutating func applyTrim(clipId: String, sourceRange: TimeRange, timelineRange: TimeRange) {
+    private mutating func applyTrim(clipId: String, sourceRange: TimeRange) {
         guard var clip = clipsById[clipId] else { return }
+        guard sourceRange.duration > 0 else { return }
         clip.sourceRange = sourceRange
-        clip.timelineRange = timelineRange
+        clip.timelineRange = TimeRange(
+            start: clip.timelineRange.start,
+            end: clip.timelineRange.start + sourceRange.duration
+        )
         clipsById[clipId] = clip
+        packTrack(trackId: clip.trackId)
     }
 
     private mutating func applyOrder(trackId: String, orderedClipIds: [String]) {

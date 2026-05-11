@@ -52,11 +52,10 @@ private extension IntentActionValidator {
             return context.clipsById[clipId] == nil ? [.clipNotFound] : []
         case .addClip:
             return [.unsupportedAction]
-        case .trimClip(let clipId, let sourceRange, let timelineRange):
+        case .trimClip(let clipId, let sourceRange):
             return validateTrim(
                 clipId: clipId,
                 sourceRange: sourceRange,
-                timelineRange: timelineRange,
                 context: context
             )
         case .moveClip(let clipId, let orderedClipIds):
@@ -85,16 +84,13 @@ private extension IntentActionValidator {
     func validateTrim(
         clipId: String,
         sourceRange: TimeRange,
-        timelineRange: TimeRange,
         context: IntentCompilerContext
     ) -> [IntentCompileWarning] {
         guard context.clipsById[clipId] != nil else {
             return [.clipNotFound]
         }
 
-        guard sourceRange.duration > 0,
-              timelineRange.duration > 0,
-              sourceRange.duration == timelineRange.duration else {
+        guard sourceRange.duration > 0 else {
             return [.invalidTrimRange]
         }
 

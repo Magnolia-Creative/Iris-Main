@@ -67,7 +67,6 @@ struct IntentPromptActionCompilerTests {
         #expect(result.source == .llm)
         #expect(payload?.clipId == "clip-b")
         #expect(payload?.sourceRange == TimeRange(start: 3_000_000, end: 10_000_000))
-        #expect(payload?.timelineRange == TimeRange(start: 8_000_000, end: 15_000_000))
     }
 
     @Test func explicitDurationUnitInSourceTextOverridesBadLLMUnit() async throws {
@@ -80,7 +79,6 @@ struct IntentPromptActionCompilerTests {
         #expect(result.source == .llm)
         #expect(payload?.clipId == "clip-b")
         #expect(payload?.sourceRange == TimeRange(start: 2_000_000, end: 10_000_000))
-        #expect(payload?.timelineRange == TimeRange(start: 7_000_000, end: 15_000_000))
     }
 
     @Test func trimDurationCanOmitTypeInLLMResponse() async throws {
@@ -94,7 +92,6 @@ struct IntentPromptActionCompilerTests {
         #expect(result.needsClarification == false)
         #expect(payload?.clipId == "clip-b")
         #expect(payload?.sourceRange == TimeRange(start: 2_000_000, end: 10_000_000))
-        #expect(payload?.timelineRange == TimeRange(start: 7_000_000, end: 15_000_000))
     }
 
     @Test func removeFinalFiveSecondsUsesLLMOnlyFlow() async throws {
@@ -107,7 +104,6 @@ struct IntentPromptActionCompilerTests {
         #expect(result.source == .llm)
         #expect(payload?.clipId == "clip-b")
         #expect(payload?.sourceRange == TimeRange(start: 0, end: 5_000_000))
-        #expect(payload?.timelineRange == TimeRange(start: 5_000_000, end: 10_000_000))
     }
 
     @Test func moveClipToBeginningReordersTrackThroughLLMOnlyFlow() async throws {
@@ -191,8 +187,7 @@ struct IntentPromptActionCompilerTests {
         #expect(result.needsClarification == false)
         #expect(result.actions.count == 2)
         #expect(trimPayload(from: result, at: 0)?.sourceRange == TimeRange(start: 1_000_000, end: 10_000_000))
-        #expect(trimPayload(from: result, at: 0)?.timelineRange == TimeRange(start: 6_000_000, end: 15_000_000))
-        #expect(splitTimeUs(from: result, at: 1) == 10_500_000)
+        #expect(splitTimeUs(from: result, at: 1) == 9_500_000)
     }
 
     @Test func llmSameAsPreviousResolvesPriorTarget() async throws {
@@ -631,13 +626,12 @@ private func removeClipId(from result: IntentCompileResult) -> String? {
 
 private func trimPayload(from result: IntentCompileResult, at index: Int = 0) -> (
     clipId: String,
-    sourceRange: TimeRange,
-    timelineRange: TimeRange
+    sourceRange: TimeRange
 )? {
-    guard case .trimClip(let clipId, let sourceRange, let timelineRange) = result.actions[safe: index]?.payload else {
+    guard case .trimClip(let clipId, let sourceRange) = result.actions[safe: index]?.payload else {
         return nil
     }
-    return (clipId, sourceRange, timelineRange)
+    return (clipId, sourceRange)
 }
 
 private func movePayload(from result: IntentCompileResult) -> (

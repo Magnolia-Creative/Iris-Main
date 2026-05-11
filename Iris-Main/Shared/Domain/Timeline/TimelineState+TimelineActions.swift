@@ -25,11 +25,10 @@ extension TimelineState {
         case let .addClip(clip):
             return applyAddClip(clip)
 
-        case let .trimClip(clipId, sourceRange, timelineRange):
+        case let .trimClip(clipId, sourceRange):
             return applyTrimClipCommitted(
                 clipId: clipId,
-                sourceRange: sourceRange,
-                timelineRange: timelineRange
+                sourceRange: sourceRange
             )
 
         case let .moveClip(clipId, orderedClipIds):
@@ -114,12 +113,16 @@ extension TimelineState {
 
     private mutating func applyTrimClipCommitted(
         clipId: String,
-        sourceRange: TimeRange,
-        timelineRange: TimeRange
+        sourceRange: TimeRange
     ) -> [Action] {
         guard let clip = clips.first(where: { $0.clipId == clipId }) else { return [] }
+        guard sourceRange.duration > 0 else { return [] }
         let trackId = clip.trackId
         let before = orderedClips(for: trackId)
+        let timelineRange = TimeRange(
+            start: clip.timelineRange.start,
+            end: clip.timelineRange.start + sourceRange.duration
+        )
         trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange, commit: true)
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
     }

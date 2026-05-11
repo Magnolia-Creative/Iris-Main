@@ -226,14 +226,12 @@ private extension IntentDeterministicCompiler {
         }
 
         let sourceRange = TimeRange(start: clip.sourceRange.start + durationUs, end: clip.sourceRange.end)
-        let timelineRange = TimeRange(start: clip.timelineRange.start + durationUs, end: clip.timelineRange.end)
 
         return trimResult(
             prompt: prompt,
             context: context,
             clip: clip,
-            sourceRange: sourceRange,
-            timelineRange: timelineRange
+            sourceRange: sourceRange
         )
     }
 
@@ -253,14 +251,12 @@ private extension IntentDeterministicCompiler {
         }
 
         let sourceRange = TimeRange(start: clip.sourceRange.start, end: clip.sourceRange.end - durationUs)
-        let timelineRange = TimeRange(start: clip.timelineRange.start, end: clip.timelineRange.end - durationUs)
 
         return trimResult(
             prompt: prompt,
             context: context,
             clip: clip,
-            sourceRange: sourceRange,
-            timelineRange: timelineRange
+            sourceRange: sourceRange
         )
     }
 
@@ -268,16 +264,14 @@ private extension IntentDeterministicCompiler {
         prompt: String,
         context: IntentCompilerContext,
         clip: Clip,
-        sourceRange: TimeRange,
-        timelineRange: TimeRange
+        sourceRange: TimeRange
     ) -> IntentCompileResult {
         IntentCompileResult(
             actions: [
                 Action.trimClip(
                     timelineId: context.timelineId,
                     clipId: clip.clipId,
-                    sourceRange: sourceRange,
-                    timelineRange: timelineRange
+                    sourceRange: sourceRange
                 )
             ],
             confidence: 0.97,

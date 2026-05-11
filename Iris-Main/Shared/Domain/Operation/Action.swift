@@ -7,7 +7,7 @@ enum ActionPayload: Equatable, Codable {
     case splitClip(clipId: String, atTimeUs: Int64)
     case removeClip(clipId: String)
     case addClip(clip: Clip)
-    case trimClip(clipId: String, sourceRange: TimeRange, timelineRange: TimeRange)
+    case trimClip(clipId: String, sourceRange: TimeRange)
     case moveClip(clipId: String, orderedClipIds: [String])
     /// Restores the ordered clip list for a single track (used for undo/redo and inverse actions).
     case replaceTrackClips(trackId: String, clips: [Clip])
@@ -179,12 +179,11 @@ extension Action {
         timelineId: String,
         clipId: String,
         sourceRange: TimeRange,
-        timelineRange: TimeRange,
         groupId: String? = nil
     ) -> Action {
         Action(
             timelineId: timelineId,
-            payload: .trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange),
+            payload: .trimClip(clipId: clipId, sourceRange: sourceRange),
             groupId: groupId
         )
     }

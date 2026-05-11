@@ -264,8 +264,7 @@ final class TimelineController: ObservableObject {
             Action.trimClip(
                 timelineId: state.timelineId,
                 clipId: clipId,
-                sourceRange: sourceRange,
-                timelineRange: timelineRange
+                sourceRange: sourceRange
             )
         ])
     }
