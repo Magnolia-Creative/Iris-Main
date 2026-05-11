@@ -1,5 +1,13 @@
 import Foundation
 
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
+#if canImport(ZeticMLange)
+import ZeticMLange
+#endif
+
 enum TimelineLLMBackend: String, CaseIterable, Identifiable {
     case zeticGemma
     case appleFoundation
@@ -16,18 +24,29 @@ enum TimelineLLMBackend: String, CaseIterable, Identifiable {
     }
 
     static var selectableCases: [TimelineLLMBackend] {
+        var backends: [TimelineLLMBackend] = []
+
+        #if canImport(ZeticMLange)
+        backends.append(.zeticGemma)
+        #endif
+
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            return allCases
+            backends.append(.appleFoundation)
         }
         #endif
-        return [.zeticGemma]
+
+        return backends.isEmpty ? [.zeticGemma] : backends
     }
 
     func makeProvider() -> TimelineLLMProvider {
         switch self {
         case .zeticGemma:
+            #if canImport(ZeticMLange)
             return ZeticGemmaTimelineLLMProvider()
+            #else
+            return UnavailableTimelineLLMProvider()
+            #endif
         case .appleFoundation:
             #if canImport(FoundationModels)
             if #available(iOS 26.0, *) {

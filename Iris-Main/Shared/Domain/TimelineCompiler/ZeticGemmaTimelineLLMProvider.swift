@@ -9,6 +9,14 @@ struct ZeticGemmaTimelineLLMProvider: TimelineLLMProvider {
     let modelName: String
     let version: Int
 
+    static var isAvailableAtCompileTime: Bool {
+        #if canImport(ZeticMLange)
+        return true
+        #else
+        return false
+        #endif
+    }
+
     init(
         personalKey: String? = AppConfiguration.zeticPersonalKey,
         modelName: String = "changgeun/gemma-4-E2B-it",

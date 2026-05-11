@@ -76,7 +76,7 @@ private extension TimelineLLMCompiler {
         let deterministicJson = try jsonString(deterministicResult)
         let embeddingJson = try jsonString(embeddingCandidates)
 
-        return """
+        let llmPrompt = """
         You are the final fallback stage in a video editor timeline command compiler.
         Your job is to translate one natural-language editing request into structured timeline edit intents.
         The app will validate your intents and convert them into timeline Actions after you respond.
@@ -217,6 +217,10 @@ private extension TimelineLLMCompiler {
           "clarificationQuestion": null
         }
         """
+
+        print("[TimelineLLM] Editor context provided to LLM:\n\(contextJson)")
+        print("[TimelineLLM] Full prompt provided to LLM:\n\(llmPrompt)")
+        return llmPrompt
     }
 
     func jsonString<T: Encodable>(_ value: T) throws -> String {
