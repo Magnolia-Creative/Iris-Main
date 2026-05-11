@@ -186,7 +186,7 @@ private extension IntentCompiler {
             return .clarification(.missingPlayhead, "Where do you want to split the clip?")
         }
 
-        guard let atTimeUs = resolveTimeUs(position, clip: clip, context: context) else {
+        guard let atTimeUs = resolveTimeUs(position, clip: clip, context: context, sourceText: operation.sourceText) else {
             return .clarification(.missingPlayhead, "Where do you want to split the clip?")
         }
 
@@ -242,7 +242,7 @@ private extension IntentCompiler {
         }
         guard let amountValue = operation.parameters["amount"],
               let duration = durationExpression(from: amountValue),
-              let durationUs = resolveDurationUs(duration, clip: clip) else {
+              let durationUs = resolveDurationUs(duration, clip: clip, sourceText: operation.sourceText) else {
             return .clarification(.invalidTrimRange, "How much do you want to trim?")
         }
         guard durationUs > 0, durationUs < clip.timelineRange.duration else {
@@ -519,9 +519,13 @@ private extension IntentCompiler {
         }
     }
 
-    func resolveDurationUs(_ expression: DurationExpression, clip: Clip) -> Int64? {
+    func resolveDurationUs(_ expression: DurationExpression, clip: Clip, sourceText: String? = nil) -> Int64? {
         switch expression {
         case .duration(let value, let unit):
+            if let sourceText,
+               let explicitDurationUs = explicitDurationUs(from: sourceText, expectedValue: value) {
+                return explicitDurationUs
+            }
             return microseconds(value: value, unit: unit)
         case .percentage(let value):
             return Int64((Double(clip.timelineRange.duration) * value / 100.0).rounded())
@@ -530,19 +534,23 @@ private extension IntentCompiler {
         }
     }
 
-    func resolveTimeUs(_ expression: TimeExpression, clip: Clip, context: IntentCompilerContext) -> Int64? {
+    func resolveTimeUs(_ expression: TimeExpression, clip: Clip, context: IntentCompilerContext, sourceText: String? = nil) -> Int64? {
         switch expression {
         case .playhead:
             return context.playheadTimeUs
         case .absoluteTimelineTime(let value, let unit):
+            if let sourceText,
+               let explicitTimeUs = explicitDurationUs(from: sourceText, expectedValue: value) {
+                return explicitTimeUs
+            }
             return microseconds(value: value, unit: unit)
         case .fractionOfClip(let value, _):
             return clip.timelineRange.start + Int64((Double(clip.timelineRange.duration) * value).rounded())
         case .afterStart(let amount):
-            guard let durationUs = resolveDurationUs(amount, clip: clip) else { return nil }
+            guard let durationUs = resolveDurationUs(amount, clip: clip, sourceText: sourceText) else { return nil }
             return clip.timelineRange.start + durationUs
         case .beforeEnd(let amount):
-            guard let durationUs = resolveDurationUs(amount, clip: clip) else { return nil }
+            guard let durationUs = resolveDurationUs(amount, clip: clip, sourceText: sourceText) else { return nil }
             return clip.timelineRange.end - durationUs
         }
     }
@@ -557,6 +565,43 @@ private extension IntentCompiler {
             return Int64((value * 1_000_000).rounded())
         case .minute:
             return Int64((value * 60_000_000).rounded())
+        }
+    }
+
+    func explicitDurationUs(from text: String, expectedValue: Double) -> Int64? {
+        let pattern = #"(?i)\b(\d+(?:\.\d+)?)\s*(microseconds?|usec|us|milliseconds?|msec|ms|seconds?|secs?|sec|s|minutes?|mins?|min|m)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let matches = regex.matches(in: text, range: range)
+        for match in matches {
+            guard match.numberOfRanges == 3,
+                  let valueRange = Range(match.range(at: 1), in: text),
+                  let unitRange = Range(match.range(at: 2), in: text),
+                  let value = Double(text[valueRange]),
+                  abs(value - expectedValue) < 0.000_001 else {
+                continue
+            }
+
+            guard let unit = unit(from: String(text[unitRange])) else { continue }
+            return microseconds(value: value, unit: unit)
+        }
+
+        return nil
+    }
+
+    func unit(from rawUnit: String) -> DurationUnit? {
+        switch rawUnit.lowercased() {
+        case "microsecond", "microseconds", "usec", "us":
+            return .microsecond
+        case "millisecond", "milliseconds", "msec", "ms":
+            return .millisecond
+        case "second", "seconds", "sec", "secs", "s":
+            return .second
+        case "minute", "minutes", "min", "mins", "m":
+            return .minute
+        default:
+            return nil
         }
     }
 }

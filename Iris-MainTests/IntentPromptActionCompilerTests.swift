@@ -70,6 +70,19 @@ struct IntentPromptActionCompilerTests {
         #expect(payload?.timelineRange == TimeRange(start: 8_000_000, end: 15_000_000))
     }
 
+    @Test func explicitDurationUnitInSourceTextOverridesBadLLMUnit() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: trimFirstTwoSecondsWithBadUnitLLMResponse)).compilePromptToActions(
+            prompt: "trim the first 2 seconds of the clip",
+            context: makeContext()
+        )
+
+        let payload = trimPayload(from: result)
+        #expect(result.source == .llm)
+        #expect(payload?.clipId == "clip-b")
+        #expect(payload?.sourceRange == TimeRange(start: 2_000_000, end: 10_000_000))
+        #expect(payload?.timelineRange == TimeRange(start: 7_000_000, end: 15_000_000))
+    }
+
     @Test func removeFinalFiveSecondsUsesLLMOnlyFlow() async throws {
         let result = try await makeCompiler(llmProvider: TestLLMProvider(response: trimFinalFiveSecondsLLMResponse)).compilePromptToActions(
             prompt: "remove the final 5 seconds",
@@ -295,6 +308,31 @@ private let trimFirstThreeSecondsLLMResponse = """
           "type": "duration",
           "value": 3,
           "unit": "second"
+        }
+      }
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let trimFirstTwoSecondsWithBadUnitLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "trimClip",
+      "sourceText": "first 2 seconds",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.0,
+      "parameters": {
+        "edge": "start",
+        "amount": {
+          "type": "duration",
+          "value": 2,
+          "unit": "microsecond"
         }
       }
     }
