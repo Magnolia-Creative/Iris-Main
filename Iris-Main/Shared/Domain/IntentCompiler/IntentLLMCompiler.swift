@@ -121,6 +121,27 @@ private struct LLMCurrentClipContext: Codable {
 }
 
 private extension IntentLLMCompiler {
+    static let actionStructureContextByType: [IntentEditType: String] = [
+        .splitClip: """
+        {"type":"splitClip","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{"position":{"type":"playhead|absoluteTimelineTime|fractionOfClip|afterStart|beforeEnd","value":0.5,"unit":"second|minute|millisecond|microsecond","relativeTo":"postPreviousOperations|originalClip","amount":{"type":"duration|percentage|vague","value":1,"unit":"second","phrase":"optional vague phrase"}}}}
+        """,
+        .removeClip: """
+        {"type":"removeClip","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{}}
+        """,
+        .trimClip: """
+        {"type":"trimClip","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{"edge":"start|end","amount":{"type":"duration|percentage|vague","value":1,"unit":"second|minute|millisecond|microsecond","phrase":"optional vague phrase"}}}
+        """,
+        .moveClip: """
+        {"type":"moveClip","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{"placement":"beginning|start|first|end|last","orderedClipIds":["existing clip ids in final order"]}}
+        """,
+        .replaceTrackClips: """
+        {"type":"replaceTrackClips","sourceText":"exact user clause","target":{"type":"selectedTrack|trackId","trackId":"optional existing track id"},"confidence":0.0,"parameters":{"orderedClipIds":["existing clip ids in final order"]}}
+        """,
+        .unknown: """
+        {"type":"unknown","sourceText":"exact user clause","target":null,"confidence":0.0,"parameters":{}}
+        """
+    ]
+
     static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -136,20 +157,31 @@ private extension IntentLLMCompiler {
         _ = deterministicResult
         _ = embeddingCandidates
         let contextJson = try jsonString(LLMEditorContext(context: context))
+        let actionStructureContext = Self.actionStructureContext()
 
         let llmPrompt = """
         Return JSON only. Parse one video timeline edit request into:
         {"operations":[{"type":"splitClip|removeClip|trimClip|moveClip|replaceTrackClips|unknown","sourceText":"exact user clause","target":null,"confidence":0.0,"parameters":{}}],"needsClarification":false,"clarificationQuestion":null}
 
         Ops: splitClip, removeClip, trimClip, moveClip, replaceTrackClips, unknown.
-        Rules: every op must include type, sourceText, target, confidence, parameters. Never output placeholders. split compound requests into ordered operations. Use fewest ops. Use only IDs in ctx. Never invent IDs/ranges/microseconds. sourceText is copied from the user clause. If missing required info, set needsClarification true and ask a short clarificationQuestion. Effects/captions/audio/color/style/transitions/generative media => unknown.
+        Rules: first derive the ordered operation types. Before writing each operation, retrieve that type's JSON object structure from Action structure context and follow it exactly. If multiple operation types are derived, use each matching structure. every op must include type, sourceText, target, confidence, parameters. target must be null or an object; never use a plain string target. Never output placeholders. split compound requests into ordered operations. Use fewest ops. Use only IDs in ctx. Never invent IDs/ranges/microseconds. sourceText is copied from the user clause. If missing required info, set needsClarification true and ask a short clarificationQuestion. Effects/captions/audio/color/style/transitions/generative media => unknown.
         Targets: this/selected/current/the clip => {"type":"selectedClip"}; it/same/that after prior op => {"type":"sameAsPrevious"}; first/second/third/last clip => {"type":"ordinal","value":"first|second|third|last","track":{"type":"selectedTrack"}}; first/last N seconds are trim edges, not ordinal clip targets. clip under playhead => {"type":"currentClipAtPlayhead"}; track => {"type":"selectedTrack"} or {"type":"trackId","trackId":"id"}; known clip => {"type":"clipId","clipId":"id"}.
         Params: splitClip needs {"position":time}. "in half"/middle => {"type":"fractionOfClip","value":0.5,"relativeTo":"postPreviousOperations"}. trimClip parameters are exactly {"edge":"start|end","amount":duration}; never edgeStart/edgeEnd. Preserve explicit duration units: "2 seconds" => {"type":"duration","value":2,"unit":"second"}, not microsecond. Percent => {"type":"percentage","value":50}. Vague => {"type":"vague","phrase":"a little"}. moveClip can use placement beginning|start|first|end|last or orderedClipIds. replaceTrackClips needs orderedClipIds. Here/playhead/current time => {"type":"playhead"}. Absolute times => {"type":"absoluteTimelineTime","value":10,"unit":"second"}. Relative split/trim times may use afterStart/beforeEnd with amount.
+        Action structure context:
+        \(actionStructureContext)
         ctx=\(contextJson)
         user=\(prompt)
         """
 
         return llmPrompt
+    }
+
+    static func actionStructureContext() -> String {
+        IntentEditType.allCases
+            .compactMap { type in
+                actionStructureContextByType[type].map { "\(type.rawValue): \($0)" }
+            }
+            .joined(separator: "\n")
     }
 
     func jsonString<T: Encodable>(_ value: T) throws -> String {

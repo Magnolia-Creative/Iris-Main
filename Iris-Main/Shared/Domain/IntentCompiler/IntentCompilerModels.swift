@@ -79,7 +79,7 @@ enum IntentCompileWarning: String, Codable, Equatable, Hashable {
     case destructiveActionNeedsClarification
 }
 
-enum IntentEditType: String, Codable, Equatable {
+enum IntentEditType: String, Codable, Equatable, Hashable, CaseIterable {
     case splitClip
     case removeClip
     case trimClip
