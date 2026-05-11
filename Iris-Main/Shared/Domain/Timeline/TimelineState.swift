@@ -139,10 +139,16 @@ struct TimelineState {
         commit: Bool
     ) {
         guard let index = clips.firstIndex(where: { $0.clipId == clipId }) else { return }
+        guard sourceRange.duration > 0 else { return }
         let originalClip = clips[index]
         var updatedClip = originalClip
         updatedClip.sourceRange = sourceRange
-        updatedClip.timelineRange = timelineRange
+        updatedClip.timelineRange = commit
+            ? TimeRange(
+                start: originalClip.timelineRange.start,
+                end: originalClip.timelineRange.start + sourceRange.duration
+            )
+            : timelineRange
         updatedClip.updatedAt = Date()
         if commit {
             let updatedClips = rippleTrimmedClips(

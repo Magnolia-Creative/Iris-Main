@@ -119,11 +119,7 @@ extension TimelineState {
         guard sourceRange.duration > 0 else { return [] }
         let trackId = clip.trackId
         let before = orderedClips(for: trackId)
-        let timelineRange = TimeRange(
-            start: clip.timelineRange.start,
-            end: clip.timelineRange.start + sourceRange.duration
-        )
-        trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange, commit: true)
+        trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: clip.timelineRange, commit: true)
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
     }
 
