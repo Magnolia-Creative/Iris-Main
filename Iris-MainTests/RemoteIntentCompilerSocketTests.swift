@@ -19,6 +19,7 @@ struct RemoteIntentCompilerSocketTests {
               {
                 "operation": "addGrain",
                 "sourceText": "make it vintage",
+                "intention": "add film grain",
                 "target": { "type": "selectedClip" },
                 "confidence": 0.8,
                 "parameters": { "amount": 0.35 }
@@ -37,6 +38,7 @@ struct RemoteIntentCompilerSocketTests {
         #expect(prompt == "make it vintage")
         #expect(result.actions.isEmpty)
         #expect(result.experimentalEffectOperations.first?.operation == "addGrain")
+        #expect(result.experimentalEffectOperations.first?.intention == "add film grain")
         #expect(result.warnings == [.unsupportedAction])
     }
 

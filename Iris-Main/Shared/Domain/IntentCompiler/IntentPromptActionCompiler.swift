@@ -177,6 +177,7 @@ private extension IntentPromptActionCompiler {
                 ExperimentalEffectOperation(
                     operation: operation.operation,
                     sourceText: operation.sourceText,
+                    intention: operation.intention,
                     target: operation.target,
                     confidence: operation.confidence,
                     parameters: clampedParameters

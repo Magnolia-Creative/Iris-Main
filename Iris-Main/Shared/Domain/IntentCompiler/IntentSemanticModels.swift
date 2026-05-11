@@ -133,6 +133,7 @@ struct ExperimentalEffectPlan: Codable, Equatable {
 struct ExperimentalEffectOperation: Codable, Equatable {
     let operation: String
     let sourceText: String
+    let intention: String
     let target: SemanticEditTarget?
     let confidence: Double
     let parameters: [String: JSONValue]
@@ -140,15 +141,46 @@ struct ExperimentalEffectOperation: Codable, Equatable {
     init(
         operation: String,
         sourceText: String,
+        intention: String? = nil,
         target: SemanticEditTarget?,
         confidence: Double,
         parameters: [String: JSONValue]
     ) {
         self.operation = operation
         self.sourceText = sourceText
+        self.intention = intention ?? sourceText
         self.target = target
         self.confidence = confidence
         self.parameters = parameters
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.operation = try container.decode(String.self, forKey: .operation)
+        self.sourceText = try container.decode(String.self, forKey: .sourceText)
+        self.intention = try container.decodeIfPresent(String.self, forKey: .intention) ?? sourceText
+        self.target = try container.decodeIfPresent(SemanticEditTarget.self, forKey: .target)
+        self.confidence = try container.decode(Double.self, forKey: .confidence)
+        self.parameters = try container.decodeIfPresent([String: JSONValue].self, forKey: .parameters) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(operation, forKey: .operation)
+        try container.encode(sourceText, forKey: .sourceText)
+        try container.encode(intention, forKey: .intention)
+        try container.encodeIfPresent(target, forKey: .target)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(parameters, forKey: .parameters)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case operation
+        case sourceText
+        case intention
+        case target
+        case confidence
+        case parameters
     }
 }
 
