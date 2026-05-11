@@ -5,6 +5,7 @@ enum AppConfiguration {
     static let ingestEndpoint = backendBaseURL.appending(path: "sessions/upload")
     static let transcriptSentencesEndpoint = backendBaseURL.appending(path: "transcriptions/sentences")
     static let agentSessionEndpoint = backendBaseURL.appending(path: "projects/agent-sessions")
+    static let intentRunsEndpoint = backendBaseURL.appending(path: "intent-runs")
     static let uploadFieldName = "videos"
     static let uploadLocalKeyFieldName = "local_key"
     static let simulateImportProcessing = false
@@ -101,6 +102,33 @@ enum AppConfiguration {
 
         components.scheme = components.scheme == "https" ? "wss" : "ws"
         components.path = "/ws/transcribe"
+        components.queryItems = [URLQueryItem(name: "model", value: model)]
+        components.fragment = nil
+        return components.url
+    }
+
+    static func intentRunWebSocketEndpoint(runID: String, basedOn baseURL: URL = backendBaseURL) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.path = "/ws/intent-runs/\(runID)"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    static func voiceIntentWebSocketEndpoint(
+        model: String = "gpt-4o-mini-transcribe",
+        basedOn baseURL: URL = backendBaseURL
+    ) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.path = "/ws/intent/voice"
         components.queryItems = [URLQueryItem(name: "model", value: model)]
         components.fragment = nil
         return components.url

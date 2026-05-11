@@ -64,6 +64,10 @@ private extension IntentCompilerTestView {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.isCompiling)
+
+            Text(viewModel.statusMessage)
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
         }
     }
 

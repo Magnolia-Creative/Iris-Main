@@ -7,6 +7,7 @@ final class IntentCompilerTestViewModel: ObservableObject {
     @Published private(set) var outputText = ""
     @Published private(set) var isCompiling = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var statusMessage = "Backend intent compiler ready."
 
     let sampleContextSummary = """
     Selected clip: clip-b
@@ -16,27 +17,20 @@ final class IntentCompilerTestViewModel: ObservableObject {
     """
 
     private let injectedCompiler: IntentPromptActionCompiler?
+    private let remoteCompiler: RemoteIntentCompilerClient
     private let context: IntentCompilerContext
     private let encoder: JSONEncoder
 
     init(
         compiler: IntentPromptActionCompiler? = nil,
+        remoteCompiler: RemoteIntentCompilerClient = RemoteIntentCompilerClient(),
         context: IntentCompilerContext? = nil
     ) {
         self.injectedCompiler = compiler
+        self.remoteCompiler = remoteCompiler
         self.context = context ?? IntentCompilerTestViewModel.makeSampleContext()
         self.encoder = JSONEncoder()
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    }
-
-    private func compilerForCurrentBackend() -> IntentPromptActionCompiler {
-        if let injectedCompiler {
-            return injectedCompiler
-        }
-        return IntentPromptActionCompiler(
-            embeddingProvider: StubEmbeddingProvider(),
-            llmProvider: IntentLLMBackend.appleFoundation.makeProvider()
-        )
     }
 
     func compilePrompt() async {
@@ -44,22 +38,36 @@ final class IntentCompilerTestViewModel: ObservableObject {
         guard trimmedPrompt.isEmpty == false else {
             outputText = ""
             errorMessage = "Enter a prompt to compile."
+            statusMessage = "Waiting for a prompt."
             return
         }
 
         isCompiling = true
         errorMessage = nil
+        statusMessage = "Starting backend intent run."
         defer { isCompiling = false }
 
         do {
-            let result = try await compilerForCurrentBackend().compilePromptToActions(
-                prompt: trimmedPrompt,
-                context: context
-            )
+            let result: IntentCompileResult
+            if let injectedCompiler {
+                result = try await injectedCompiler.compilePromptToActions(
+                    prompt: trimmedPrompt,
+                    context: context
+                )
+            } else {
+                result = try await remoteCompiler.compilePrompt(
+                    prompt: trimmedPrompt,
+                    context: context
+                ) { [weak self] status in
+                    self?.statusMessage = status
+                }
+            }
             outputText = try formattedOutput(for: result)
+            statusMessage = "Compilation complete."
         } catch {
             outputText = ""
             errorMessage = error.localizedDescription
+            statusMessage = "Compilation failed."
         }
     }
 }
