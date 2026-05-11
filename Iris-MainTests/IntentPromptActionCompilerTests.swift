@@ -139,8 +139,13 @@ struct IntentPromptActionCompilerTests {
         let prompt = await llmProvider.lastPrompt()
         #expect(prompt?.contains("Deterministic results") == false)
         #expect(prompt?.contains("Embedding candidates") == false)
-        #expect(prompt?.contains("Decompose compound requests") == true)
-        #expect(prompt?.contains("Trim the first 2 seconds and split this clip in half") == true)
+        #expect(prompt?.contains("Return JSON only") == true)
+        #expect(prompt?.contains("split compound requests into ordered operations") == true)
+        #expect(prompt?.contains("\"selectedClipId\":\"clip-b\"") == true)
+        #expect(prompt?.contains("created_at") == false)
+        #expect(prompt?.contains("updated_at") == false)
+        #expect(prompt?.contains("source_range") == false)
+        #expect(prompt?.contains("timeline_range") == false)
     }
 
     @Test func llmSemanticTrimThenSplitUsesPostTrimTimelineRange() async throws {

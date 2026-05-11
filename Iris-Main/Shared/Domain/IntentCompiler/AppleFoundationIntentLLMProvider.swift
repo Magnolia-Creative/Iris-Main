@@ -20,7 +20,8 @@ struct AppleFoundationIntentLLMProvider: IntentLLMProvider {
         }
 
         do {
-            let response = try await session.respond(to: prompt)
+            let options = GenerationOptions(sampling: .greedy, maximumResponseTokens: 768)
+            let response = try await session.respond(to: prompt, options: options)
             let text = response.content
             print("[IntentLLM][AppleFM] Completed outputLength=\(text.count)")
             return text
