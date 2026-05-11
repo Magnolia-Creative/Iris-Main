@@ -22,14 +22,14 @@ struct IntentLLMCompiler {
         embeddingCandidates: [IntentEmbeddingCandidate]
     ) async -> IntentCompileResult {
         do {
-            print("[IntentLLM] Building fallback prompt originalPrompt='\(prompt)' embeddingCandidateCount=\(embeddingCandidates.count)")
+            print("[IntentLLM] Building LLM-only prompt originalPrompt='\(prompt)'")
             let llmPrompt = try makePrompt(
                 prompt: prompt,
                 context: context,
                 deterministicResult: deterministicResult,
                 embeddingCandidates: embeddingCandidates
             )
-            print("[IntentLLM] Sending fallback prompt length=\(llmPrompt.count)")
+            print("[IntentLLM] Sending LLM-only prompt length=\(llmPrompt.count)")
             let response = try await provider.complete(prompt: llmPrompt)
             print("[IntentLLM] Received provider response length=\(response.count)")
             print("[IntentLLM] Raw provider response:\n\(response)")
@@ -48,7 +48,7 @@ struct IntentLLMCompiler {
                 needsClarification: true
             )
         } catch {
-            print("[IntentLLM] Fallback failed with error: \(error)")
+            print("[IntentLLM] LLM-only compilation failed with error: \(error)")
             return IntentCompileResult(
                 actions: [],
                 confidence: 0,
@@ -58,6 +58,54 @@ struct IntentLLMCompiler {
                 needsClarification: true
             )
         }
+    }
+}
+
+private struct LLMEditorContext: Codable {
+    let timelineId: String
+    let selectedClipId: String?
+    let selectedTrackId: String?
+    let playheadTimeUs: Int64?
+    let selectedClip: Clip?
+    let currentClipAtPlayheadId: String?
+    let availableClipIds: [String]
+    let orderedClipIdsByTrackId: [String: [String]]
+
+    init(context: IntentCompilerContext) {
+        self.timelineId = context.timelineId
+        self.selectedClipId = context.selectedClipId
+        self.selectedTrackId = context.selectedTrackId
+        self.playheadTimeUs = context.playheadTimeUs
+        self.selectedClip = context.selectedClip
+        self.currentClipAtPlayheadId = Self.currentClipAtPlayheadId(in: context)
+        self.availableClipIds = context.clipsById.keys.sorted()
+        self.orderedClipIdsByTrackId = context.orderedClipIdsByTrackId
+    }
+
+    private static func currentClipAtPlayheadId(in context: IntentCompilerContext) -> String? {
+        guard let playheadTimeUs = context.playheadTimeUs else {
+            return nil
+        }
+
+        if let selectedTrackId = context.selectedTrackId,
+           let clipId = clipId(at: playheadTimeUs, trackId: selectedTrackId, context: context) {
+            return clipId
+        }
+
+        for trackId in context.orderedClipIdsByTrackId.keys.sorted() {
+            if let clipId = clipId(at: playheadTimeUs, trackId: trackId, context: context) {
+                return clipId
+            }
+        }
+
+        return nil
+    }
+
+    private static func clipId(at timeUs: Int64, trackId: String, context: IntentCompilerContext) -> String? {
+        context.orderedClipIdsByTrackId[trackId]?
+            .compactMap { context.clipsById[$0] }
+            .first { $0.timelineRange.start <= timeUs && timeUs < $0.timelineRange.end }?
+            .clipId
     }
 }
 
@@ -74,22 +122,16 @@ private extension IntentLLMCompiler {
         deterministicResult: IntentCompileResult?,
         embeddingCandidates: [IntentEmbeddingCandidate]
     ) throws -> String {
-        let contextJson = try jsonString(context)
-        let deterministicJson = try jsonString(deterministicResult)
-        let embeddingJson = try jsonString(embeddingCandidates)
+        _ = deterministicResult
+        _ = embeddingCandidates
+        let contextJson = try jsonString(LLMEditorContext(context: context))
 
         let llmPrompt = """
         You are the semantic parser stage in a video editor timeline command compiler.
         Your job is to translate one natural-language editing request into a semantic edit plan.
-        You are not responsible for timeline math. The app will resolve clip IDs, track IDs, microseconds, ranges, validation, and final Actions after you respond.
+        You are not responsible for timeline math. The app resolves clip IDs, track IDs, microseconds, ranges, validation, and final Actions after you respond.
 
         Return valid JSON only. Do not explain. Do not wrap JSON in markdown.
-
-        How to use the inputs:
-        - Editor context: the current timeline state. Use it only to choose semantic references like selectedClip, selectedTrack, currentClipAtPlayhead, or ordinal.
-        - Original prompt: the user's exact request. Preserve the relevant phrase in sourceText.
-        - Deterministic results: an earlier compiler stage's best attempt. Use it as a hint, but correct it if the original prompt and editor context show a better interpretation.
-        - Embedding candidates: semantically similar supported intents. Use them as hints for intent type only; do not copy parameters unless they are supported by the editor context.
 
         Supported intent types:
         - splitClip: split one clip at a semantic position.
@@ -101,11 +143,14 @@ private extension IntentLLMCompiler {
 
         General rules:
         - Use only the supported intent types.
-        - Prefer the smallest number of intents that fully satisfy the request.
+        - Decompose compound requests joined by "and", "then", "also", commas, or sequential wording.
+        - Emit one operation per supported edit clause, in the same order as the user request.
+        - Prefer the smallest number of operations that fully satisfies the request.
         - If the request can be represented as splitClip, removeClip, trimClip, moveClip, or replaceTrackClips, do that.
         - Do not invent clip IDs, media IDs, track IDs, timeline times, source ranges, or timeline ranges.
+        - sourceText must be the exact phrase for that operation, not the entire prompt unless the prompt has only one operation.
         - If the target is "this clip", "the clip", "selected clip", "current clip", or similar, use {"type":"selectedClip"}.
-        - If the request refers to "it", "same clip", or a previous target, use {"type":"sameAsPrevious"}.
+        - If a later clause refers to "it", "same clip", "that clip", or a previous target, use {"type":"sameAsPrevious"}.
         - If the request refers to "here", "at the playhead", or "current time", use a playhead time expression.
         - If the request refers to "first clip", "second clip", "third clip", or "last clip", use an ordinal clip reference.
         - If required information is missing, return needsClarification = true with a concise clarificationQuestion.
@@ -114,8 +159,11 @@ private extension IntentLLMCompiler {
 
         Parameter rules:
         - splitClip parameters must include position as a semantic time expression.
+        - For "in half", "halfway", or "middle", use {"type":"fractionOfClip","value":0.5,"relativeTo":"postPreviousOperations"}.
         - removeClip usually needs no parameters.
         - trimClip parameters must include edge ("start" or "end") and amount as a semantic duration expression.
+        - For explicit durations like "2 seconds", amount must be {"type":"duration","value":2,"unit":"second"}.
+        - Duration value must be a number, never an object. Do not convert an explicit duration to vague.
         - moveClip may include placement ("beginning", "start", "first", "end", "last") or orderedClipIds.
         - replaceTrackClips must include orderedClipIds.
         - Do not calculate final microseconds unless the user explicitly gives an absolute timestamp. Even then, return an absoluteTimelineTime expression with value and unit.
@@ -147,12 +195,6 @@ private extension IntentLLMCompiler {
         Original prompt:
         \(prompt)
 
-        Deterministic results:
-        \(deterministicJson)
-
-        Embedding candidates:
-        \(embeddingJson)
-
         Return this exact JSON shape:
         {
           "operations": [
@@ -169,6 +211,45 @@ private extension IntentLLMCompiler {
         }
 
         Examples:
+
+        User prompt: "Trim the first 2 seconds and split this clip in half"
+        {
+          "operations": [
+            {
+              "type": "trimClip",
+              "sourceText": "Trim the first 2 seconds",
+              "target": {
+                "type": "selectedClip"
+              },
+              "confidence": 0.95,
+              "parameters": {
+                "edge": "start",
+                "amount": {
+                  "type": "duration",
+                  "value": 2,
+                  "unit": "second"
+                }
+              }
+            },
+            {
+              "type": "splitClip",
+              "sourceText": "split this clip in half",
+              "target": {
+                "type": "sameAsPrevious"
+              },
+              "confidence": 0.9,
+              "parameters": {
+                "position": {
+                  "type": "fractionOfClip",
+                  "value": 0.5,
+                  "relativeTo": "postPreviousOperations"
+                }
+              }
+            }
+          ],
+          "needsClarification": false,
+          "clarificationQuestion": null
+        }
 
         User prompt: "cut this clip in half"
         {

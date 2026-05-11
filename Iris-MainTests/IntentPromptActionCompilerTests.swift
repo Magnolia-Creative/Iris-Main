@@ -3,116 +3,116 @@ import Testing
 @testable import Iris_Main
 
 struct IntentPromptActionCompilerTests {
-    @Test func cutClipInHalfUsesDeterministicEarlyExit() async throws {
+    @Test func cutClipInHalfUsesLLMOnlyFlow() async throws {
         let embeddingProvider = TestEmbeddingProvider()
-        let llmProvider = TestLLMProvider(response: unknownLLMResponse)
+        let llmProvider = TestLLMProvider(response: splitHalfLLMResponse)
         let result = try await makeCompiler(embeddingProvider: embeddingProvider, llmProvider: llmProvider)
             .compilePromptToActions(prompt: "cut this clip in half", context: makeContext())
 
-        #expect(result.source == .deterministic)
-        #expect(result.confidence >= 0.95)
+        #expect(result.source == .llm)
+        #expect(result.confidence >= 0.8)
         #expect(result.needsClarification == false)
         #expect(splitTimeUs(from: result) == 10_000_000)
         #expect(await embeddingProvider.callCount() == 0)
-        #expect(await llmProvider.callCount() == 0)
+        #expect(await llmProvider.callCount() == 1)
     }
 
-    @Test func splitAtPlayheadUsesDeterministicSplit() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func splitAtPlayheadUsesLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: splitAtPlayheadLLMResponse)).compilePromptToActions(
             prompt: "split at the playhead",
             context: makeContext(playheadTimeUs: 9_000_000)
         )
 
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(splitTimeUs(from: result) == 9_000_000)
     }
 
-    @Test func splitAtExplicitSecondsUsesParsedTime() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func splitAtExplicitSecondsUsesLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: splitAtAbsoluteTimeLLMResponse)).compilePromptToActions(
             prompt: "split at 10 seconds",
             context: makeContext()
         )
 
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(splitTimeUs(from: result) == 10_000_000)
     }
 
-    @Test func deleteThisClipUsesDeterministicRemove() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func deleteThisClipUsesLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: selectedClipRemoveLLMResponse)).compilePromptToActions(
             prompt: "delete this clip",
             context: makeContext()
         )
 
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(removeClipId(from: result) == "clip-b")
     }
 
-    @Test func removeSelectedClipUsesDeterministicRemove() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func removeSelectedClipUsesLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: selectedClipRemoveLLMResponse)).compilePromptToActions(
             prompt: "remove selected clip",
             context: makeContext()
         )
 
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(removeClipId(from: result) == "clip-b")
     }
 
-    @Test func cutFirstThreeSecondsUsesTrimClip() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func cutFirstThreeSecondsUsesLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: trimFirstThreeSecondsLLMResponse)).compilePromptToActions(
             prompt: "cut the first 3 seconds",
             context: makeContext()
         )
 
         let payload = trimPayload(from: result)
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(payload?.clipId == "clip-b")
         #expect(payload?.sourceRange == TimeRange(start: 3_000_000, end: 10_000_000))
         #expect(payload?.timelineRange == TimeRange(start: 8_000_000, end: 15_000_000))
     }
 
-    @Test func removeFinalFiveSecondsUsesTrimClip() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func removeFinalFiveSecondsUsesLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: trimFinalFiveSecondsLLMResponse)).compilePromptToActions(
             prompt: "remove the final 5 seconds",
             context: makeContext()
         )
 
         let payload = trimPayload(from: result)
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(payload?.clipId == "clip-b")
         #expect(payload?.sourceRange == TimeRange(start: 0, end: 5_000_000))
         #expect(payload?.timelineRange == TimeRange(start: 5_000_000, end: 10_000_000))
     }
 
-    @Test func moveClipToBeginningReordersTrack() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func moveClipToBeginningReordersTrackThroughLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: moveToBeginningLLMResponse)).compilePromptToActions(
             prompt: "move this clip to the beginning",
             context: makeContext()
         )
 
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(movePayload(from: result)?.orderedClipIds == ["clip-b", "clip-a", "clip-c"])
     }
 
-    @Test func moveClipToEndReordersTrack() async throws {
-        let result = try await makeCompiler().compilePromptToActions(
+    @Test func moveClipToEndReordersTrackThroughLLMOnlyFlow() async throws {
+        let result = try await makeCompiler(llmProvider: TestLLMProvider(response: moveToEndLLMResponse)).compilePromptToActions(
             prompt: "move this clip to the end",
             context: makeContext()
         )
 
-        #expect(result.source == .deterministic)
+        #expect(result.source == .llm)
         #expect(movePayload(from: result)?.orderedClipIds == ["clip-a", "clip-c", "clip-b"])
     }
 
-    @Test func makeTwoClipsUsesEmbeddingEarlyExitWhenResolvable() async throws {
+    @Test func makeTwoClipsSkipsEmbeddingAndUsesLLM() async throws {
         let embeddingProvider = TestEmbeddingProvider()
-        let llmProvider = TestLLMProvider(response: unknownLLMResponse)
+        let llmProvider = TestLLMProvider(response: splitHalfLLMResponse)
         let result = try await makeCompiler(embeddingProvider: embeddingProvider, llmProvider: llmProvider)
             .compilePromptToActions(prompt: "make two clips from this", context: makeContext())
 
-        #expect(result.source == .embedding)
+        #expect(result.source == .llm)
         #expect(splitTimeUs(from: result) == 10_000_000)
-        #expect(await embeddingProvider.callCount() > 0)
-        #expect(await llmProvider.callCount() == 0)
+        #expect(await embeddingProvider.callCount() == 0)
+        #expect(await llmProvider.callCount() == 1)
     }
 
     @Test func unsupportedStylePromptReturnsNoTimelineAction() async throws {
@@ -128,7 +128,7 @@ struct IntentPromptActionCompilerTests {
         #expect(result.needsClarification == false)
     }
 
-    @Test func ambiguousEmbeddingFallsThroughToLLM() async throws {
+    @Test func llmPromptOmitsDeterministicAndEmbeddingHints() async throws {
         let llmProvider = TestLLMProvider(response: unknownLLMResponse)
         _ = try await makeCompiler(llmProvider: llmProvider).compilePromptToActions(
             prompt: "shorten this clip",
@@ -136,6 +136,11 @@ struct IntentPromptActionCompilerTests {
         )
 
         #expect(await llmProvider.callCount() == 1)
+        let prompt = await llmProvider.lastPrompt()
+        #expect(prompt?.contains("Deterministic results") == false)
+        #expect(prompt?.contains("Embedding candidates") == false)
+        #expect(prompt?.contains("Decompose compound requests") == true)
+        #expect(prompt?.contains("Trim the first 2 seconds and split this clip in half") == true)
     }
 
     @Test func llmSemanticTrimThenSplitUsesPostTrimTimelineRange() async throws {
@@ -215,6 +220,142 @@ private let unknownLLMResponse = """
       "target": null,
       "confidence": 0.0,
       "parameters": {}
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let splitHalfLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "splitClip",
+      "sourceText": "cut this clip in half",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.9,
+      "parameters": {
+        "position": {
+          "type": "fractionOfClip",
+          "value": 0.5,
+          "relativeTo": "postPreviousOperations"
+        }
+      }
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let splitAtPlayheadLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "splitClip",
+      "sourceText": "split at the playhead",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.9,
+      "parameters": {
+        "position": {
+          "type": "playhead"
+        }
+      }
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let trimFirstThreeSecondsLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "trimClip",
+      "sourceText": "cut the first 3 seconds",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.9,
+      "parameters": {
+        "edge": "start",
+        "amount": {
+          "type": "duration",
+          "value": 3,
+          "unit": "second"
+        }
+      }
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let trimFinalFiveSecondsLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "trimClip",
+      "sourceText": "remove the final 5 seconds",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.9,
+      "parameters": {
+        "edge": "end",
+        "amount": {
+          "type": "duration",
+          "value": 5,
+          "unit": "second"
+        }
+      }
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let moveToBeginningLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "moveClip",
+      "sourceText": "move this clip to the beginning",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.9,
+      "parameters": {
+        "placement": "beginning"
+      }
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let moveToEndLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "moveClip",
+      "sourceText": "move this clip to the end",
+      "target": {
+        "type": "selectedClip"
+      },
+      "confidence": 0.9,
+      "parameters": {
+        "placement": "end"
+      }
     }
   ],
   "needsClarification": false,
@@ -439,6 +580,7 @@ private actor TestEmbeddingProvider: EmbeddingProvider {
 private actor TestLLMProvider: IntentLLMProvider {
     private let response: String
     private var calls = 0
+    private var capturedPrompt: String?
 
     init(response: String) {
         self.response = response
@@ -446,11 +588,16 @@ private actor TestLLMProvider: IntentLLMProvider {
 
     func complete(prompt: String) async throws -> String {
         calls += 1
+        capturedPrompt = prompt
         return response
     }
 
     func callCount() -> Int {
         calls
+    }
+
+    func lastPrompt() -> String? {
+        capturedPrompt
     }
 }
 
