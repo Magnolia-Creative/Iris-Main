@@ -137,18 +137,191 @@ struct TimelinePromptActionCompilerTests {
 
         #expect(await llmProvider.callCount() == 1)
     }
+
+    @Test func llmSemanticTrimThenSplitUsesPostTrimTimelineRange() async throws {
+        let llmProvider = TestLLMProvider(response: trimThenSplitLLMResponse)
+        let result = try await makeLLMOnlyCompiler(llmProvider: llmProvider).compilePromptToActions(
+            prompt: "trim the first second of the clip and split it in half",
+            context: makeContext()
+        )
+
+        #expect(result.source == .llm)
+        #expect(result.needsClarification == false)
+        #expect(result.actions.count == 2)
+        #expect(trimPayload(from: result, at: 0)?.sourceRange == TimeRange(start: 1_000_000, end: 10_000_000))
+        #expect(trimPayload(from: result, at: 0)?.timelineRange == TimeRange(start: 6_000_000, end: 15_000_000))
+        #expect(splitTimeUs(from: result, at: 1) == 10_500_000)
+    }
+
+    @Test func llmSameAsPreviousResolvesPriorTarget() async throws {
+        let llmProvider = TestLLMProvider(response: trimThenSplitLLMResponse)
+        let result = try await makeLLMOnlyCompiler(llmProvider: llmProvider).compilePromptToActions(
+            prompt: "trim the first second of the clip and split it in half",
+            context: makeContext()
+        )
+
+        #expect(trimPayload(from: result, at: 0)?.clipId == "clip-b")
+        guard case .splitClip(let clipId, _) = result.actions[safe: 1]?.payload else {
+            Issue.record("Expected second action to be splitClip")
+            return
+        }
+        #expect(clipId == "clip-b")
+    }
+
+    @Test func llmAbsoluteTimelineSecondsConvertDeterministically() async throws {
+        let llmProvider = TestLLMProvider(response: splitAtAbsoluteTimeLLMResponse)
+        let result = try await makeLLMOnlyCompiler(llmProvider: llmProvider).compilePromptToActions(
+            prompt: "put a cut on this clip at 10 seconds",
+            context: makeContext()
+        )
+
+        #expect(result.source == .llm)
+        #expect(splitTimeUs(from: result) == 10_000_000)
+    }
+
+    @Test func llmMissingSelectedClipReturnsClarification() async throws {
+        let llmProvider = TestLLMProvider(response: selectedClipRemoveLLMResponse)
+        let result = try await makeLLMOnlyCompiler(llmProvider: llmProvider).compilePromptToActions(
+            prompt: "delete the clip",
+            context: makeContext(selectedClipId: nil)
+        )
+
+        #expect(result.source == .llm)
+        #expect(result.actions.isEmpty)
+        #expect(result.needsClarification)
+        #expect(result.warnings.contains(.missingSelectedClip))
+    }
+
+    @Test func llmOverTrimReturnsClarification() async throws {
+        let llmProvider = TestLLMProvider(response: overTrimLLMResponse)
+        let result = try await makeLLMOnlyCompiler(llmProvider: llmProvider).compilePromptToActions(
+            prompt: "trim 20 seconds off the start",
+            context: makeContext()
+        )
+
+        #expect(result.source == .llm)
+        #expect(result.actions.isEmpty)
+        #expect(result.needsClarification)
+        #expect(result.warnings.contains(.invalidTrimRange))
+    }
 }
 
 private let unknownLLMResponse = """
 {
-  "intents": [
+  "operations": [
     {
       "type": "unknown",
       "sourceText": "make this clip vintage",
-      "targetClipId": null,
-      "targetTrackId": null,
+      "target": null,
       "confidence": 0.0,
       "parameters": {}
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let trimThenSplitLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "trimClip",
+      "sourceText": "trim the first second of the clip",
+      "target": {
+        "type": "selectedClip"
+      },
+      "parameters": {
+        "edge": "start",
+        "amount": {
+          "type": "duration",
+          "value": 1,
+          "unit": "second"
+        }
+      },
+      "confidence": 0.92
+    },
+    {
+      "type": "splitClip",
+      "sourceText": "split it in half",
+      "target": {
+        "type": "sameAsPrevious"
+      },
+      "parameters": {
+        "position": {
+          "type": "fractionOfClip",
+          "value": 0.5,
+          "relativeTo": "postPreviousOperations"
+        }
+      },
+      "confidence": 0.9
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let splitAtAbsoluteTimeLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "splitClip",
+      "sourceText": "split this clip at 10 seconds",
+      "target": {
+        "type": "selectedClip"
+      },
+      "parameters": {
+        "position": {
+          "type": "absoluteTimelineTime",
+          "value": 10,
+          "unit": "second"
+        }
+      },
+      "confidence": 0.88
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let selectedClipRemoveLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "removeClip",
+      "sourceText": "delete the clip",
+      "target": {
+        "type": "selectedClip"
+      },
+      "parameters": {},
+      "confidence": 0.86
+    }
+  ],
+  "needsClarification": false,
+  "clarificationQuestion": null
+}
+"""
+
+private let overTrimLLMResponse = """
+{
+  "operations": [
+    {
+      "type": "trimClip",
+      "sourceText": "trim 20 seconds off the start",
+      "target": {
+        "type": "selectedClip"
+      },
+      "parameters": {
+        "edge": "start",
+        "amount": {
+          "type": "duration",
+          "value": 20,
+          "unit": "second"
+        }
+      },
+      "confidence": 0.84
     }
   ],
   "needsClarification": false,
@@ -166,7 +339,20 @@ private func makeCompiler(
     )
 }
 
-private func makeContext(playheadTimeUs: Int64 = 10_000_000) -> TimelineCompilerContext {
+private func makeLLMOnlyCompiler(llmProvider: TestLLMProvider) -> TimelinePromptActionCompiler {
+    TimelinePromptActionCompiler(
+        embeddingRetriever: TimelineEmbeddingIntentRetriever(
+            embeddingProvider: TestEmbeddingProvider(),
+            examplesByType: [:]
+        ),
+        llmCompiler: TimelineLLMCompiler(provider: llmProvider)
+    )
+}
+
+private func makeContext(
+    selectedClipId: String? = "clip-b",
+    playheadTimeUs: Int64 = 10_000_000
+) -> TimelineCompilerContext {
     let clips = [
         Clip(
             clipId: "clip-a",
@@ -193,7 +379,7 @@ private func makeContext(playheadTimeUs: Int64 = 10_000_000) -> TimelineCompiler
 
     return TimelineCompilerContext(
         timelineId: "timeline-1",
-        selectedClipId: "clip-b",
+        selectedClipId: selectedClipId,
         selectedTrackId: "track-video",
         selectedRange: nil,
         playheadTimeUs: playheadTimeUs,
@@ -202,8 +388,8 @@ private func makeContext(playheadTimeUs: Int64 = 10_000_000) -> TimelineCompiler
     )
 }
 
-private func splitTimeUs(from result: TimelineCompileResult) -> Int64? {
-    guard case .splitClip(_, let atTimeUs) = result.actions.first?.payload else {
+private func splitTimeUs(from result: TimelineCompileResult, at index: Int = 0) -> Int64? {
+    guard case .splitClip(_, let atTimeUs) = result.actions[safe: index]?.payload else {
         return nil
     }
     return atTimeUs
@@ -216,12 +402,12 @@ private func removeClipId(from result: TimelineCompileResult) -> String? {
     return clipId
 }
 
-private func trimPayload(from result: TimelineCompileResult) -> (
+private func trimPayload(from result: TimelineCompileResult, at index: Int = 0) -> (
     clipId: String,
     sourceRange: TimeRange,
     timelineRange: TimeRange
 )? {
-    guard case .trimClip(let clipId, let sourceRange, let timelineRange) = result.actions.first?.payload else {
+    guard case .trimClip(let clipId, let sourceRange, let timelineRange) = result.actions[safe: index]?.payload else {
         return nil
     }
     return (clipId, sourceRange, timelineRange)
@@ -265,5 +451,11 @@ private actor TestLLMProvider: TimelineLLMProvider {
 
     func callCount() -> Int {
         calls
+    }
+}
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
