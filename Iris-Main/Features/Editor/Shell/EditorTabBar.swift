@@ -4,8 +4,11 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @Binding var activeSpace: EditorSpace
     let isClipSelected: Bool
     let promptBarIsTakingOver: Bool
+    let selectedClipColorFilter: ClipColorFilter
     let onSplitClip: () -> Void
     let onDeleteClip: () -> Void
+    let onSetClipColorFilter: (ClipColorFilter) -> Void
+    let onResetClipColorFilter: () -> Void
     let promptBar: (Bool, Namespace.ID) -> PromptBar
     let spaceExtension: SpaceExtension
 
@@ -27,16 +30,22 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         activeSpace: Binding<EditorSpace>,
         isClipSelected: Bool,
         promptBarIsTakingOver: Bool,
+        selectedClipColorFilter: ClipColorFilter = .neutral,
         onSplitClip: @escaping () -> Void,
         onDeleteClip: @escaping () -> Void,
+        onSetClipColorFilter: @escaping (ClipColorFilter) -> Void = { _ in },
+        onResetClipColorFilter: @escaping () -> Void = {},
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
         self._activeSpace = activeSpace
         self.isClipSelected = isClipSelected
         self.promptBarIsTakingOver = promptBarIsTakingOver
+        self.selectedClipColorFilter = selectedClipColorFilter
         self.onSplitClip = onSplitClip
         self.onDeleteClip = onDeleteClip
+        self.onSetClipColorFilter = onSetClipColorFilter
+        self.onResetClipColorFilter = onResetClipColorFilter
         self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
     }
@@ -177,9 +186,11 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     private var toolsRow: some View {
         HStack(spacing: .spacing(.sp2)) {
             promptBar(isClipSelected, promptNamespace)
+                .layoutPriority(isClipSelected && !promptBarIsTakingOver ? 0 : 1)
 
             if isClipSelected && !promptBarIsTakingOver {
-                Spacer(minLength: .spacing(.sp2))
+                promptDivider
+                    .transition(.opacity)
                 clipToolsCluster
             }
         }
@@ -188,6 +199,14 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)
+    }
+
+    private var promptDivider: some View {
+        RoundedRectangle(cornerRadius: 0.75, style: .continuous)
+            .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.20))
+            .frame(width: 1.5, height: 28)
+            .padding(.horizontal, .spacing(.sp1))
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
@@ -213,7 +232,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                     .buttonStyle(.plain)
                     .transition(.move(edge: .leading).combined(with: .opacity))
 
-                    if case let .expandable(subItems) = selected.kind {
+                    switch selected.kind {
+                    case let .expandable(subItems):
                         ForEach(subItems) { sub in
                             Button { sub.action() } label: {
                                 Image(systemName: sub.systemImage)
@@ -226,6 +246,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel(Text(sub.title))
                         }
+                    case .colorFilters:
+                        colorFilterControls
+                    case .action:
+                        EmptyView()
                     }
                 }
             }
@@ -275,6 +299,107 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             expandedToolId = expandedToolId == item.id ? -1 : item.id
         }
     }
+
+    private var colorFilterControls: some View {
+        HStack(spacing: .spacing(.sp2)) {
+            filterSlider(
+                title: "Temp",
+                systemImage: "thermometer.medium",
+                value: selectedClipColorFilter.temperature,
+                range: ClipColorFilter.normalizedRange
+            ) { value in
+                updateSelectedClipFilter { $0.temperature = value }
+            }
+
+            filterSlider(
+                title: "Tint",
+                systemImage: "eyedropper.halffull",
+                value: selectedClipColorFilter.tint,
+                range: ClipColorFilter.normalizedRange
+            ) { value in
+                updateSelectedClipFilter { $0.tint = value }
+            }
+
+            filterSlider(
+                title: "Exposure",
+                systemImage: "plusminus.circle",
+                value: selectedClipColorFilter.exposure,
+                range: ClipColorFilter.exposureRange
+            ) { value in
+                updateSelectedClipFilter { $0.exposure = value }
+            }
+
+            filterSlider(
+                title: "Bright",
+                systemImage: "sun.max",
+                value: selectedClipColorFilter.brightness,
+                range: ClipColorFilter.normalizedRange
+            ) { value in
+                updateSelectedClipFilter { $0.brightness = value }
+            }
+
+            filterSlider(
+                title: "Sat",
+                systemImage: "camera.filters",
+                value: selectedClipColorFilter.saturation,
+                range: ClipColorFilter.normalizedRange
+            ) { value in
+                updateSelectedClipFilter { $0.saturation = value }
+            }
+
+            Button { onResetClipColorFilter() } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(Color.ds.textMuted)
+                    .frame(width: 40, height: 40)
+                    .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Reset filters"))
+        }
+        .transition(.opacity)
+    }
+
+    private func filterSlider(
+        title: String,
+        systemImage: String,
+        value: Float,
+        range: ClosedRange<Float>,
+        onChange: @escaping (Float) -> Void
+    ) -> some View {
+        VStack(spacing: .spacing(.sp1)) {
+            HStack(spacing: .spacing(.sp1)) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title)
+                    .typography(.bodySmall)
+                    .lineLimit(1)
+            }
+            .foregroundColor(Color.ds.textMuted)
+
+            Slider(
+                value: Binding(
+                    get: { Double(value) },
+                    set: { onChange(Float($0)) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound)
+            )
+            .frame(width: 92)
+            .tint(Color.ds.accentFg)
+        }
+        .frame(width: 108)
+        .padding(.horizontal, .spacing(.sp2))
+        .padding(.vertical, .spacing(.sp2))
+        .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+    }
+
+    private func updateSelectedClipFilter(_ mutate: (inout ClipColorFilter) -> Void) {
+        var filter = selectedClipColorFilter
+        mutate(&filter)
+        onSetClipColorFilter(filter)
+    }
 }
 
 /// Applies `matchedGeometryEffect` only when `id` is non-nil.
@@ -310,6 +435,7 @@ private struct SubItem: Identifiable {
 
 private enum ToolKind {
     case expandable(subItems: [SubItem])
+    case colorFilters
     case action(action: () -> Void)
 }
 
@@ -329,7 +455,8 @@ private extension EditorTabBar {
                     SubItem(id: 0, systemImage: "speaker.wave.1", title: "Fade", action: {}),
                     SubItem(id: 1, systemImage: "waveform", title: "Normalize", action: {}),
                     SubItem(id: 2, systemImage: "mic.fill", title: "Replace", action: {})
-                ]))
+                ])),
+            ToolItem(id: 3, systemImage: "camera.filters", title: "Color", kind: .colorFilters)
         ]
     }
 }

@@ -56,6 +56,11 @@ struct EditorContainerView: View {
         return controller.cutReview?.focusedClipIds ?? []
     }
 
+    private var selectedClipColorFilter: ClipColorFilter {
+        guard let clipId = controller.state.selectedClipId else { return .neutral }
+        return controller.clipColorFilter(for: clipId)
+    }
+
     var body: some View {
         let state = controller.state
 
@@ -103,6 +108,7 @@ struct EditorContainerView: View {
                         activeSpace: $activeSpace,
                         isClipSelected: state.selectedClipId != nil,
                         promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
+                        selectedClipColorFilter: selectedClipColorFilter,
                         onSplitClip: {
                             guard let clipId = controller.state.selectedClipId else { return }
                             controller.applyActions([
@@ -118,6 +124,14 @@ struct EditorContainerView: View {
                             controller.applyActions([
                                 Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
                             ])
+                        },
+                        onSetClipColorFilter: { filter in
+                            guard let clipId = controller.state.selectedClipId else { return }
+                            controller.setClipColorFilter(clipId: clipId, filter: filter)
+                        },
+                        onResetClipColorFilter: {
+                            guard let clipId = controller.state.selectedClipId else { return }
+                            controller.resetClipColorFilter(clipId: clipId)
                         },
                         promptBar: { isClipSelected, micNamespace in
                             EditorPromptBarView(
