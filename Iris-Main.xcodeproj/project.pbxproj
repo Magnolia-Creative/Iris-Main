@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1FBF36972F80DBC200086810 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FBF36962F80DBC200086810 /* GRDB */; };
+		1FCBE5392FB3BF30006A178E /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 1FCBE5382FB3BF30006A178E /* Inject */; };
 		9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */ = {isa = PBXBuildFile; productRef = 9A1B2C3D4E5F60718293A002 /* MobileCLIP */; };
 /* End PBXBuildFile section */
 
@@ -72,6 +73,7 @@
 			files = (
 				1FBF36972F80DBC200086810 /* GRDB in Frameworks */,
 				9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */,
+				1FCBE5392FB3BF30006A178E /* Inject in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -143,6 +145,7 @@
 			packageProductDependencies = (
 				1FBF36962F80DBC200086810 /* GRDB */,
 				9A1B2C3D4E5F60718293A002 /* MobileCLIP */,
+				1FCBE5382FB3BF30006A178E /* Inject */,
 			);
 			productName = "Iris-Main";
 			productReference = 1F77B7992F64B22C00C813F6 /* Iris-Main.app */;
@@ -459,6 +462,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 74UJF5HM7S;
+				EMIT_FRONTEND_COMMAND_LINES = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -473,6 +477,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-Xlinker",
+					"-interposable",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "Magnolia-Creative.Iris-Main";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -483,6 +491,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -497,6 +506,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 74UJF5HM7S;
+				EMIT_FRONTEND_COMMAND_LINES = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -521,6 +531,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -684,6 +695,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
+		};
+		1FCBE5382FB3BF30006A178E /* Inject */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */;
+			productName = Inject;
 		};
 		9A1B2C3D4E5F60718293A002 /* MobileCLIP */ = {
 			isa = XCSwiftPackageProductDependency;

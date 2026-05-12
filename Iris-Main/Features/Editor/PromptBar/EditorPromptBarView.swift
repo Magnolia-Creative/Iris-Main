@@ -1,7 +1,10 @@
 import SwiftUI
+import Inject
 
 struct EditorPromptBarView: View {
-    @ObservedObject var viewModel: EditorPromptBarViewModel
+    @ObservedObject var viewModel: 
+    EditorPromptBarViewModel
+    @ObserveInjection var inject
     let isClipSelected: Bool
     let micNamespace: Namespace.ID
 
@@ -43,6 +46,7 @@ struct EditorPromptBarView: View {
             isPromptFocused = (phase == .typing)
         }
         .onDisappear { viewModel.tearDown() }
+        .enableInjection()
     }
 
     // MARK: - Layout state
@@ -136,7 +140,7 @@ struct EditorPromptBarView: View {
     private var captionText: String {
         switch viewModel.phase {
         case .idle:
-            return isClipSelected ? "" : "Hold to talk · tap chat to type"
+            return isClipSelected ? "" : "Haa to talk · tap chat to ty"
         case .recording:
             return viewModel.liveTranscript.isEmpty
                 ? "Listening…"
