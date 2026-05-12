@@ -66,7 +66,7 @@ struct EditorPromptBarView: View {
     private var showsMic: Bool {
         switch viewModel.phase {
         case .idle, .recording: return true
-        case .typing, .submitting, .error: return false
+        case .typing, .submitting, .clarification, .error: return false
         }
     }
 
@@ -84,7 +84,7 @@ struct EditorPromptBarView: View {
         switch viewModel.phase {
         case .recording: return expandedSize
         case .idle: return isClipSelected ? compactSize : expandedSize
-        case .typing, .submitting, .error: return compactSize
+        case .typing, .submitting, .clarification, .error: return compactSize
         }
     }
 
@@ -136,7 +136,7 @@ struct EditorPromptBarView: View {
             return viewModel.liveTranscript.isEmpty
                 ? "Listening…"
                 : viewModel.liveTranscript
-        case .typing, .submitting, .error:
+        case .typing, .submitting, .clarification, .error:
             return ""
         }
     }
@@ -334,6 +334,13 @@ struct EditorPromptBarView: View {
         case .submitting(let status):
             statusContent(status)
                 .transition(.opacity)
+        case .clarification(let message):
+            HStack(spacing: .spacing(.sp2)) {
+                clarificationContent(message)
+                cancelButton
+                chatButton
+            }
+            .transition(.opacity)
         case .error(let message):
             errorContent(message)
                 .transition(.opacity)
@@ -377,6 +384,20 @@ struct EditorPromptBarView: View {
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
+        .padding(.horizontal, .spacing(.sp3))
+    }
+
+    private func clarificationContent(_ message: String) -> some View {
+        HStack(spacing: .spacing(.sp2)) {
+            Image(systemName: "questionmark.bubble.fill")
+                .font(.system(size: 16, weight: .semibold))
+            Text(message)
+                .typographyStyle(.bodySmall)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Color.ds.text)
         .padding(.horizontal, .spacing(.sp3))
     }
 

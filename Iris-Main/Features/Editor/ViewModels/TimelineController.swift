@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Photos
 import PhotosUI
 import SwiftUI
@@ -12,6 +13,11 @@ private struct TimelineActionGroup {
 }
 
 final class TimelineController: ObservableObject {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "TimelineController"
+    )
+
     @Published private(set) var state: TimelineState
     @Published private(set) var cutReview: TimelineCutReviewSession?
     private let db: DatabaseManager
@@ -189,11 +195,29 @@ final class TimelineController: ObservableObject {
     }
 
     /// Applies timeline commands, persists clip changes, and records an undo group.
-    func applyActions(_ actions: [Action], recordUndo: Bool = true) {
-        guard !actions.isEmpty else { return }
+    @discardableResult
+    func applyActions(_ actions: [Action], recordUndo: Bool = true) -> Bool {
+        guard !actions.isEmpty else { return false }
         let before = state.clips
+        Self.logger.info(
+            "[TimelineActions] Applying count=\(actions.count, privacy: .public) timeline=\(self.state.timelineId, privacy: .public) selectedClip=\(self.state.selectedClipId ?? "nil", privacy: .public) currentTimeUs=\(self.state.currentTimeAtCenter, privacy: .public) clipCount=\(before.count, privacy: .public)"
+        )
+
         let inverseActions = state.apply(actions)
-        persistClipChanges(before: before, after: state.clips)
+        let diff = clipDiff(before: before, after: state.clips)
+        let didChange = !diff.added.isEmpty || !diff.updated.isEmpty || !diff.deletedIds.isEmpty
+
+        if didChange {
+            Self.logger.info(
+                "[TimelineActions] Applied count=\(actions.count, privacy: .public) added=\(diff.added.count, privacy: .public) updated=\(diff.updated.count, privacy: .public) deleted=\(diff.deletedIds.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public)"
+            )
+        } else {
+            Self.logger.error(
+                "[TimelineActions] No-op applying actions count=\(actions.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public) summary=\(Self.actionSummary(actions), privacy: .public) timelineClipSummary=\(Self.clipSummary(before), privacy: .public)"
+            )
+        }
+
+        persistClipChanges(diff)
 
         if recordUndo, !inverseActions.isEmpty {
             undoStack.append(
@@ -202,6 +226,7 @@ final class TimelineController: ObservableObject {
             redoStack.removeAll()
         }
         objectWillChange.send()
+        return didChange
     }
 
     func undoLastActionGroup() {
@@ -469,6 +494,10 @@ final class TimelineController: ObservableObject {
 
     private func persistClipChanges(before: [Clip], after: [Clip]) {
         let diff = clipDiff(before: before, after: after)
+        persistClipChanges(diff)
+    }
+
+    private func persistClipChanges(_ diff: ClipDiff) {
         guard !diff.added.isEmpty || !diff.updated.isEmpty || !diff.deletedIds.isEmpty else { return }
 
         persistNewTracks()
@@ -557,6 +586,20 @@ final class TimelineController: ObservableObject {
             || before.sourceRange.end != after.sourceRange.end
             || before.timelineRange.start != after.timelineRange.start
             || before.timelineRange.end != after.timelineRange.end
+    }
+
+    private static func actionSummary(_ actions: [Action]) -> String {
+        actions.map { action in
+            "id=\(action.actionId) timeline=\(action.timelineId) type=\(action.type.rawValue) payload=\(String(describing: action.payload))"
+        }
+        .joined(separator: " | ")
+    }
+
+    private static func clipSummary(_ clips: [Clip]) -> String {
+        clips.map { clip in
+            "id=\(clip.clipId) track=\(clip.trackId) timeline=[\(clip.timelineRange.start),\(clip.timelineRange.end)] source=[\(clip.sourceRange.start),\(clip.sourceRange.end)]"
+        }
+        .joined(separator: " | ")
     }
 
     private func formatDebugTime(_ timeUs: Int64) -> String {

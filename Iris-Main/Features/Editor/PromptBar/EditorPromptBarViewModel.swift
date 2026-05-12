@@ -7,13 +7,14 @@ enum EditorPromptBarPhase: Equatable {
     case recording
     case typing
     case submitting(String)
+    case clarification(String)
     case error(String)
 }
 
 @MainActor
 final class EditorPromptBarViewModel: ObservableObject {
     typealias ContextProvider = @MainActor () -> IntentCompilerContext
-    typealias ActionApplier = @MainActor ([Action]) -> Void
+    typealias ActionApplier = @MainActor ([Action]) -> Bool
 
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
@@ -175,17 +176,38 @@ final class EditorPromptBarViewModel: ObservableObject {
             Self.logger.info(
                 "[PromptBar] Result received actions=\(result.actions.count, privacy: .public) effects=\(result.experimentalEffectOperations.count, privacy: .public) warnings=\(result.warnings.map(\.rawValue).joined(separator: ","), privacy: .public) needsClarification=\(result.needsClarification, privacy: .public)"
             )
+            if result.needsClarification {
+                showClarification(result.unresolvedText ?? "I need a little more detail before I can apply that edit.")
+                return
+            }
+
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
-                applyActions(result.actions)
+                let didApply = applyActions(result.actions)
+                guard didApply else {
+                    Self.logger.error("[PromptBar] Returned actions did not change the current timeline")
+                    showError("I got an edit back, but it could not be applied to the current timeline.")
+                    return
+                }
             } else {
                 Self.logger.warning("[PromptBar] Result had no timeline actions to apply")
+                if let unresolvedText = result.unresolvedText, !unresolvedText.isEmpty {
+                    showClarification(unresolvedText)
+                    return
+                }
             }
             phase = .idle
         } catch {
             Self.logger.error("[PromptBar] Submit failed: \(error.localizedDescription, privacy: .public)")
             showError(error.localizedDescription)
         }
+    }
+
+    private func showClarification(_ message: String) {
+        Self.logger.info("[PromptBar] Showing clarification: \(message, privacy: .public)")
+        phase = .clarification(message)
+        voiceLevel = 0
+        resetTask?.cancel()
     }
 
     private func showError(_ message: String) {
