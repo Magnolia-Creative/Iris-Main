@@ -264,12 +264,12 @@ struct EditorPromptBarView: View {
         return LinearGradient(
             colors: [
                 Color.ds.accentBg,
-                Color.ds.accentFg.opacity(0.75 + 0.2 * Double(v)),
-                Color.white.opacity(0.35 + 0.25 * Double(v)),
+                Color.ds.accentFg.opacity(0.72 + 0.22 * Double(v)),
+                Color.white.opacity(0.42 + 0.22 * Double(v)),
                 Color.ds.accentFg
             ],
-            startPoint: UnitPoint(x: 0.02 + v * 0.1, y: 0.1),
-            endPoint: UnitPoint(x: 0.98 - v * 0.06, y: 0.95)
+            startPoint: UnitPoint(x: 0.02 + v * 0.1, y: 0.02),
+            endPoint: UnitPoint(x: 0.98 - v * 0.06, y: 0.98)
         )
     }
 
@@ -280,9 +280,10 @@ struct EditorPromptBarView: View {
         return RoundedRectangle(cornerRadius: corner, style: .continuous)
             .fill(
                 LinearGradient(
-                    colors: recording
-                        ? [Color.ds.accentBg, Color.ds.accentFg]
-                        : [Color.white.opacity(0.20), Color.white.opacity(0.06)],
+                    colors: [
+                        Color.white.opacity(0.20),
+                        Color.white.opacity(0.06)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -292,12 +293,18 @@ struct EditorPromptBarView: View {
                     .strokeBorder(
                         LinearGradient(
                             colors: recording
-                                ? [Color.white.opacity(0.95), Color.ds.accentFg.opacity(0.55)]
-                                : [Color.ds.accentFg.opacity(0.55), Color.white.opacity(0.10)],
+                                ? [
+                                    Color.ds.accentFg.opacity(0.42),
+                                    Color.white.opacity(0.16)
+                                ]
+                                : [
+                                    Color.ds.accentFg.opacity(0.55),
+                                    Color.white.opacity(0.10)
+                                ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: recording ? 1.6 : 1
+                        lineWidth: recording ? 1.15 : 1
                     )
             }
             .overlay {
@@ -460,7 +467,8 @@ struct EditorPromptBarView: View {
 
 /// Vertical pill bars in a Voice Memos–like silhouette when idle; during
 /// recording, bar heights follow `voiceLevel` plus subtle motion from
-/// `timelineDate` so the wave feels alive even between level updates.
+/// `timelineDate`. Color comes only from `gradient`, clipped to the bars via
+/// `.mask`, so the glass-style capsule behind stays translucent.
 private struct VoiceMemoPillWaveform: View {
     private static let idleHeights: [CGFloat] = [
         0.14, 0.36, 0.55, 0.74, 0.90, 1.0, 0.90, 0.74, 0.55, 0.36, 0.14
@@ -487,15 +495,18 @@ private struct VoiceMemoPillWaveform: View {
         let totalSpacing = spacing * CGFloat(max(0, count - 1))
         let barWidth = max(1.5, (totalWidth - totalSpacing) / CGFloat(count))
 
-        HStack(alignment: .center, spacing: spacing) {
+        let barMask = HStack(alignment: .center, spacing: spacing) {
             ForEach(0..<count, id: \.self) { i in
                 Capsule(style: .continuous)
+                    .fill(Color.white)
                     .frame(width: barWidth, height: barHeight(index: i, count: count))
             }
         }
         .frame(width: totalWidth, height: maxBarHeight)
-        .compositingGroup()
-        .foregroundStyle(gradient)
+
+        gradient
+            .frame(width: totalWidth, height: maxBarHeight)
+            .mask { barMask }
     }
 
     private func barHeight(index i: Int, count: Int) -> CGFloat {
