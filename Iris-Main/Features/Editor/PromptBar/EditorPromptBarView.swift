@@ -65,7 +65,7 @@ struct EditorPromptBarView: View {
     private var typingLayout: some View {
         HStack(spacing: .spacing(.sp2)) {
             TextField("Describe your edit...", text: $viewModel.promptDraft, axis: .vertical)
-                .typography(.body)
+                .typographyStyle(.body)
                 .foregroundStyle(Color.ds.text)
                 .lineLimit(1...3)
                 .focused($isPromptFocused)

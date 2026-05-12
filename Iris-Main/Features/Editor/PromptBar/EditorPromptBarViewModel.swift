@@ -41,7 +41,7 @@ final class EditorPromptBarViewModel: ObservableObject {
         self.contextProvider = contextProvider
         self.applyActions = applyActions
 
-        transcription.$inputLevel
+        self.transcription.$inputLevel
             .receive(on: DispatchQueue.main)
             .sink { [weak self] level in
                 self?.voiceLevel = level
