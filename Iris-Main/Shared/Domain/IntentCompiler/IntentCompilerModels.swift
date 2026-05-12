@@ -2,12 +2,59 @@ import Foundation
 
 struct IntentCompilerContext: Codable, Equatable {
     let timelineId: String
+    let projectId: String?
+    let sessionId: String?
     let selectedClipId: String?
     let selectedTrackId: String?
     let selectedRange: TimeRange?
     let playheadTimeUs: Int64?
     let clipsById: [String: Clip]
     let orderedClipIdsByTrackId: [String: [String]]
+    let transcriptContextsByClipId: [String: ClipTranscriptContext]
+
+    init(
+        timelineId: String,
+        projectId: String? = nil,
+        sessionId: String? = nil,
+        selectedClipId: String?,
+        selectedTrackId: String?,
+        selectedRange: TimeRange?,
+        playheadTimeUs: Int64?,
+        clipsById: [String: Clip],
+        orderedClipIdsByTrackId: [String: [String]],
+        transcriptContextsByClipId: [String: ClipTranscriptContext] = [:]
+    ) {
+        self.timelineId = timelineId
+        self.projectId = projectId
+        self.sessionId = sessionId
+        self.selectedClipId = selectedClipId
+        self.selectedTrackId = selectedTrackId
+        self.selectedRange = selectedRange
+        self.playheadTimeUs = playheadTimeUs
+        self.clipsById = clipsById
+        self.orderedClipIdsByTrackId = orderedClipIdsByTrackId
+        self.transcriptContextsByClipId = transcriptContextsByClipId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.timelineId = try container.decode(String.self, forKey: .timelineId)
+        self.projectId = try container.decodeIfPresent(String.self, forKey: .projectId)
+        self.sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+        self.selectedClipId = try container.decodeIfPresent(String.self, forKey: .selectedClipId)
+        self.selectedTrackId = try container.decodeIfPresent(String.self, forKey: .selectedTrackId)
+        self.selectedRange = try container.decodeIfPresent(TimeRange.self, forKey: .selectedRange)
+        self.playheadTimeUs = try container.decodeIfPresent(Int64.self, forKey: .playheadTimeUs)
+        self.clipsById = try container.decodeIfPresent([String: Clip].self, forKey: .clipsById) ?? [:]
+        self.orderedClipIdsByTrackId = try container.decodeIfPresent(
+            [String: [String]].self,
+            forKey: .orderedClipIdsByTrackId
+        ) ?? [:]
+        self.transcriptContextsByClipId = try container.decodeIfPresent(
+            [String: ClipTranscriptContext].self,
+            forKey: .transcriptContextsByClipId
+        ) ?? [:]
+    }
 
     var selectedClip: Clip? {
         guard let selectedClipId else { return nil }
@@ -26,6 +73,58 @@ struct IntentCompilerContext: Codable, Equatable {
     func orderedClips(for trackId: String) -> [Clip] {
         (orderedClipIdsByTrackId[trackId] ?? []).compactMap { clipsById[$0] }
     }
+}
+
+struct ClipTranscriptContext: Codable, Equatable {
+    let clipId: String
+    let transcriptId: String?
+    let cacheKey: String?
+    let fullText: String?
+    let words: [TranscriptWordContext]
+    let pauseRanges: [TranscriptPauseRangeContext]
+
+    init(
+        clipId: String,
+        transcriptId: String? = nil,
+        cacheKey: String? = nil,
+        fullText: String? = nil,
+        words: [TranscriptWordContext] = [],
+        pauseRanges: [TranscriptPauseRangeContext] = []
+    ) {
+        self.clipId = clipId
+        self.transcriptId = transcriptId
+        self.cacheKey = cacheKey
+        self.fullText = fullText
+        self.words = words
+        self.pauseRanges = pauseRanges
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.clipId = try container.decode(String.self, forKey: .clipId)
+        self.transcriptId = try container.decodeIfPresent(String.self, forKey: .transcriptId)
+        self.cacheKey = try container.decodeIfPresent(String.self, forKey: .cacheKey)
+        self.fullText = try container.decodeIfPresent(String.self, forKey: .fullText)
+        self.words = try container.decodeIfPresent([TranscriptWordContext].self, forKey: .words) ?? []
+        self.pauseRanges = try container.decodeIfPresent(
+            [TranscriptPauseRangeContext].self,
+            forKey: .pauseRanges
+        ) ?? []
+    }
+}
+
+struct TranscriptWordContext: Codable, Equatable {
+    let word: String
+    let startUs: Int64
+    let endUs: Int64
+}
+
+struct TranscriptPauseRangeContext: Codable, Equatable {
+    let startUs: Int64
+    let endUs: Int64
+    let durationUs: Int64
+    let beforeWord: String?
+    let afterWord: String?
 }
 
 struct IntentCompileResult: Codable, Equatable {
@@ -96,10 +195,12 @@ enum IntentCompileWarning: String, Codable, Equatable, Hashable {
     case missingSelectedClip
     case missingPlayhead
     case missingSelectedTrack
+    case missingTranscriptContext
     case clipNotFound
     case trackNotFound
     case splitTimeOutsideClip
     case invalidTrimRange
+    case invalidRemoveRange
     case invalidMoveOrder
     case unsupportedAction
     case unsupportedIntent
@@ -116,6 +217,7 @@ enum IntentEditType: String, Codable, Equatable, Hashable, CaseIterable {
     case splitClip
     case removeClip
     case trimClip
+    case removeClipRanges
     case moveClip
     case replaceTrackClips
     case unknown

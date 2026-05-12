@@ -35,6 +35,13 @@ struct IntentCompiler {
                 resolved = resolveRemove(operation, context: context, simulator: simulator, previousClipId: previousClipId)
             case .trimClip:
                 resolved = resolveTrim(operation, context: context, simulator: simulator, previousClipId: previousClipId)
+            case .removeClipRanges:
+                resolved = resolveRemoveClipRanges(
+                    operation,
+                    context: context,
+                    simulator: simulator,
+                    previousClipId: previousClipId
+                )
             case .moveClip:
                 resolved = resolveMove(operation, context: context, simulator: simulator, previousClipId: previousClipId)
             case .replaceTrackClips:
@@ -127,6 +134,7 @@ private enum ResolvedIntentParameters {
     case splitClip(atTimeUs: Int64)
     case removeClip
     case trimClip(sourceRange: TimeRange)
+    case removeClipRanges(sourceRanges: [TimeRange])
     case moveClip(orderedClipIds: [String])
     case replaceTrackClips(clips: [Clip])
 }
@@ -164,6 +172,8 @@ private extension ResolvedIntentParameters {
             return [
                 "sourceRange": sourceRange.logValue
             ]
+        case .removeClipRanges(let sourceRanges):
+            return ["sourceRanges": .array(sourceRanges.map(\.logValue))]
         case .moveClip(let orderedClipIds):
             return ["orderedClipIds": .array(orderedClipIds.map { .string($0) })]
         case .replaceTrackClips(let clips):
@@ -282,6 +292,38 @@ private extension IntentCompiler {
         )
     }
 
+    func resolveRemoveClipRanges(
+        _ operation: SemanticEditOperation,
+        context: IntentCompilerContext,
+        simulator: IntentTimelineSimulator,
+        previousClipId: String?
+    ) -> IntentResolutionResult {
+        guard let clip = resolveClip(operation.target, context: context, simulator: simulator, previousClipId: previousClipId) else {
+            return .clarification(.missingSelectedClip, "Which clip do you want to remove dead space from?")
+        }
+
+        var sourceRanges = sourceRanges(from: operation.parameters["sourceRanges"])
+        if sourceRanges.isEmpty, deadSpaceTerms(in: operation.sourceText),
+           let transcript = context.transcriptContextsByClipId[clip.clipId] {
+            sourceRanges = transcript.pauseRanges.map { TimeRange(start: $0.startUs, end: $0.endUs) }
+        }
+        let removalRanges = normalizedRemoveRanges(sourceRanges, within: clip.sourceRange)
+        guard removalRanges.isEmpty == false else {
+            return .clarification(.missingTranscriptContext, "I need transcript timing for this clip before I can remove the dead space.")
+        }
+
+        return .success(
+            ResolvedIntentOperation(
+                type: .removeClipRanges,
+                sourceText: operation.sourceText,
+                targetClipId: clip.clipId,
+                targetTrackId: nil,
+                confidence: operation.confidence,
+                parameters: .removeClipRanges(sourceRanges: removalRanges)
+            )
+        )
+    }
+
     func resolveMove(
         _ operation: SemanticEditOperation,
         context: IntentCompilerContext,
@@ -382,6 +424,9 @@ private extension IntentCompiler {
         case .trimClip(let sourceRange):
             guard let clipId = operation.targetClipId else { return nil }
             return Action.trimClip(timelineId: context.timelineId, clipId: clipId, sourceRange: sourceRange)
+        case .removeClipRanges(let sourceRanges):
+            guard let clipId = operation.targetClipId else { return nil }
+            return Action.removeClipRanges(timelineId: context.timelineId, clipId: clipId, sourceRanges: sourceRanges)
         case .moveClip(let orderedClipIds):
             guard let clipId = operation.targetClipId else { return nil }
             return Action.moveClip(timelineId: context.timelineId, clipId: clipId, orderedClipIds: orderedClipIds)
@@ -537,6 +582,18 @@ private extension IntentCompiler {
         }
     }
 
+    func sourceRanges(from value: JSONValue?) -> [TimeRange] {
+        guard case .array(let values) = value else { return [] }
+        return values.compactMap { value in
+            guard case .object(let object) = value,
+                  let start = object["start"]?.intValue,
+                  let end = object["end"]?.intValue else {
+                return nil
+            }
+            return TimeRange(start: start, end: end)
+        }
+    }
+
     func resolveDurationUs(_ expression: DurationExpression, clip: Clip, sourceText: String? = nil) -> Int64? {
         switch expression {
         case .duration(let value, let unit):
@@ -622,6 +679,37 @@ private extension IntentCompiler {
             return nil
         }
     }
+
+    func normalizedRemoveRanges(_ ranges: [TimeRange], within sourceRange: TimeRange) -> [TimeRange] {
+        let bounded = ranges.compactMap { range -> TimeRange? in
+            let start = max(sourceRange.start, range.start)
+            let end = min(sourceRange.end, range.end)
+            guard end > start else { return nil }
+            return TimeRange(start: start, end: end)
+        }
+        .sorted { left, right in
+            left.start == right.start ? left.end < right.end : left.start < right.start
+        }
+
+        return bounded.reduce(into: [TimeRange]()) { merged, range in
+            guard let last = merged.last else {
+                merged.append(range)
+                return
+            }
+            if range.start <= last.end {
+                merged[merged.count - 1].end = max(last.end, range.end)
+            } else {
+                merged.append(range)
+            }
+        }
+    }
+
+    func deadSpaceTerms(in text: String) -> Bool {
+        text.range(
+            of: #"\b(dead\s*space|silence|silent|pause|pauses|gap|gaps)\b"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
 }
 
 private struct IntentTimelineSimulator {
@@ -665,6 +753,9 @@ private struct IntentTimelineSimulator {
         case .trimClip(let sourceRange):
             guard let clipId = operation.targetClipId else { return }
             applyTrim(clipId: clipId, sourceRange: sourceRange)
+        case .removeClipRanges(let sourceRanges):
+            guard let clipId = operation.targetClipId else { return }
+            applyRemoveRanges(clipId: clipId, sourceRanges: sourceRanges)
         case .moveClip(let orderedClipIds):
             guard let clipId = operation.targetClipId,
                   let trackId = clipsById[clipId]?.trackId else { return }
@@ -714,6 +805,36 @@ private struct IntentTimelineSimulator {
         packTrack(trackId: clip.trackId)
     }
 
+    private mutating func applyRemoveRanges(clipId: String, sourceRanges: [TimeRange]) {
+        guard let clip = clipsById[clipId] else { return }
+        let removalRanges = normalizedRemovalRanges(sourceRanges, within: clip.sourceRange)
+        guard removalRanges.isEmpty == false else { return }
+        let survivors = survivorRanges(from: clip.sourceRange, removing: removalRanges)
+        guard survivors.isEmpty == false else {
+            applyRemove(clipId: clipId)
+            return
+        }
+
+        let order = orderedClipIdsByTrackId[clip.trackId] ?? []
+        let replacementIds = survivors.enumerated().map { index, sourceRange -> String in
+            let survivorId = index == 0 ? clipId : "\(clipId)-range-\(index + 1)"
+            clipsById[survivorId] = Clip(
+                clipId: survivorId,
+                trackId: clip.trackId,
+                mediaId: clip.mediaId,
+                sourceRange: sourceRange,
+                timelineRange: TimeRange(start: 0, end: sourceRange.duration),
+                createdAt: clip.createdAt,
+                updatedAt: clip.updatedAt
+            )
+            return survivorId
+        }
+        if let index = order.firstIndex(of: clipId) {
+            orderedClipIdsByTrackId[clip.trackId] = Array(order[..<index]) + replacementIds + Array(order[(index + 1)...])
+        }
+        packTrack(trackId: clip.trackId)
+    }
+
     private mutating func applyTrim(clipId: String, sourceRange: TimeRange) {
         guard var clip = clipsById[clipId] else { return }
         guard sourceRange.duration > 0 else { return }
@@ -740,6 +861,45 @@ private struct IntentTimelineSimulator {
             clipsById[clipId] = clip
             cursor += duration
         }
+    }
+
+    private func normalizedRemovalRanges(_ ranges: [TimeRange], within sourceRange: TimeRange) -> [TimeRange] {
+        let bounded = ranges.compactMap { range -> TimeRange? in
+            let start = max(sourceRange.start, range.start)
+            let end = min(sourceRange.end, range.end)
+            guard end > start else { return nil }
+            return TimeRange(start: start, end: end)
+        }
+        .sorted { left, right in
+            left.start == right.start ? left.end < right.end : left.start < right.start
+        }
+
+        return bounded.reduce(into: [TimeRange]()) { merged, range in
+            guard let last = merged.last else {
+                merged.append(range)
+                return
+            }
+            if range.start <= last.end {
+                merged[merged.count - 1].end = max(last.end, range.end)
+            } else {
+                merged.append(range)
+            }
+        }
+    }
+
+    private func survivorRanges(from sourceRange: TimeRange, removing removalRanges: [TimeRange]) -> [TimeRange] {
+        var survivors: [TimeRange] = []
+        var cursor = sourceRange.start
+        for range in removalRanges {
+            if range.start > cursor {
+                survivors.append(TimeRange(start: cursor, end: range.start))
+            }
+            cursor = max(cursor, range.end)
+        }
+        if cursor < sourceRange.end {
+            survivors.append(TimeRange(start: cursor, end: sourceRange.end))
+        }
+        return survivors.filter { $0.duration > 0 }
     }
 
 }

@@ -58,6 +58,12 @@ private extension IntentActionValidator {
                 sourceRange: sourceRange,
                 context: context
             )
+        case .removeClipRanges(let clipId, let sourceRanges):
+            return validateRemoveClipRanges(
+                clipId: clipId,
+                sourceRanges: sourceRanges,
+                context: context
+            )
         case .moveClip(let clipId, let orderedClipIds):
             return validateMove(clipId: clipId, orderedClipIds: orderedClipIds, context: context)
         case .replaceTrackClips(let trackId, let clips):
@@ -92,6 +98,35 @@ private extension IntentActionValidator {
 
         guard sourceRange.duration > 0 else {
             return [.invalidTrimRange]
+        }
+
+        return []
+    }
+
+    func validateRemoveClipRanges(
+        clipId: String,
+        sourceRanges: [TimeRange],
+        context: IntentCompilerContext
+    ) -> [IntentCompileWarning] {
+        guard let clip = context.clipsById[clipId] else {
+            return [.clipNotFound]
+        }
+
+        guard sourceRanges.isEmpty == false else {
+            return [.invalidRemoveRange]
+        }
+
+        var previousEnd: Int64?
+        for range in sourceRanges.sorted(by: { $0.start == $1.start ? $0.end < $1.end : $0.start < $1.start }) {
+            guard range.duration > 0,
+                  range.start >= clip.sourceRange.start,
+                  range.end <= clip.sourceRange.end else {
+                return [.invalidRemoveRange]
+            }
+            if let previousEnd, range.start < previousEnd {
+                return [.invalidRemoveRange]
+            }
+            previousEnd = range.end
         }
 
         return []

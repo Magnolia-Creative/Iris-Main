@@ -100,22 +100,28 @@ struct IntentLLMCompiler {
 }
 
 private struct LLMEditorContext: Codable {
+    let projectId: String?
+    let sessionId: String?
     let selectedClipId: String?
     let selectedTrackId: String?
     let playheadTimeUs: Int64?
     let currentClipAtPlayheadId: String?
     let currentClip: LLMCurrentClipContext?
+    let transcriptContext: ClipTranscriptContext?
     let orderedClipIdsByTrackId: [String: [String]]
 
     init(context: IntentCompilerContext) {
         let currentClipAtPlayheadId = Self.currentClipAtPlayheadId(in: context)
+        let currentClip = context.selectedClip ?? context.clip(withId: currentClipAtPlayheadId)
 
+        self.projectId = context.projectId
+        self.sessionId = context.sessionId
         self.selectedClipId = context.selectedClipId
         self.selectedTrackId = context.selectedTrackId
         self.playheadTimeUs = context.playheadTimeUs
         self.currentClipAtPlayheadId = currentClipAtPlayheadId
-        self.currentClip = (context.selectedClip ?? context.clip(withId: currentClipAtPlayheadId))
-            .map(LLMCurrentClipContext.init)
+        self.currentClip = currentClip.map(LLMCurrentClipContext.init)
+        self.transcriptContext = currentClip.flatMap { context.transcriptContextsByClipId[$0.clipId] }
         self.orderedClipIdsByTrackId = context.orderedClipIdsByTrackId
     }
 
@@ -169,6 +175,9 @@ private extension IntentLLMCompiler {
         .trimClip: """
         {"type":"trimClip","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{"edge":"start|end","amount":{"type":"duration|percentage|vague","value":1,"unit":"second|minute|millisecond|microsecond","phrase":"optional vague phrase"}}}
         """,
+        .removeClipRanges: """
+        {"type":"removeClipRanges","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{"sourceRanges":[{"start":1200000,"end":2200000}]}}
+        """,
         .moveClip: """
         {"type":"moveClip","sourceText":"exact user clause","target":{"type":"selectedClip|clipId|sameAsPrevious|ordinal|currentClipAtPlayhead","clipId":"optional existing clip id","value":"optional ordinal","track":{"type":"selectedTrack|trackId","trackId":"optional existing track id"}},"confidence":0.0,"parameters":{"placement":"beginning|start|first|end|last","orderedClipIds":["existing clip ids in final order"]}}
         """,
@@ -199,12 +208,12 @@ private extension IntentLLMCompiler {
 
         let llmPrompt = """
         Return JSON only. Parse one video timeline edit request into:
-        {"operations":[{"type":"splitClip|removeClip|trimClip|moveClip|replaceTrackClips|unknown","sourceText":"exact user clause","target":null,"confidence":0.0,"parameters":{}}],"effectRequests":[{"sourceText":"exact user clause","target":null,"intent":"concise semantic look/style/effect intent","attributes":["short descriptors"],"confidence":0.0}],"needsClarification":false,"clarificationQuestion":null}
+        {"operations":[{"type":"splitClip|removeClip|trimClip|removeClipRanges|moveClip|replaceTrackClips|unknown","sourceText":"exact user clause","target":null,"confidence":0.0,"parameters":{}}],"effectRequests":[{"sourceText":"exact user clause","target":null,"intent":"concise semantic look/style/effect intent","attributes":["short descriptors"],"confidence":0.0}],"needsClarification":false,"clarificationQuestion":null}
 
-        Ops: splitClip, removeClip, trimClip, moveClip, replaceTrackClips, unknown.
+        Ops: splitClip, removeClip, trimClip, removeClipRanges, moveClip, replaceTrackClips, unknown.
         Rules: first derive the ordered operation types. Before writing each operation, retrieve that type's JSON object structure from Action structure context and follow it exactly. If multiple operation types are derived, use each matching structure. every op must include type, sourceText, target, confidence, parameters. target must be null or an object; never use a plain string target. Never output placeholders. split compound requests into ordered operations. Use fewest ops. Use only IDs in ctx. Never invent IDs/ranges/microseconds. sourceText is copied from the user clause. If missing required info, set needsClarification true and ask a short clarificationQuestion. Abstract look, mood, color grade, texture, or style requests go in effectRequests, not unknown. Concrete timeline edits remain in operations. For mixed requests, preserve both arrays in user order as closely as possible. Captions/audio/transitions/generative media that are not visual clip effects => unknown.
         Targets: this/selected/current/the clip => {"type":"selectedClip"}; it/same/that after prior op => {"type":"sameAsPrevious"}; first/second/third/last clip => {"type":"ordinal","value":"first|second|third|last","track":{"type":"selectedTrack"}}; first/last N seconds are trim edges, not ordinal clip targets. clip under playhead => {"type":"currentClipAtPlayhead"}; track => {"type":"selectedTrack"} or {"type":"trackId","trackId":"id"}; known clip => {"type":"clipId","clipId":"id"}.
-        Params: splitClip needs {"position":time}. "in half"/middle => {"type":"fractionOfClip","value":0.5,"relativeTo":"postPreviousOperations"}. trimClip parameters are exactly {"edge":"start|end","amount":duration}; never edgeStart/edgeEnd. Preserve explicit duration units: "2 seconds" => {"type":"duration","value":2,"unit":"second"}, not microsecond. Percent => {"type":"percentage","value":50}. Vague => {"type":"vague","phrase":"a little"}. moveClip can use placement beginning|start|first|end|last or orderedClipIds. replaceTrackClips needs orderedClipIds. Here/playhead/current time => {"type":"playhead"}. Absolute times => {"type":"absoluteTimelineTime","value":10,"unit":"second"}. Relative split/trim times may use afterStart/beforeEnd with amount.
+        Params: splitClip needs {"position":time}. "in half"/middle => {"type":"fractionOfClip","value":0.5,"relativeTo":"postPreviousOperations"}. trimClip parameters are exactly {"edge":"start|end","amount":duration}; never edgeStart/edgeEnd. For dead space, silence, pauses, or transcript gaps inside a clip, use removeClipRanges with sourceRanges copied from ctx.transcriptContext.pauseRanges in microseconds; do not use trimClip for interior gaps. Preserve explicit duration units: "2 seconds" => {"type":"duration","value":2,"unit":"second"}, not microsecond. Percent => {"type":"percentage","value":50}. Vague => {"type":"vague","phrase":"a little"}. moveClip can use placement beginning|start|first|end|last or orderedClipIds. replaceTrackClips needs orderedClipIds. Here/playhead/current time => {"type":"playhead"}. Absolute times => {"type":"absoluteTimelineTime","value":10,"unit":"second"}. Relative split/trim times may use afterStart/beforeEnd with amount.
         Effect request rules: include effectRequests only for visual clip look/style/color/texture intents that require capability retrieval, such as vintage, cinematic, warmer, colder, faded, dreamy, grainy, moody. intent should normalize the user's phrase into a concise effect goal. attributes should list semantic descriptors that help retrieval. Reuse the same target object rules as operations. Do not output concrete effect operation names in this first planner.
         Action structure context:
         \(actionStructureContext)
