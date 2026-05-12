@@ -10,6 +10,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
     @Published private(set) var statusMessage = "Tap the microphone to stream speech to the backend."
     @Published private(set) var errorMessage: String?
     @Published private(set) var audioChunkCount = 0
+    @Published private(set) var inputLevel: Float = 0
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
@@ -39,6 +40,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         webSocketTask = nil
         isRecording = false
         isSocketActive = false
+        inputLevel = 0
         statusMessage = "Tap the microphone to stream speech to the backend."
     }
 
@@ -63,12 +65,20 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         statusMessage = "Starting microphone…"
 
         do {
-            try audioCapture.start { [weak self] pcmData in
-                guard let self else { return }
-                Task { @MainActor in
-                    await self.sendAudioPCM(pcmData)
+            try audioCapture.start(
+                onChunk: { [weak self] pcmData in
+                    guard let self else { return }
+                    Task { @MainActor in
+                        await self.sendAudioPCM(pcmData)
+                    }
+                },
+                onLevel: { [weak self] level in
+                    guard let self else { return }
+                    Task { @MainActor in
+                        self.updateInputLevel(level)
+                    }
                 }
-            }
+            )
             isRecording = true
         } catch {
             tearDown()
@@ -95,6 +105,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         }
 
         audioCapture.stop()
+        inputLevel = 0
 
         if let webSocketTask {
             do {
@@ -115,7 +126,13 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
 
         isRecording = false
         isSocketActive = false
+        inputLevel = 0
         statusMessage = "Tap the microphone to stream speech to the backend."
+    }
+
+    private func updateInputLevel(_ level: Float) {
+        let clamped = min(1, max(0, level))
+        inputLevel = inputLevel * 0.65 + clamped * 0.35
     }
 
     private func sendAudioPCM(_ pcmData: Data) async {

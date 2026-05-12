@@ -14,6 +14,7 @@ final class RealtimeAudioCaptureService {
     private var inputSamplesNeeded = 0
     private var hasLoggedInputFormat = false
     private var onPCMChunk: (@Sendable (Data) -> Void)?
+    private var onLevel: (@Sendable (Float) -> Void)?
 
     /// Request microphone access. Call before `start`.
     static func requestRecordPermission() async -> Bool {
@@ -25,7 +26,11 @@ final class RealtimeAudioCaptureService {
     }
 
     /// Starts capture. `onChunk` is invoked from the audio tap thread with PCM16 mono @ 24 kHz payloads (~100 ms each).
-    func start(onChunk: @escaping @Sendable (Data) -> Void) throws {
+    /// `onLevel` emits a normalized RMS level from the same mono samples and is intended for UI metering only.
+    func start(
+        onChunk: @escaping @Sendable (Data) -> Void,
+        onLevel: (@Sendable (Float) -> Void)? = nil
+    ) throws {
         stop()
 
         let session = AVAudioSession.sharedInstance()
@@ -50,6 +55,7 @@ final class RealtimeAudioCaptureService {
         self.inputScratch.reserveCapacity(inputSamplesNeeded * 2)
         self.hasLoggedInputFormat = false
         self.onPCMChunk = onChunk
+        self.onLevel = onLevel
 
         let bufferSize: AVAudioFrameCount = 4_096
         inputNode.removeTap(onBus: 0)
@@ -63,6 +69,7 @@ final class RealtimeAudioCaptureService {
 
     func stop() {
         onPCMChunk = nil
+        onLevel = nil
 
         if let engine {
             engine.inputNode.removeTap(onBus: 0)
@@ -94,9 +101,13 @@ final class RealtimeAudioCaptureService {
         }
         inputScratch.reserveCapacity(inputScratch.count + sampleCount)
 
+        var sumSquares: Float = 0
         for index in 0 ..< sampleCount {
-            inputScratch.append(monoSample(at: index, channelData: channelData, channelCount: channelCount, isInterleaved: buffer.format.isInterleaved))
+            let sample = monoSample(at: index, channelData: channelData, channelCount: channelCount, isInterleaved: buffer.format.isInterleaved)
+            inputScratch.append(sample)
+            sumSquares += sample * sample
         }
+        emitInputLevel(sumSquares: sumSquares, sampleCount: sampleCount)
 
         while inputScratch.count >= inputSamplesNeeded {
             let source = Array(inputScratch.prefix(inputSamplesNeeded))
@@ -127,6 +138,13 @@ final class RealtimeAudioCaptureService {
             }
         }
         return sum / Float(channelCount)
+    }
+
+    private func emitInputLevel(sumSquares: Float, sampleCount: Int) {
+        guard sampleCount > 0 else { return }
+        let rms = sqrt(sumSquares / Float(sampleCount))
+        let normalized = min(1, max(0, rms * 8))
+        onLevel?(normalized)
     }
 
     private func makePCM16Chunk(from source: [Float]) -> Data {
