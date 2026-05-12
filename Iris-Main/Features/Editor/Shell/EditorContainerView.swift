@@ -28,7 +28,7 @@ struct EditorContainerView: View {
         self.hasAgentSession = agentSession != nil
     }
 
-    /// Canvas fills for edit/export; panels fill for import/chat.
+    /// Canvas fills for edit/export; panels fill for import.
     private var canvasExpandsVertically: Bool {
         isAgentCutReviewActive || activeSpace == .edit || activeSpace == .export
     }
@@ -116,9 +116,6 @@ struct EditorContainerView: View {
                                         presentEditorImport(.library)
                                     }
                                 )
-                                    .transition(.opacity)
-                            case .chat:
-                                ChatPanelContent(controller: controller)
                                     .transition(.opacity)
                             case .export:
                                 ExportPanelContent(controller: controller)
