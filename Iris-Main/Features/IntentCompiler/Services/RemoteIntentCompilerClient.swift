@@ -36,7 +36,12 @@ final class RemoteIntentCompilerClient {
         let (data, response) = try await urlSession.data(for: request)
         if let httpResponse = response as? HTTPURLResponse,
            !(200..<300).contains(httpResponse.statusCode) {
-            throw RemoteIntentCompilerError.requestFailed(statusCode: httpResponse.statusCode)
+            let body = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw RemoteIntentCompilerError.requestFailed(
+                statusCode: httpResponse.statusCode,
+                body: body
+            )
         }
 
         return try decoder.decode(RemoteIntentRunCreateResponse.self, from: data)
@@ -103,14 +108,17 @@ final class RemoteIntentCompilerClient {
 }
 
 enum RemoteIntentCompilerError: LocalizedError {
-    case requestFailed(statusCode: Int)
+    case requestFailed(statusCode: Int, body: String?)
     case serverError(String)
     case cancelled
 
     var errorDescription: String? {
         switch self {
-        case .requestFailed(let statusCode):
-            return "Intent run request failed with status \(statusCode)."
+        case .requestFailed(let statusCode, let body):
+            if let body, !body.isEmpty {
+                return "Intent run failed (\(statusCode)): \(body)"
+            }
+            return "Intent run failed with status \(statusCode)."
         case .serverError(let detail):
             return detail
         case .cancelled:

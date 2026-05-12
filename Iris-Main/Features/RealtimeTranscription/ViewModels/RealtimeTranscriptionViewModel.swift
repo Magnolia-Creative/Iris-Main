@@ -18,6 +18,8 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let urlSession: URLSession
+    private var stopFinalizationWaiter: CheckedContinuation<Void, Never>?
+    private var isAwaitingStopFinalization = false
 
     init(urlSession: URLSession = .shared) {
         self.urlSession = urlSession
@@ -42,6 +44,11 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         isSocketActive = false
         inputLevel = 0
         statusMessage = "Tap the microphone to stream speech to the backend."
+        isAwaitingStopFinalization = false
+        if let waiter = stopFinalizationWaiter {
+            stopFinalizationWaiter = nil
+            waiter.resume()
+        }
     }
 
     private func startRecording() async {
@@ -106,6 +113,12 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
 
         audioCapture.stop()
         inputLevel = 0
+        statusMessage = "Finalizing transcription…"
+
+        // Stop sending audio chunks but keep the socket open so we can collect
+        // any final `completed` event the server still has queued up.
+        isRecording = false
+        isAwaitingStopFinalization = true
 
         if let webSocketTask {
             do {
@@ -119,15 +132,45 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
             }
         }
 
+        await awaitStopFinalization(timeout: .seconds(2))
+        isAwaitingStopFinalization = false
+
         receiveTask?.cancel()
         receiveTask = nil
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
 
-        isRecording = false
         isSocketActive = false
         inputLevel = 0
         statusMessage = "Tap the microphone to stream speech to the backend."
+    }
+
+    private func awaitStopFinalization(timeout: Duration) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor [weak self] in
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    guard let self else {
+                        continuation.resume()
+                        return
+                    }
+                    self.stopFinalizationWaiter = continuation
+                }
+            }
+            group.addTask { @MainActor [weak self] in
+                try? await Task.sleep(for: timeout)
+                guard let self, let waiter = self.stopFinalizationWaiter else { return }
+                self.stopFinalizationWaiter = nil
+                waiter.resume()
+            }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func resolveStopFinalization() {
+        guard isAwaitingStopFinalization, let waiter = stopFinalizationWaiter else { return }
+        stopFinalizationWaiter = nil
+        waiter.resume()
     }
 
     private func updateInputLevel(_ level: Float) {
@@ -223,6 +266,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
                 }
             }
             partialTranscript = ""
+            resolveStopFinalization()
         case .speechStarted:
             break
         case .speechStopped:

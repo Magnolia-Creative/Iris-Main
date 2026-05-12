@@ -17,6 +17,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     @Published private(set) var phase: EditorPromptBarPhase = .idle
     @Published var promptDraft = ""
     @Published private(set) var voiceLevel: Float = 0
+    @Published private(set) var liveTranscript: String = ""
 
     private let transcription: RealtimeTranscriptionViewModel
     private let remoteCompiler: RemoteIntentCompilerClient
@@ -47,6 +48,17 @@ final class EditorPromptBarViewModel: ObservableObject {
                 self?.voiceLevel = level
             }
             .store(in: &cancellables)
+
+        Publishers.CombineLatest(
+            self.transcription.$finalizedTranscript,
+            self.transcription.$partialTranscript
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] finalized, partial in
+            let pieces = [finalized, partial].filter { !$0.isEmpty }
+            self?.liveTranscript = pieces.joined(separator: " ")
+        }
+        .store(in: &cancellables)
     }
 
     func beginVoicePrompt() async {
@@ -106,6 +118,7 @@ final class EditorPromptBarViewModel: ObservableObject {
         transcription.tearDown()
         micIsPressed = false
         voiceLevel = 0
+        liveTranscript = ""
         phase = .idle
     }
 

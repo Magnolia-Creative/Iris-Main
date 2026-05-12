@@ -64,6 +64,17 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         isClipSelected ? nil : shellWidth
     }
 
+    private var rowMaxWidth: CGFloat? {
+        // When a clip is selected and the prompt bar is in its compact idle
+        // layout, let the entire row size to content so the card pill hugs the
+        // mic/chat + divider + clip tools tightly. In every other case the row
+        // should expand so the prompt bar can center properly.
+        if isClipSelected && !promptBarIsTakingOver {
+            return nil
+        }
+        return .infinity
+    }
+
     var body: some View {
         GlassEffectContainer(spacing: shellInset * 2) {
             VStack(spacing: 0) {
@@ -194,7 +205,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 clipToolsCluster
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: rowMaxWidth)
         .frame(minHeight: .spacing(.sp8))
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
