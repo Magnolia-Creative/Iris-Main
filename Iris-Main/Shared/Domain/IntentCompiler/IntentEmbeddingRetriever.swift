@@ -58,7 +58,7 @@ struct IntentEmbeddingRetriever {
             return nil
         case .moveClip:
             return compileMove(prompt: prompt, context: context, score: candidate.score)
-        case .replaceTrackClips, .unknown:
+        case .removeClipRanges, .replaceTrackClips, .unknown:
             return nil
         }
     }
