@@ -23,6 +23,7 @@ final class TimelineRenderBridge: ObservableObject {
                     && old.clips.map(\.timelineRange.end) == new.clips.map(\.timelineRange.end)
                     && old.clips.map(\.sourceRange.start) == new.clips.map(\.sourceRange.start)
                     && old.clips.map(\.sourceRange.end) == new.clips.map(\.sourceRange.end)
+                    && Self.clipColorFiltersByClipId(from: old.effects) == Self.clipColorFiltersByClipId(from: new.effects)
             }
             .sink { [weak self] state in
                 self?.syncTimeline(from: state)
@@ -136,6 +137,7 @@ final class TimelineRenderBridge: ObservableObject {
 
     private func buildRenderInput(from state: TimelineState) -> RenderTimelineInput {
         var renderTracks: [RenderTrackInput] = []
+        let colorFiltersByClipId = Self.clipColorFiltersByClipId(from: state.effects)
 
         for track in state.orderedTracks {
             let trackClips = state.clips.filter { $0.trackId == track.trackId }
@@ -162,7 +164,10 @@ final class TimelineRenderBridge: ObservableObject {
                     id: UUID(uuidString: clip.clipId) ?? UUID(),
                     assetURL: assetURL,
                     timelineRange: timelineStart...timelineEnd,
-                    sourceRange: sourceStart...sourceEnd
+                    sourceRange: sourceStart...sourceEnd,
+                    colorAdjustments: RenderColorAdjustmentsInput(
+                        clipColorFilter: colorFiltersByClipId[clip.clipId] ?? .neutral
+                    )
                 )
             }
 
@@ -187,6 +192,33 @@ final class TimelineRenderBridge: ObservableObject {
             captions: [],
             outputSize: CGSize(width: 1920, height: 1080),
             duration: duration
+        )
+    }
+
+    private static func clipColorFiltersByClipId(from effects: [Effect]) -> [String: ClipColorFilter] {
+        let latestFilters = effects.reduce(into: [String: (updatedAt: Date, filter: ClipColorFilter)]()) { result, effect in
+            guard let filter = effect.clipColorFilter else { return }
+            if let existing = result[effect.targetId], existing.updatedAt > effect.updatedAt {
+                return
+            }
+            result[effect.targetId] = (effect.updatedAt, filter)
+        }
+
+        return latestFilters.mapValues(\.filter)
+    }
+}
+
+private extension RenderColorAdjustmentsInput {
+    init(clipColorFilter: ClipColorFilter) {
+        self.init(
+            temperature: clipColorFilter.temperature,
+            tint: clipColorFilter.tint,
+            exposure: clipColorFilter.exposure,
+            brightness: clipColorFilter.brightness,
+            contrast: 0,
+            saturation: clipColorFilter.saturation,
+            highlights: 0,
+            shadows: 0
         )
     }
 }
