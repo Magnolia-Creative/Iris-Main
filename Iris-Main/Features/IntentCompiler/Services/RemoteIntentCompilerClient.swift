@@ -1,7 +1,13 @@
 import Foundation
+import OSLog
 
 final class RemoteIntentCompilerClient {
     typealias StatusHandler = @MainActor (String) -> Void
+
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "RemoteIntentCompiler"
+    )
 
     private let urlSession: URLSession
     private let encoder: JSONEncoder
@@ -32,19 +38,37 @@ final class RemoteIntentCompilerClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(RemoteIntentRunCreatePayload(prompt: prompt, context: context))
+        Self.logger.info(
+            "[IntentRun] POST \(AppConfiguration.intentRunsEndpoint.absoluteString, privacy: .public) promptChars=\(prompt.count, privacy: .public) timeline=\(context.timelineId, privacy: .public) selectedClip=\(context.selectedClipId ?? "nil", privacy: .public) clips=\(context.clipsById.count, privacy: .public) transcripts=\(context.transcriptContextsByClipId.count, privacy: .public)"
+        )
 
         let (data, response) = try await urlSession.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse,
-           !(200..<300).contains(httpResponse.statusCode) {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("[IntentRun] POST returned non-HTTP response")
+            return try decoder.decode(RemoteIntentRunCreateResponse.self, from: data)
+        }
+
+        Self.logger.info(
+            "[IntentRun] POST status=\(httpResponse.statusCode, privacy: .public) bytes=\(data.count, privacy: .public)"
+        )
+
+        if !(200..<300).contains(httpResponse.statusCode) {
             let body = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            Self.logger.error(
+                "[IntentRun] POST failed status=\(httpResponse.statusCode, privacy: .public) body=\(body ?? "<empty>", privacy: .public)"
+            )
             throw RemoteIntentCompilerError.requestFailed(
                 statusCode: httpResponse.statusCode,
                 body: body
             )
         }
 
-        return try decoder.decode(RemoteIntentRunCreateResponse.self, from: data)
+        let run = try decoder.decode(RemoteIntentRunCreateResponse.self, from: data)
+        Self.logger.info(
+            "[IntentRun] Created run=\(run.runID, privacy: .public) backendSocket=\(run.websocketURL.absoluteString, privacy: .public)"
+        )
+        return run
     }
 
     private func awaitResult(
@@ -52,41 +76,90 @@ final class RemoteIntentCompilerClient {
         statusHandler: StatusHandler?
     ) async throws -> IntentCompileResult {
         let socketURL = AppConfiguration.intentRunWebSocketEndpoint(runID: run.runID) ?? run.websocketURL
+        Self.logger.info(
+            "[IntentRun] Opening websocket run=\(run.runID, privacy: .public) url=\(socketURL.absoluteString, privacy: .public) backendURL=\(run.websocketURL.absoluteString, privacy: .public)"
+        )
         let task = urlSession.webSocketTask(with: socketURL)
         task.resume()
         defer {
+            Self.logger.info("[IntentRun] Cancelling websocket run=\(run.runID, privacy: .public)")
             task.cancel(with: .normalClosure, reason: nil)
         }
 
         while !Task.isCancelled {
-            let message = try await task.receive()
+            let message: URLSessionWebSocketTask.Message
+            do {
+                message = try await task.receive()
+            } catch {
+                Self.logger.error(
+                    "[IntentRun] Websocket receive failed run=\(run.runID, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                )
+                throw error
+            }
+
             let data: Data
+            let rawText: String
             switch message {
             case .string(let text):
                 data = Data(text.utf8)
+                rawText = text
             case .data(let payload):
                 data = payload
+                rawText = String(data: payload, encoding: .utf8) ?? "<\(payload.count) binary bytes>"
             @unknown default:
+                Self.logger.warning("[IntentRun] Unknown websocket message run=\(run.runID, privacy: .public)")
                 continue
             }
+            Self.logger.info(
+                "[IntentRun] Received message run=\(run.runID, privacy: .public) bytes=\(data.count, privacy: .public) payload=\(Self.truncatedForLog(rawText), privacy: .public)"
+            )
 
-            let event = try RemoteIntentCompilerEvent.decode(from: data, using: decoder)
+            let event: RemoteIntentCompilerEvent
+            do {
+                event = try RemoteIntentCompilerEvent.decode(from: data, using: decoder)
+            } catch {
+                Self.logger.error(
+                    "[IntentRun] Failed to decode websocket event run=\(run.runID, privacy: .public) error=\(error.localizedDescription, privacy: .public) payload=\(Self.truncatedForLog(rawText, maxLength: 4000), privacy: .public)"
+                )
+                throw error
+            }
             switch event {
-            case .runStarted:
+            case .runStarted(let prompt):
+                Self.logger.info(
+                    "[IntentRun] Event run_started run=\(run.runID, privacy: .public) promptChars=\(prompt?.count ?? 0, privacy: .public)"
+                )
                 await statusHandler?("Backend run started.")
             case .status(let type, let message):
+                Self.logger.info(
+                    "[IntentRun] Event \(type, privacy: .public) run=\(run.runID, privacy: .public) message=\(message ?? "nil", privacy: .public)"
+                )
                 await statusHandler?(message ?? Self.defaultStatusMessage(for: type))
             case .intentResult(_, let result):
+                Self.logger.info(
+                    "[IntentRun] Event intent_result run=\(run.runID, privacy: .public) actions=\(result.actions.count, privacy: .public) effects=\(result.experimentalEffectOperations.count, privacy: .public) warnings=\(result.warnings.map(\.rawValue).joined(separator: ","), privacy: .public) needsClarification=\(result.needsClarification, privacy: .public)"
+                )
                 await statusHandler?("Intent result received.")
                 return result
             case .error(let detail):
+                Self.logger.error(
+                    "[IntentRun] Event error run=\(run.runID, privacy: .public) detail=\(detail, privacy: .public)"
+                )
                 throw RemoteIntentCompilerError.serverError(detail)
-            case .unknown:
+            case .unknown(let type):
+                Self.logger.warning(
+                    "[IntentRun] Unknown event type=\(type, privacy: .public) run=\(run.runID, privacy: .public)"
+                )
                 continue
             }
         }
 
+        Self.logger.warning("[IntentRun] Await cancelled run=\(run.runID, privacy: .public)")
         throw RemoteIntentCompilerError.cancelled
+    }
+
+    private static func truncatedForLog(_ text: String, maxLength: Int = 1200) -> String {
+        guard text.count > maxLength else { return text }
+        return String(text.prefix(maxLength)) + "...<truncated \(text.count - maxLength) chars>"
     }
 
     private static func defaultStatusMessage(for type: String) -> String {

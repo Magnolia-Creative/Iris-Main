@@ -1,5 +1,6 @@
 internal import Combine
 import Foundation
+import OSLog
 
 enum EditorPromptBarPhase: Equatable {
     case idle
@@ -13,6 +14,11 @@ enum EditorPromptBarPhase: Equatable {
 final class EditorPromptBarViewModel: ObservableObject {
     typealias ContextProvider = @MainActor () -> IntentCompilerContext
     typealias ActionApplier = @MainActor ([Action]) -> Void
+
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "EditorPromptBar"
+    )
 
     @Published private(set) var phase: EditorPromptBarPhase = .idle
     @Published var promptDraft = ""
@@ -66,10 +72,12 @@ final class EditorPromptBarViewModel: ObservableObject {
         resetTask?.cancel()
         micIsPressed = true
         phase = .recording
+        Self.logger.info("[PromptBar] Voice prompt begin")
 
         await transcription.toggleRecording()
         if let errorMessage = transcription.errorMessage {
             micIsPressed = false
+            Self.logger.error("[PromptBar] Voice prompt failed to start: \(errorMessage, privacy: .public)")
             showError(errorMessage)
             return
         }
@@ -82,17 +90,22 @@ final class EditorPromptBarViewModel: ObservableObject {
     func endVoicePrompt() async {
         micIsPressed = false
         guard phase == .recording else { return }
+        Self.logger.info("[PromptBar] Voice prompt end requested")
 
         if transcription.isRecording {
             await transcription.toggleRecording()
         }
 
         if let errorMessage = transcription.errorMessage {
+            Self.logger.error("[PromptBar] Voice prompt ended with transcription error: \(errorMessage, privacy: .public)")
             showError(errorMessage)
             return
         }
 
         let transcript = transcriptForSubmission()
+        Self.logger.info(
+            "[PromptBar] Voice transcript ready chars=\(transcript.count, privacy: .public) finalizedChars=\(self.transcription.finalizedTranscript.count, privacy: .public) partialChars=\(self.transcription.partialTranscript.count, privacy: .public)"
+        )
         await submit(prompt: transcript, emptyMessage: "I did not catch any speech.")
     }
 
@@ -138,31 +151,45 @@ final class EditorPromptBarViewModel: ObservableObject {
     private func submit(prompt: String, emptyMessage: String) async {
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else {
+            Self.logger.warning("[PromptBar] Submit skipped because prompt was empty")
             showError(emptyMessage)
             return
         }
 
         phase = .submitting("Starting backend intent run.")
+        Self.logger.info("[PromptBar] Submit start promptChars=\(trimmedPrompt.count, privacy: .public)")
 
         do {
             let context = contextProvider()
+            Self.logger.info(
+                "[PromptBar] Context timeline=\(context.timelineId, privacy: .public) project=\(context.projectId ?? "nil", privacy: .public) session=\(context.sessionId ?? "nil", privacy: .public) selectedClip=\(context.selectedClipId ?? "nil", privacy: .public) selectedTrack=\(context.selectedTrackId ?? "nil", privacy: .public) clips=\(context.clipsById.count, privacy: .public) tracks=\(context.orderedClipIdsByTrackId.count, privacy: .public) transcripts=\(context.transcriptContextsByClipId.count, privacy: .public)"
+            )
             let result = try await remoteCompiler.compilePrompt(
                 prompt: trimmedPrompt,
                 context: context
             ) { [weak self] status in
+                Self.logger.info("[PromptBar] Status update: \(status, privacy: .public)")
                 self?.phase = .submitting(status)
             }
 
+            Self.logger.info(
+                "[PromptBar] Result received actions=\(result.actions.count, privacy: .public) effects=\(result.experimentalEffectOperations.count, privacy: .public) warnings=\(result.warnings.map(\.rawValue).joined(separator: ","), privacy: .public) needsClarification=\(result.needsClarification, privacy: .public)"
+            )
             if !result.actions.isEmpty {
+                Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
                 applyActions(result.actions)
+            } else {
+                Self.logger.warning("[PromptBar] Result had no timeline actions to apply")
             }
             phase = .idle
         } catch {
+            Self.logger.error("[PromptBar] Submit failed: \(error.localizedDescription, privacy: .public)")
             showError(error.localizedDescription)
         }
     }
 
     private func showError(_ message: String) {
+        Self.logger.error("[PromptBar] Showing error: \(message, privacy: .public)")
         phase = .error(message)
         voiceLevel = 0
         resetTask?.cancel()
