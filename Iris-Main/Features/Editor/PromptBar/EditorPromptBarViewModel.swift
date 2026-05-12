@@ -31,13 +31,13 @@ final class EditorPromptBarViewModel: ObservableObject {
     }
 
     init(
-        transcription: RealtimeTranscriptionViewModel = RealtimeTranscriptionViewModel(),
-        remoteCompiler: RemoteIntentCompilerClient = RemoteIntentCompilerClient(),
+        transcription: RealtimeTranscriptionViewModel? = nil,
+        remoteCompiler: RemoteIntentCompilerClient? = nil,
         contextProvider: @escaping ContextProvider,
         applyActions: @escaping ActionApplier
     ) {
-        self.transcription = transcription
-        self.remoteCompiler = remoteCompiler
+        self.transcription = transcription ?? RealtimeTranscriptionViewModel()
+        self.remoteCompiler = remoteCompiler ?? RemoteIntentCompilerClient()
         self.contextProvider = contextProvider
         self.applyActions = applyActions
 

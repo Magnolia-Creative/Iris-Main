@@ -1,16 +1,19 @@
 import SwiftUI
 
-struct EditorTabBar<SpaceExtension: View>: View {
+struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @Binding var activeSpace: EditorSpace
     let isClipSelected: Bool
+    let promptBarIsTakingOver: Bool
     let onSplitClip: () -> Void
     let onDeleteClip: () -> Void
+    let promptBar: (Bool, Namespace.ID) -> PromptBar
     let spaceExtension: SpaceExtension
 
     @Environment(\.colorScheme) private var colorScheme
 
     @Namespace private var tabNamespace
     @Namespace private var toolNamespace
+    @Namespace private var promptNamespace
     @State private var expandedToolId: Int = -1
 
     private let tabItemWidth: CGFloat = 62
@@ -23,14 +26,18 @@ struct EditorTabBar<SpaceExtension: View>: View {
     init(
         activeSpace: Binding<EditorSpace>,
         isClipSelected: Bool,
+        promptBarIsTakingOver: Bool,
         onSplitClip: @escaping () -> Void,
         onDeleteClip: @escaping () -> Void,
+        @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
         self._activeSpace = activeSpace
         self.isClipSelected = isClipSelected
+        self.promptBarIsTakingOver = promptBarIsTakingOver
         self.onSplitClip = onSplitClip
         self.onDeleteClip = onDeleteClip
+        self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
     }
 
@@ -42,6 +49,10 @@ struct EditorTabBar<SpaceExtension: View>: View {
 
     private var shellWidth: CGFloat {
         navWidth + shellInset * 2
+    }
+
+    private var editShellWidth: CGFloat? {
+        isClipSelected ? nil : shellWidth
     }
 
     var body: some View {
@@ -62,7 +73,7 @@ struct EditorTabBar<SpaceExtension: View>: View {
                     .padding(.horizontal, shellInset)
                     .padding(.bottom, shellInset)
             }
-            .frame(width: activeSpace == .edit ? shellWidth : nil)
+            .frame(width: activeSpace == .edit ? editShellWidth : nil)
             .glassEffect(
                 .regular.tint(shellTint),
                 in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
@@ -73,6 +84,10 @@ struct EditorTabBar<SpaceExtension: View>: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
             }
             .onChange(of: activeSpace) { _, _ in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
+            }
+            .onChange(of: promptBarIsTakingOver) { _, isTakingOver in
+                guard isTakingOver else { return }
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
             }
         }
@@ -160,77 +175,80 @@ struct EditorTabBar<SpaceExtension: View>: View {
 
     @ViewBuilder
     private var toolsRow: some View {
-        let items = isClipSelected ? clipTools : mainTools
-        let selectedItem = items.first { $0.id == expandedToolId }
-        let isExpanded = selectedItem != nil
+        HStack(spacing: .spacing(.sp2)) {
+            promptBar(isClipSelected, promptNamespace)
 
-        Group {
-            if !isExpanded {
+            if isClipSelected && !promptBarIsTakingOver {
+                Spacer(minLength: .spacing(.sp2))
+                clipToolsCluster
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: .spacing(.sp8))
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)
+    }
+
+    @ViewBuilder
+    private var clipToolsCluster: some View {
+        if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: .spacing(.sp2)) {
-                    if isClipSelected {
-                        Button { onDeleteClip() } label: {
-                            toolLabel(systemImage: "trash", title: "Delete", foreground: Color.ds.danger)
+                    Button { handleToolTap(selected) } label: {
+                        HStack(spacing: .spacing(.sp2)) {
+                            Image(systemName: selected.systemImage)
+                                .font(.system(size: 18, weight: .medium))
+                                .matchedGeometryEffect(id: "tool-\(selected.id)", in: toolNamespace)
+                            Text(selected.title)
+                                .typography(.body)
+                                .lineLimit(1)
                         }
-                        .buttonStyle(.plain)
-                        .transition(.opacity.combined(with: .scale))
+                        .foregroundColor(Color.ds.textMuted)
+                        .padding(.horizontal, .spacing(.sp3))
+                        .padding(.vertical, .spacing(.sp2))
+                        .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
                     }
+                    .buttonStyle(.plain)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
 
-                    ForEach(items) { item in
-                        Button { handleToolTap(item) } label: {
-                            toolLabel(
-                                systemImage: item.systemImage,
-                                title: item.title,
-                                foreground: Color.ds.textMuted,
-                                matchedId: "tool-\(item.id)"
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .transition(.opacity.combined(with: .scale))
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            } else if let selected = selectedItem {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: .spacing(.sp2)) {
-                        Button { handleToolTap(selected) } label: {
-                            HStack(spacing: .spacing(.sp2)) {
-                                Image(systemName: selected.systemImage)
-                                    .font(.system(size: 18, weight: .medium))
-                                    .matchedGeometryEffect(id: "tool-\(selected.id)", in: toolNamespace)
-                                Text(selected.title)
-                                    .typography(.body)
-                                    .lineLimit(1)
+                    if case let .expandable(subItems) = selected.kind {
+                        ForEach(subItems) { sub in
+                            Button { sub.action() } label: {
+                                Image(systemName: sub.systemImage)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(Color.ds.textMuted)
+                                    .frame(width: 40, height: 40)
+                                    .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
                             }
-                            .foregroundColor(Color.ds.textMuted)
-                            .padding(.horizontal, .spacing(.sp3))
-                            .padding(.vertical, .spacing(.sp2))
-                            .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
-                            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-
-                        if case let .expandable(subItems) = selected.kind {
-                            ForEach(subItems) { sub in
-                                Button { sub.action() } label: {
-                                    Image(systemName: sub.systemImage)
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundColor(Color.ds.textMuted)
-                                        .frame(width: 40, height: 40)
-                                        .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(Text(sub.title))
-                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Text(sub.title))
                         }
                     }
                 }
             }
+        } else {
+            Button { onDeleteClip() } label: {
+                toolLabel(systemImage: "trash", title: "Delete", foreground: Color.ds.danger)
+            }
+            .buttonStyle(.plain)
+            .transition(.opacity.combined(with: .scale))
+
+            ForEach(clipTools) { item in
+                Button { handleToolTap(item) } label: {
+                    toolLabel(
+                        systemImage: item.systemImage,
+                        title: item.title,
+                        foreground: Color.ds.textMuted,
+                        matchedId: "tool-\(item.id)"
+                    )
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale))
+            }
         }
-        .frame(minHeight: .spacing(.sp8))
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
     }
 
     private func toolLabel(
@@ -298,33 +316,6 @@ private enum ToolKind {
 // MARK: - Tool Definitions
 
 private extension EditorTabBar {
-    var mainTools: [ToolItem] {
-        [
-            ToolItem(id: 0, systemImage: "character.textbox", title: "Format",
-                kind: .expandable(subItems: [
-                    SubItem(id: 0, systemImage: "textformat.size", title: "Size", action: {}),
-                    SubItem(id: 1, systemImage: "bold", title: "Weight", action: {}),
-                    SubItem(id: 2, systemImage: "textformat", title: "Style", action: {})
-                ])),
-            ToolItem(id: 1, systemImage: "eyedropper", title: "Colours",
-                kind: .expandable(subItems: [
-                    SubItem(id: 0, systemImage: "paintpalette", title: "Palette", action: {}),
-                    SubItem(id: 1, systemImage: "drop", title: "Fill", action: {}),
-                    SubItem(id: 2, systemImage: "circle.lefthalf.filled", title: "Stroke", action: {})
-                ])),
-            ToolItem(id: 2, systemImage: "sparkles", title: "Effects",
-                kind: .expandable(subItems: [
-                    SubItem(id: 0, systemImage: "sparkle", title: "Glow", action: {}),
-                    SubItem(id: 1, systemImage: "shadow", title: "Shadow", action: {}),
-                    SubItem(id: 2, systemImage: "circle.dotted", title: "Blur", action: {})
-                ])),
-            ToolItem(id: 3, systemImage: "gearshape", title: "Settings",
-                kind: .action(action: {})),
-            ToolItem(id: 4, systemImage: "square.and.arrow.up", title: "Share",
-                kind: .action(action: {}))
-        ]
-    }
-
     var clipTools: [ToolItem] {
         [
             ToolItem(id: 0, systemImage: "scissors", title: "Split",

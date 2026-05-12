@@ -6,6 +6,7 @@ struct EditorContainerView: View {
     let timelineId: String
     let initialImportSeed: ImportedTimelineSeed?
     @StateObject private var controller: TimelineController
+    @StateObject private var editorPromptBarViewModel: EditorPromptBarViewModel
     @StateObject private var renderBridge = TimelineRenderBridge()
     @ObservedObject private var agentSessionViewModel: AgentViewModel
     @State private var playbackController: PlaybackController?
@@ -23,7 +24,18 @@ struct EditorContainerView: View {
     ) {
         self.timelineId = timelineId
         self.initialImportSeed = initialImportSeed
-        self._controller = StateObject(wrappedValue: TimelineController(timelineId: timelineId))
+        let timelineController = TimelineController(timelineId: timelineId)
+        self._controller = StateObject(wrappedValue: timelineController)
+        self._editorPromptBarViewModel = StateObject(
+            wrappedValue: EditorPromptBarViewModel(
+                contextProvider: {
+                    timelineController.state.makeIntentCompilerContext()
+                },
+                applyActions: { actions in
+                    timelineController.applyActions(actions)
+                }
+            )
+        )
         self._agentSessionViewModel = ObservedObject(wrappedValue: agentSession ?? AgentViewModel())
         self.hasAgentSession = agentSession != nil
     }
@@ -90,6 +102,7 @@ struct EditorContainerView: View {
                     EditorTabBar(
                         activeSpace: $activeSpace,
                         isClipSelected: state.selectedClipId != nil,
+                        promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
                         onSplitClip: {
                             guard let clipId = controller.state.selectedClipId else { return }
                             controller.applyActions([
@@ -105,6 +118,13 @@ struct EditorContainerView: View {
                             controller.applyActions([
                                 Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
                             ])
+                        },
+                        promptBar: { isClipSelected, micNamespace in
+                            EditorPromptBarView(
+                                viewModel: editorPromptBarViewModel,
+                                isClipSelected: isClipSelected,
+                                micNamespace: micNamespace
+                            )
                         }
                     ) {
                         ZStack {
