@@ -1,0 +1,12 @@
+---
+description: Avoid running iOS UI tests through the Xcode simulator
+alwaysApply: true
+---
+
+# Avoid Xcode Simulator UI Tests
+
+Do not run UI tests with the Xcode simulator unless the user explicitly asks for that exact command.
+
+- Avoid commands such as `xcodebuild test` against simulator destinations for UI test targets.
+- Prefer compiling or running focused non-UI test suites when verification is needed.
+- If UI test verification is necessary, ask the user before launching simulator-based tests.
