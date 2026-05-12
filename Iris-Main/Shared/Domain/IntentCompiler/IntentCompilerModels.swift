@@ -82,6 +82,7 @@ struct ClipTranscriptContext: Codable, Equatable {
     let fullText: String?
     let words: [TranscriptWordContext]
     let pauseRanges: [TranscriptPauseRangeContext]
+    let phraseMatches: [TranscriptPhraseMatchContext]
 
     init(
         clipId: String,
@@ -89,7 +90,8 @@ struct ClipTranscriptContext: Codable, Equatable {
         cacheKey: String? = nil,
         fullText: String? = nil,
         words: [TranscriptWordContext] = [],
-        pauseRanges: [TranscriptPauseRangeContext] = []
+        pauseRanges: [TranscriptPauseRangeContext] = [],
+        phraseMatches: [TranscriptPhraseMatchContext] = []
     ) {
         self.clipId = clipId
         self.transcriptId = transcriptId
@@ -97,6 +99,7 @@ struct ClipTranscriptContext: Codable, Equatable {
         self.fullText = fullText
         self.words = words
         self.pauseRanges = pauseRanges
+        self.phraseMatches = phraseMatches
     }
 
     init(from decoder: Decoder) throws {
@@ -110,7 +113,27 @@ struct ClipTranscriptContext: Codable, Equatable {
             [TranscriptPauseRangeContext].self,
             forKey: .pauseRanges
         ) ?? []
+        self.phraseMatches = try container.decodeIfPresent(
+            [TranscriptPhraseMatchContext].self,
+            forKey: .phraseMatches
+        ) ?? []
     }
+
+    enum CodingKeys: String, CodingKey {
+        case clipId
+        case transcriptId
+        case cacheKey
+        case fullText
+        case words
+        case pauseRanges
+        case phraseMatches
+    }
+}
+
+struct TranscriptPhraseMatchContext: Codable, Equatable {
+    let phrase: String
+    let startUs: Int64
+    let endUs: Int64
 }
 
 struct TranscriptWordContext: Codable, Equatable {

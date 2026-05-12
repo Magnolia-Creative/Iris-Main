@@ -3,16 +3,37 @@ import Foundation
 extension TimelineState {
     func makeIntentCompilerContext(forcingActiveClipId forcedClipId: String? = nil) -> IntentCompilerContext {
         let activeClip = resolvedIntentContextClip(forcingActiveClipId: forcedClipId)
+        let projectId = timeline.flatMap { tid in
+            let pid = tid.projectId
+            return pid.isEmpty ? nil : pid
+        }
+        let transcriptRefs = transcriptContextRefsByClipId()
 
         return IntentCompilerContext(
             timelineId: timelineId,
+            projectId: projectId,
+            sessionId: nil,
             selectedClipId: activeClip?.clipId,
             selectedTrackId: activeClip?.trackId,
             selectedRange: activeClip?.timelineRange,
             playheadTimeUs: currentTimeAtCenter,
             clipsById: Dictionary(uniqueKeysWithValues: clips.map { ($0.clipId, $0) }),
-            orderedClipIdsByTrackId: orderedClipIdsByTrackId()
+            orderedClipIdsByTrackId: orderedClipIdsByTrackId(),
+            transcriptContextsByClipId: transcriptRefs
         )
+    }
+
+    /// Lightweight transcript refs for backend hydration (transcript id only; no local transcript text).
+    private func transcriptContextRefsByClipId() -> [String: ClipTranscriptContext] {
+        var refs: [String: ClipTranscriptContext] = [:]
+        for clip in clips {
+            guard let media = mediaById[clip.mediaId],
+                  let transcriptId = media.spec.transcriptID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !transcriptId.isEmpty
+            else { continue }
+            refs[clip.clipId] = ClipTranscriptContext(clipId: clip.clipId, transcriptId: transcriptId)
+        }
+        return refs
     }
 
     private func resolvedIntentContextClip(forcingActiveClipId forcedClipId: String?) -> Clip? {
