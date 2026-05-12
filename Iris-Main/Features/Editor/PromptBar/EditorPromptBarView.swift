@@ -11,8 +11,8 @@ struct EditorPromptBarView: View {
     @FocusState private var isPromptFocused: Bool
     @State private var isMicPressed = false
 
-    private let compactSize: CGFloat = 42
-    private let expandedSize: CGFloat = 66
+    private let compactSize: CGFloat = 38
+    private let expandedSize: CGFloat = 60
 
     var body: some View {
         // Single stable ZStack. Each layer keeps its own view identity across
@@ -56,8 +56,8 @@ struct EditorPromptBarView: View {
     private var barMinHeight: CGFloat {
         // Compact (clip-selected idle) stays short; everything else makes
         // room for the caption line under the mic.
-        if isClipSelected, viewModel.phase == .idle { return expandedSize }
-        return 96
+        if isClipSelected, viewModel.phase == .idle { return 48 }
+        return 84
     }
 
     private var micAlignment: Alignment {
@@ -101,7 +101,7 @@ struct EditorPromptBarView: View {
 
     private var micGroup: some View {
         HStack(alignment: .top, spacing: .spacing(.sp2)) {
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 micButton
                 captionLine
             }
@@ -140,7 +140,7 @@ struct EditorPromptBarView: View {
     private var captionText: String {
         switch viewModel.phase {
         case .idle:
-            return isClipSelected ? "" : "Haa to talk · tap chat to ty"
+            return isClipSelected ? "" : "Hold to talk"
         case .recording:
             return viewModel.liveTranscript.isEmpty
                 ? "Listening…"
@@ -182,7 +182,7 @@ struct EditorPromptBarView: View {
             }
 
             Image(systemName: "mic.fill")
-                .font(.system(size: micButtonSize >= expandedSize ? 26 : 18, weight: .bold))
+                .font(.system(size: micButtonSize >= expandedSize ? 24 : 17, weight: .bold))
                 .foregroundStyle(Color.white)
                 .shadow(color: .black.opacity(0.25), radius: 1, x: 0, y: 1)
                 .scaleEffect(isMicPressed ? 0.92 : 1.0)
