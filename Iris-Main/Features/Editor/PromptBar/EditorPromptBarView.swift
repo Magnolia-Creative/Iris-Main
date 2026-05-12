@@ -100,6 +100,26 @@ struct EditorPromptBarView: View {
         }
     }
 
+    /// Horizontal extent grows into a capsule while recording so the live
+    /// waveform has room; idle / submitting stay circular.
+    private var micButtonWidth: CGFloat {
+        if viewModel.phase == .recording {
+            return min(220, max(micButtonSize * 2.75, 148))
+        }
+        return micButtonSize
+    }
+
+    private var micButtonHeight: CGFloat { micButtonSize }
+
+    private var micUsesCapsuleShape: Bool {
+        viewModel.phase == .recording
+    }
+
+    private var waveformInnerWidth: CGFloat {
+        let inset = micUsesCapsuleShape ? 14.0 : 10.0
+        return max(10, micButtonWidth - inset * 2)
+    }
+
     // MARK: - Mic group (mic + caption + compact chat companion)
 
     private var micGroup: some View {
@@ -173,26 +193,48 @@ struct EditorPromptBarView: View {
     private var micButton: some View {
         ZStack {
             if viewModel.phase == .recording {
-                micGlow(size: micButtonSize)
+                micGlow(base: max(micButtonWidth, micButtonHeight))
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
 
-            micCore(size: micButtonSize)
+            micCore(width: micButtonWidth, height: micButtonHeight)
 
             if isProcessing {
-                ProcessingRing(size: micButtonSize + 12)
+                ProcessingRing(size: micButtonHeight + 12)
                     .transition(.opacity)
             }
 
-            Image(systemName: "mic.fill")
-                .font(.system(size: micButtonSize >= expandedSize ? 24 : 17, weight: .bold))
-                .foregroundStyle(Color.white)
-                .shadow(color: .black.opacity(0.25), radius: 1, x: 0, y: 1)
-                .scaleEffect(isMicPressed ? 0.92 : 1.0)
+            Group {
+                if viewModel.phase == .recording {
+                    TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { context in
+                        VoiceMemoPillWaveform(
+                            isLive: true,
+                            voiceLevel: CGFloat(viewModel.voiceLevel),
+                            timelineDate: context.date,
+                            totalWidth: waveformInnerWidth,
+                            maxBarHeight: micButtonHeight * 0.44,
+                            gradient: recordingWaveformGradient
+                        )
+                    }
+                } else {
+                    VoiceMemoPillWaveform(
+                        isLive: false,
+                        voiceLevel: 0,
+                        timelineDate: .now,
+                        totalWidth: waveformInnerWidth,
+                        maxBarHeight: micButtonHeight * 0.44,
+                        gradient: idleWaveformGradient
+                    )
+                }
+            }
+            .scaleEffect(isMicPressed ? 0.94 : 1.0)
+            .allowsHitTesting(false)
         }
-        .frame(width: micButtonSize, height: micButtonSize)
+        .frame(width: micButtonWidth, height: micButtonHeight)
         .matchedGeometryEffect(id: "editor-prompt-mic", in: micNamespace)
-        .contentShape(Circle())
+        .contentShape(
+            RoundedRectangle(cornerRadius: micButtonHeight / 2, style: .continuous)
+        )
         .allowsHitTesting(!isProcessing)
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -211,10 +253,35 @@ struct EditorPromptBarView: View {
         .accessibilityHint(Text("Press and hold to record a voice prompt."))
     }
 
-    private func micCore(size: CGFloat) -> some View {
-        let recording = viewModel.phase == .recording
+    private var idleWaveformGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color.white.opacity(0.72),
+                Color.white.opacity(0.38)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
 
-        return Circle()
+    private var recordingWaveformGradient: LinearGradient {
+        let v = CGFloat(viewModel.voiceLevel)
+        return LinearGradient(
+            colors: [
+                Color.ds.accentBg,
+                Color.ds.accentFg.opacity(0.82 + 0.18 * Double(v)),
+                Color.ds.accentFg
+            ],
+            startPoint: UnitPoint(x: 0.05 + v * 0.12, y: 0.15),
+            endPoint: UnitPoint(x: 0.92 - v * 0.08, y: 0.88)
+        )
+    }
+
+    private func micCore(width: CGFloat, height: CGFloat) -> some View {
+        let recording = viewModel.phase == .recording
+        let corner = height / 2
+
+        return RoundedRectangle(cornerRadius: corner, style: .continuous)
             .fill(
                 LinearGradient(
                     colors: recording
@@ -225,7 +292,7 @@ struct EditorPromptBarView: View {
                 )
             )
             .overlay {
-                Circle()
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
                             colors: recording
@@ -238,7 +305,7 @@ struct EditorPromptBarView: View {
                     )
             }
             .overlay {
-                Circle()
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
                     .blur(radius: 0.5)
                     .blendMode(.plusLighter)
@@ -249,18 +316,20 @@ struct EditorPromptBarView: View {
                 x: 0,
                 y: 4
             )
-            .frame(width: size, height: size)
-            .scaleEffect(recording ? (1.0 + CGFloat(viewModel.voiceLevel) * 0.06) : 1.0)
+            .frame(width: width, height: height)
+            .scaleEffect(
+                recording ? (1.0 + CGFloat(viewModel.voiceLevel) * (micUsesCapsuleShape ? 0.03 : 0.06)) : 1.0
+            )
             .animation(.easeOut(duration: 0.12), value: viewModel.voiceLevel)
     }
 
     /// Reactive Siri-like halo: soft radial glow plus three concentric
     /// expanding rings whose intensity tracks the audio level.
-    private func micGlow(size: CGFloat) -> some View {
+    private func micGlow(base: CGFloat) -> some View {
         let level = CGFloat(viewModel.voiceLevel)
 
         return ZStack {
-            Circle()
+            Ellipse()
                 .fill(
                     RadialGradient(
                         colors: [
@@ -269,16 +338,16 @@ struct EditorPromptBarView: View {
                             .clear
                         ],
                         center: .center,
-                        startRadius: size * 0.20,
-                        endRadius: size * (1.05 + level * 0.55)
+                        startRadius: base * 0.18,
+                        endRadius: base * (1.05 + level * 0.55)
                     )
                 )
-                .frame(width: size * 2.4, height: size * 2.4)
+                .frame(width: base * 2.4, height: base * 2.4)
                 .blur(radius: 14)
 
             ForEach(0..<3, id: \.self) { i in
                 ReactiveRing(
-                    baseSize: size,
+                    baseSize: base,
                     levelBoost: level,
                     delay: Double(i) * 0.45
                 )
@@ -427,6 +496,83 @@ struct EditorPromptBarView: View {
         }
         .foregroundStyle(Color.ds.danger)
         .padding(.horizontal, .spacing(.sp3))
+    }
+}
+
+// MARK: - Voice Memos–style pill waveform (idle silhouette / live levels)
+
+/// Vertical pill bars in a Voice Memos–like silhouette when idle; during
+/// recording, bar heights follow `voiceLevel` plus subtle motion from
+/// `timelineDate` so the wave feels alive even between level updates.
+private struct VoiceMemoPillWaveform: View {
+    private static let idleHeights: [CGFloat] = [
+        0.14, 0.36, 0.55, 0.74, 0.90, 1.0, 0.90, 0.74, 0.55, 0.36, 0.14
+    ]
+
+    let isLive: Bool
+    let voiceLevel: CGFloat
+    let timelineDate: Date
+    let totalWidth: CGFloat
+    let maxBarHeight: CGFloat
+    let gradient: LinearGradient
+
+    private var barCount: Int {
+        if isLive {
+            let n = Int(totalWidth / 5.2)
+            return min(36, max(18, n))
+        }
+        return totalWidth < 32 ? 7 : 11
+    }
+
+    var body: some View {
+        let count = barCount
+        let spacing: CGFloat = isLive ? 2 : 2.5
+        let totalSpacing = spacing * CGFloat(max(0, count - 1))
+        let barWidth = max(1.5, (totalWidth - totalSpacing) / CGFloat(count))
+
+        HStack(alignment: .center, spacing: spacing) {
+            ForEach(0..<count, id: \.self) { i in
+                Capsule(style: .continuous)
+                    .frame(width: barWidth, height: barHeight(index: i, count: count))
+            }
+        }
+        .frame(width: totalWidth, height: maxBarHeight)
+        .compositingGroup()
+        .foregroundStyle(gradient)
+    }
+
+    private func barHeight(index i: Int, count: Int) -> CGFloat {
+        let h: CGFloat = if isLive {
+            liveBarHeight(index: i, count: count)
+        } else {
+            idleBarHeight(index: i, count: count)
+        }
+        return max(2, min(maxBarHeight, h))
+    }
+
+    private func idleBarHeight(index i: Int, count: Int) -> CGFloat {
+        let pattern = Self.idleHeights
+        guard count > 1 else { return maxBarHeight * pattern[pattern.count / 2] }
+        let t = CGFloat(i) / CGFloat(count - 1)
+        let idx = t * CGFloat(pattern.count - 1)
+        let i0 = Int(floor(idx))
+        let i1 = min(i0 + 1, pattern.count - 1)
+        let f = idx - CGFloat(i0)
+        let u = pattern[i0] * (1 - f) + pattern[i1] * f
+        return maxBarHeight * u * 0.9
+    }
+
+    private func liveBarHeight(index i: Int, count: Int) -> CGFloat {
+        let t = Double(i) / Double(max(1, count - 1))
+        let envelope = sin(Double.pi * t)
+        let time = timelineDate.timeIntervalSinceReferenceDate
+        let wobbleA = sin(time * 7.2 + Double(i) * 0.55)
+        let wobbleB = sin(time * 5.1 - Double(i) * 0.4)
+        let wobble = 0.52 + 0.48 * ((wobbleA + wobbleB) * 0.5)
+        let v = max(0.03, min(1, voiceLevel))
+        let floorH = 0.07 + v * 0.11
+        let amp = floorH + v * CGFloat(envelope) * CGFloat(0.28 + 0.72 * wobble)
+        return maxBarHeight * amp
     }
 }
 
