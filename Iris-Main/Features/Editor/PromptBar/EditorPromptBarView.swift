@@ -7,53 +7,61 @@ struct EditorPromptBarView: View {
 
     @FocusState private var isPromptFocused: Bool
     @State private var isMicPressed = false
-    @State private var pulse = false
 
     private let compactSize: CGFloat = 42
     private let expandedSize: CGFloat = 66
 
     var body: some View {
-        // A single stable HStack. Conditional behavior is expressed via
-        // opacity / frame modifiers rather than swapping the view tree, so
-        // the mic button keeps its identity (and its in-flight gesture)
-        // across phase changes — that's what makes hold-to-talk actually hold.
-        HStack(spacing: .spacing(.sp2)) {
-            // Leading flexible space — expands so the mic centers when there
-            // is no clip selected and we're idle.
-            Color.clear
-                .frame(maxWidth: leadingFlexMax, maxHeight: 0)
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: leadingFlexMax)
+        // Single stable ZStack. Each layer keeps its own view identity across
+        // phase changes, so the mic's DragGesture is preserved (true
+        // hold-to-talk). Layout shifts happen via alignment / opacity, never
+        // by swapping subtrees.
+        ZStack {
+            // Layer A — phase-specific full-row content (typing field /
+            // status / error). Mic is in its own layer so it isn't disturbed.
+            phaseRowContent
+                .frame(maxWidth: .infinity)
 
-            // The mic. Always rendered, sized + animated based on phase.
-            micButton
+            // Layer B — right-anchored chat button (no-clip idle).
+            chatButton
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .opacity(showsRightChat ? 1 : 0)
+                .allowsHitTesting(showsRightChat)
+
+            // Layer C — mic group. Stays geometrically centered for the
+            // no-clip idle and recording layouts, slides to the leading edge
+            // only for the clip-selected idle layout.
+            micGroup
+                .frame(maxWidth: .infinity, alignment: micAlignment)
                 .opacity(showsMic ? 1 : 0)
-                .frame(
-                    width: showsMic ? micButtonSize : 0,
-                    height: showsMic ? expandedSize : 0
-                )
                 .allowsHitTesting(showsMic)
-
-            // Middle adaptive area (transcript / status / error / text field).
-            // It only takes flexible width when there is meaningful content
-            // to render. In the clip-selected idle layout it collapses so the
-            // prompt bar sits tightly next to the divider.
-            middleArea
-                .frame(maxWidth: middleMaxWidth, alignment: middleAlignment)
-
-            // Trailing slot (chat / send+cancel).
-            trailingSlot
         }
-        .frame(minHeight: expandedSize)
+        .frame(minHeight: barMinHeight)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: viewModel.phase)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isClipSelected)
         .onChange(of: viewModel.phase) { _, phase in
             isPromptFocused = (phase == .typing)
-            pulse = (phase == .recording)
         }
         .onDisappear { viewModel.tearDown() }
     }
 
-    // MARK: - Layout helpers
+    // MARK: - Layout state
+
+    /// We grow the bar height when there's room for the caption text under
+    /// the mic so the layout doesn't feel cramped.
+    private var barMinHeight: CGFloat {
+        // Compact (clip-selected idle) stays short; everything else makes
+        // room for the caption line under the mic.
+        if isClipSelected, viewModel.phase == .idle { return expandedSize }
+        return 96
+    }
+
+    private var micAlignment: Alignment {
+        // Only slide to the left when the clip-selected compact layout
+        // applies. Recording keeps the mic centered.
+        if isClipSelected, viewModel.phase == .idle { return .leading }
+        return .center
+    }
 
     private var showsMic: Bool {
         switch viewModel.phase {
@@ -62,73 +70,85 @@ struct EditorPromptBarView: View {
         }
     }
 
+    private var showsRightChat: Bool {
+        if case .idle = viewModel.phase, !isClipSelected { return true }
+        return false
+    }
+
+    private var showsCompactChat: Bool {
+        if case .idle = viewModel.phase, isClipSelected { return true }
+        return false
+    }
+
     private var micButtonSize: CGFloat {
         switch viewModel.phase {
         case .recording: return expandedSize
         case .idle: return isClipSelected ? compactSize : expandedSize
-        default: return compactSize
+        case .typing, .submitting, .error: return compactSize
         }
     }
 
-    /// When there is no clip and we're idle, the leading flex space expands
-    /// so the mic sits visually centered. In every other case it collapses.
-    private var leadingFlexMax: CGFloat? {
-        guard viewModel.phase == .idle, !isClipSelected else { return 0 }
-        return .infinity
-    }
+    // MARK: - Mic group (mic + caption + compact chat companion)
 
-    private var middleMaxWidth: CGFloat? {
-        switch viewModel.phase {
-        case .idle:
-            // Collapse the middle slot when no content lives there; otherwise
-            // expand to push the trailing slot to the right.
-            return isClipSelected ? 0 : .infinity
-        case .recording, .typing, .submitting, .error:
-            return .infinity
-        }
-    }
-
-    private var middleAlignment: Alignment {
-        switch viewModel.phase {
-        case .idle:
-            return isClipSelected ? .leading : .trailing
-        case .recording:
-            return .leading
-        case .typing, .submitting, .error:
-            return .leading
-        }
-    }
-
-    // MARK: - Slots
-
-    @ViewBuilder
-    private var middleArea: some View {
-        switch viewModel.phase {
-        case .idle:
-            Color.clear.frame(height: 1)
-        case .recording:
-            liveTranscriptView
-        case .typing:
-            typingField
-        case .submitting(let status):
-            statusContent(status)
-        case .error(let message):
-            errorContent(message)
-        }
-    }
-
-    @ViewBuilder
-    private var trailingSlot: some View {
-        switch viewModel.phase {
-        case .idle:
-            chatButton
-        case .typing:
-            HStack(spacing: .spacing(.sp2)) {
-                cancelButton
-                sendButton
+    private var micGroup: some View {
+        HStack(alignment: .top, spacing: .spacing(.sp2)) {
+            VStack(spacing: 6) {
+                micButton
+                captionLine
             }
+
+            // Inline chat button only shown in the compact, clip-selected
+            // idle layout. Always rendered (collapsed when hidden) so the
+            // mic's position in the view tree stays stable.
+            chatButton
+                .opacity(showsCompactChat ? 1 : 0)
+                .frame(width: showsCompactChat ? compactSize : 0)
+                .allowsHitTesting(showsCompactChat)
+                .padding(.top, isClipSelected ? 0 : 0)
+        }
+    }
+
+    private var captionLine: some View {
+        Text(captionText)
+            .typographyStyle(.bodySmall)
+            .foregroundStyle(captionColor)
+            .lineLimit(2)
+            .truncationMode(.head)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 280)
+            .opacity(captionText.isEmpty ? 0 : 1)
+            .frame(height: captionText.isEmpty ? 0 : nil)
+            .animation(.easeOut(duration: 0.15), value: captionText.isEmpty)
+            .transaction { transaction in
+                // Keep the live transcript text crisp; don't let the outer
+                // spring animate every character mutation.
+                if viewModel.phase == .recording {
+                    transaction.animation = nil
+                }
+            }
+    }
+
+    private var captionText: String {
+        switch viewModel.phase {
+        case .idle:
+            return isClipSelected ? "" : "Hold to talk · tap chat to type"
+        case .recording:
+            return viewModel.liveTranscript.isEmpty
+                ? "Listening…"
+                : viewModel.liveTranscript
+        case .typing, .submitting, .error:
+            return ""
+        }
+    }
+
+    private var captionColor: Color {
+        switch viewModel.phase {
+        case .recording where viewModel.liveTranscript.isEmpty:
+            return Color.ds.accentFg
+        case .recording:
+            return Color.ds.text
         default:
-            EmptyView()
+            return Color.ds.textMuted
         }
     }
 
@@ -171,18 +191,13 @@ struct EditorPromptBarView: View {
 
     private func micCore(size: CGFloat) -> some View {
         let recording = viewModel.phase == .recording
+
         return Circle()
             .fill(
                 LinearGradient(
                     colors: recording
-                        ? [
-                            Color(red: 0.60, green: 0.42, blue: 1.00),
-                            Color(red: 0.85, green: 0.30, blue: 0.78)
-                          ]
-                        : [
-                            Color.white.opacity(0.20),
-                            Color.white.opacity(0.06)
-                          ],
+                        ? [Color.ds.accentBg, Color.ds.accentFg]
+                        : [Color.white.opacity(0.20), Color.white.opacity(0.06)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -207,7 +222,7 @@ struct EditorPromptBarView: View {
                     .blendMode(.plusLighter)
             }
             .shadow(
-                color: recording ? Color(red: 0.60, green: 0.42, blue: 1.00).opacity(0.55) : .clear,
+                color: recording ? Color.ds.accentBg.opacity(0.55) : .clear,
                 radius: 14,
                 x: 0,
                 y: 4
@@ -217,8 +232,8 @@ struct EditorPromptBarView: View {
             .animation(.easeOut(duration: 0.12), value: viewModel.voiceLevel)
     }
 
-    /// Reactive Siri-like halo: three concentric expanding rings layered over
-    /// a soft radial glow whose intensity tracks the mic level.
+    /// Reactive Siri-like halo: soft radial glow plus three concentric
+    /// expanding rings whose intensity tracks the audio level.
     private func micGlow(size: CGFloat) -> some View {
         let level = CGFloat(viewModel.voiceLevel)
 
@@ -227,8 +242,8 @@ struct EditorPromptBarView: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.50 + level * 0.35),
-                            Color(red: 0.85, green: 0.30, blue: 0.78).opacity(0.20 + level * 0.30),
+                            Color.ds.accentBg.opacity(0.50 + level * 0.35),
+                            Color.ds.accentFg.opacity(0.20 + level * 0.30),
                             .clear
                         ],
                         center: .center,
@@ -239,7 +254,6 @@ struct EditorPromptBarView: View {
                 .frame(width: size * 2.4, height: size * 2.4)
                 .blur(radius: 14)
 
-            // Pulsing rings — three of them, scheduled with phase offsets.
             ForEach(0..<3, id: \.self) { i in
                 ReactiveRing(
                     baseSize: size,
@@ -251,7 +265,7 @@ struct EditorPromptBarView: View {
         .allowsHitTesting(false)
     }
 
-    // MARK: - Chat / Send / Cancel
+    // MARK: - Chat / send / cancel
 
     private var chatButton: some View {
         Button {
@@ -261,9 +275,7 @@ struct EditorPromptBarView: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.ds.textMuted)
                 .frame(width: compactSize, height: compactSize)
-                .background(
-                    Circle().fill(Color.white.opacity(0.08))
-                )
+                .background(Circle().fill(Color.white.opacity(0.08)))
                 .overlay(
                     Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                 )
@@ -282,10 +294,7 @@ struct EditorPromptBarView: View {
                 .frame(width: compactSize, height: compactSize)
                 .background(
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.60, green: 0.42, blue: 1.00),
-                            Color(red: 0.85, green: 0.30, blue: 0.78)
-                        ],
+                        colors: [Color.ds.accentBg, Color.ds.accentFg],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -310,30 +319,27 @@ struct EditorPromptBarView: View {
         .accessibilityLabel(Text("Cancel"))
     }
 
-    // MARK: - Middle content variants
+    // MARK: - Phase row content (typing / submitting / error)
 
-    private var liveTranscriptView: some View {
-        let text = viewModel.liveTranscript
-        return HStack(spacing: 0) {
-            if text.isEmpty {
-                Text("Listening…")
-                    .typographyStyle(.body)
-                    .foregroundStyle(Color.ds.textMuted)
-                    .opacity(0.9)
-            } else {
-                Text(text)
-                    .typographyStyle(.body)
-                    .foregroundStyle(Color.ds.text)
-                    .lineLimit(2)
-                    .truncationMode(.head)
-                    .multilineTextAlignment(.leading)
-                    .animation(nil, value: text)
+    @ViewBuilder
+    private var phaseRowContent: some View {
+        switch viewModel.phase {
+        case .typing:
+            HStack(spacing: .spacing(.sp2)) {
+                typingField
+                cancelButton
+                sendButton
             }
-            Spacer(minLength: 0)
+            .transition(.opacity)
+        case .submitting(let status):
+            statusContent(status)
+                .transition(.opacity)
+        case .error(let message):
+            errorContent(message)
+                .transition(.opacity)
+        case .idle, .recording:
+            Color.clear
         }
-        .padding(.horizontal, .spacing(.sp2))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .transition(.opacity)
     }
 
     private var typingField: some View {
@@ -371,8 +377,7 @@ struct EditorPromptBarView: View {
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, .spacing(.sp2))
-        .transition(.opacity)
+        .padding(.horizontal, .spacing(.sp3))
     }
 
     private func errorContent(_ message: String) -> some View {
@@ -385,8 +390,7 @@ struct EditorPromptBarView: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(Color.ds.danger)
-        .padding(.horizontal, .spacing(.sp2))
-        .transition(.opacity)
+        .padding(.horizontal, .spacing(.sp3))
     }
 }
 
@@ -404,9 +408,9 @@ private struct ReactiveRing: View {
             .stroke(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.62, green: 0.45, blue: 1.0).opacity(0.85),
-                        Color(red: 0.85, green: 0.30, blue: 0.78).opacity(0.55),
-                        Color(red: 0.30, green: 0.55, blue: 1.00).opacity(0.45)
+                        Color.ds.accentBg.opacity(0.85),
+                        Color.ds.accentFg.opacity(0.55),
+                        Color.ds.accentBg.opacity(0.35)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
