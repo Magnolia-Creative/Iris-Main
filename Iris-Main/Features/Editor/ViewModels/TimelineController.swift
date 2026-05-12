@@ -269,6 +269,49 @@ final class TimelineController: ObservableObject {
         ])
     }
 
+    func clipColorFilter(for clipId: String) -> ClipColorFilter {
+        latestClipColorFilterEffect(for: clipId)?.clipColorFilter ?? .neutral
+    }
+
+    func setClipColorFilter(clipId: String, filter: ClipColorFilter) {
+        guard state.clips.contains(where: { $0.clipId == clipId }) else { return }
+
+        if filter.isNeutral {
+            resetClipColorFilter(clipId: clipId)
+            return
+        }
+
+        let matchingEffects = clipColorFilterEffects(for: clipId)
+        let existingEffect = matchingEffects.max { $0.updatedAt < $1.updatedAt }
+        let updatedEffect = Effect.clipColorFilter(
+            timelineId: state.timelineId,
+            clipId: clipId,
+            filter: filter,
+            effectId: existingEffect?.effectId ?? UUID().uuidString,
+            createdAt: existingEffect?.createdAt ?? Date()
+        )
+
+        let duplicateEffectIds = Set(matchingEffects.map(\.effectId)).subtracting([updatedEffect.effectId])
+        state.effects.removeAll { duplicateEffectIds.contains($0.effectId) }
+
+        if let index = state.effects.firstIndex(where: { $0.effectId == updatedEffect.effectId }) {
+            state.effects[index] = updatedEffect
+            persistEffectChanges(created: [], updated: [updatedEffect], deletedIds: Array(duplicateEffectIds))
+        } else {
+            state.effects.append(updatedEffect)
+            persistEffectChanges(created: [updatedEffect], updated: [], deletedIds: Array(duplicateEffectIds))
+        }
+    }
+
+    func resetClipColorFilter(clipId: String) {
+        let matchingEffects = clipColorFilterEffects(for: clipId)
+        guard !matchingEffects.isEmpty else { return }
+
+        let deletedIds = matchingEffects.map(\.effectId)
+        state.effects.removeAll { deletedIds.contains($0.effectId) }
+        persistEffectChanges(created: [], updated: [], deletedIds: deletedIds)
+    }
+
     func deleteSelectedClip() {
         guard let clipId = state.selectedClipId else { return }
         applyActions([Action.removeClip(timelineId: state.timelineId, clipId: clipId)])
@@ -439,6 +482,32 @@ final class TimelineController: ObservableObject {
         }
 
         scheduleDebouncedMetadataSave()
+    }
+
+    private func persistEffectChanges(created: [Effect], updated: [Effect], deletedIds: [String]) {
+        guard !created.isEmpty || !updated.isEmpty || !deletedIds.isEmpty else { return }
+
+        do {
+            for effect in created { try persistence.createEffect(effect) }
+            for effect in updated { try persistence.updateEffect(effect) }
+            for effectId in deletedIds { try persistence.deleteEffect(effectId: effectId) }
+        } catch {
+            print("Failed to persist effect changes: \(error)")
+        }
+
+        scheduleDebouncedMetadataSave()
+    }
+
+    private func clipColorFilterEffects(for clipId: String) -> [Effect] {
+        state.effects.filter {
+            $0.targetId == clipId
+                && $0.appliesTo == .clip
+                && $0.type == ClipColorFilter.effectType
+        }
+    }
+
+    private func latestClipColorFilterEffect(for clipId: String) -> Effect? {
+        clipColorFilterEffects(for: clipId).max { $0.updatedAt < $1.updatedAt }
     }
 
     private func persistNewTracks() {
