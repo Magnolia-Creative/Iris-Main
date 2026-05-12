@@ -74,5 +74,48 @@ struct RemoteIntentCompilerSocketTests {
         #expect(prompt == "make it vintage")
         #expect(compileResult.actions.isEmpty)
     }
+
+    @Test func decodesRemoveClipRangesAction() throws {
+        let json = """
+        {
+          "type": "intent_result",
+          "prompt": "cut out the dead space",
+          "result": {
+            "actions": [
+              {
+                "action_id": "action-1",
+                "timeline_id": "timeline-test",
+                "created_at": 800000000,
+                "type": "REMOVE_CLIP_RANGES",
+                "payload": {
+                  "removeClipRanges": {
+                    "clipId": "clip-b",
+                    "sourceRanges": [
+                      { "start": 2000000, "end": 3000000 }
+                    ]
+                  }
+                }
+              }
+            ],
+            "confidence": 0.9,
+            "source": "llm",
+            "unresolvedText": null,
+            "warnings": [],
+            "needsClarification": false,
+            "experimentalEffectOperations": []
+          }
+        }
+        """
+
+        let event = try RemoteIntentCompilerEvent.decode(from: Data(json.utf8), using: JSONDecoder())
+        guard case .intentResult(_, let result) = event,
+              case .removeClipRanges(let clipId, let sourceRanges) = result.actions.first?.payload else {
+            Issue.record("Expected removeClipRanges action")
+            return
+        }
+
+        #expect(clipId == "clip-b")
+        #expect(sourceRanges == [TimeRange(start: 2_000_000, end: 3_000_000)])
+    }
 }
 
