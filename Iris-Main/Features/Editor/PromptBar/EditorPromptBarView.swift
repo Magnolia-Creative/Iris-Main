@@ -65,9 +65,14 @@ struct EditorPromptBarView: View {
 
     private var showsMic: Bool {
         switch viewModel.phase {
-        case .idle, .recording: return true
-        case .typing, .submitting, .clarification, .error: return false
+        case .idle, .recording, .submitting: return true
+        case .typing, .clarification, .error: return false
         }
+    }
+
+    private var isProcessing: Bool {
+        if case .submitting = viewModel.phase { return true }
+        return false
     }
 
     private var showsRightChat: Bool {
@@ -82,9 +87,9 @@ struct EditorPromptBarView: View {
 
     private var micButtonSize: CGFloat {
         switch viewModel.phase {
-        case .recording: return expandedSize
+        case .recording, .submitting: return expandedSize
         case .idle: return isClipSelected ? compactSize : expandedSize
-        case .typing, .submitting, .clarification, .error: return compactSize
+        case .typing, .clarification, .error: return compactSize
         }
     }
 
@@ -136,7 +141,9 @@ struct EditorPromptBarView: View {
             return viewModel.liveTranscript.isEmpty
                 ? "Listening…"
                 : viewModel.liveTranscript
-        case .typing, .submitting, .clarification, .error:
+        case .submitting(let status):
+            return status
+        case .typing, .clarification, .error:
             return ""
         }
     }
@@ -146,6 +153,8 @@ struct EditorPromptBarView: View {
         case .recording where viewModel.liveTranscript.isEmpty:
             return Color.ds.accentFg
         case .recording:
+            return Color.ds.text
+        case .submitting:
             return Color.ds.text
         default:
             return Color.ds.textMuted
@@ -163,6 +172,11 @@ struct EditorPromptBarView: View {
 
             micCore(size: micButtonSize)
 
+            if isProcessing {
+                ProcessingRing(size: micButtonSize + 12)
+                    .transition(.opacity)
+            }
+
             Image(systemName: "mic.fill")
                 .font(.system(size: micButtonSize >= expandedSize ? 26 : 18, weight: .bold))
                 .foregroundStyle(Color.white)
@@ -172,6 +186,7 @@ struct EditorPromptBarView: View {
         .frame(width: micButtonSize, height: micButtonSize)
         .matchedGeometryEffect(id: "editor-prompt-mic", in: micNamespace)
         .contentShape(Circle())
+        .allowsHitTesting(!isProcessing)
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -185,7 +200,7 @@ struct EditorPromptBarView: View {
                     Task { await viewModel.endVoicePrompt() }
                 }
         )
-        .accessibilityLabel(Text("Hold to talk"))
+        .accessibilityLabel(Text(isProcessing ? "Processing prompt" : "Hold to talk"))
         .accessibilityHint(Text("Press and hold to record a voice prompt."))
     }
 
@@ -331,9 +346,10 @@ struct EditorPromptBarView: View {
                 sendButton
             }
             .transition(.opacity)
-        case .submitting(let status):
-            statusContent(status)
-                .transition(.opacity)
+        case .submitting:
+            // The mic itself shows the processing ring and the caption
+            // surfaces the status text, so no extra row content is needed.
+            Color.clear
         case .clarification(let message):
             HStack(spacing: .spacing(.sp2)) {
                 clarificationContent(message)
@@ -370,21 +386,6 @@ struct EditorPromptBarView: View {
                 RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous)
                     .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
             )
-    }
-
-    private func statusContent(_ status: String) -> some View {
-        HStack(spacing: .spacing(.sp2)) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Color.ds.accentFg)
-            Text(status)
-                .typographyStyle(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, .spacing(.sp3))
     }
 
     private func clarificationContent(_ message: String) -> some View {
@@ -448,5 +449,37 @@ private struct ReactiveRing: View {
                 value: animate
             )
             .onAppear { animate = true }
+    }
+}
+
+// MARK: - Processing ring (spins around the mic while the backend works)
+
+private struct ProcessingRing: View {
+    let size: CGFloat
+
+    @State private var rotates = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.28)
+            .stroke(
+                AngularGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: Color.ds.accentFg.opacity(0.0), location: 0.0),
+                        .init(color: Color.ds.accentFg.opacity(0.4), location: 0.4),
+                        .init(color: Color.ds.accentFg, location: 1.0)
+                    ]),
+                    center: .center
+                ),
+                style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+            )
+            .frame(width: size, height: size)
+            .rotationEffect(.degrees(rotates ? 360 : 0))
+            .animation(
+                .linear(duration: 1.0).repeatForever(autoreverses: false),
+                value: rotates
+            )
+            .onAppear { rotates = true }
+            .accessibilityHidden(true)
     }
 }
