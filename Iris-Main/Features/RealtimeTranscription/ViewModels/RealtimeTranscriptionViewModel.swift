@@ -122,8 +122,8 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
 
         if let webSocketTask {
             do {
-                let stop = RealtimeTranscriptionClientStopMessage()
-                let data = try encoder.encode(stop)
+                let commit = RealtimeTranscriptionClientCommitMessage()
+                let data = try encoder.encode(commit)
                 if let text = String(data: data, encoding: .utf8) {
                     try await webSocketTask.send(.string(text))
                 }
@@ -132,7 +132,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
             }
         }
 
-        await awaitStopFinalization(timeout: .seconds(2))
+        await awaitStopFinalization(timeout: .seconds(8))
         isAwaitingStopFinalization = false
 
         receiveTask?.cancel()
@@ -199,7 +199,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
         } catch {
             if isRecording {
                 errorMessage = error.localizedDescription
-                await stopRecordingGracefully()
+                tearDown()
             }
         }
     }
@@ -273,6 +273,7 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
             break
         case .error(let detail):
             errorMessage = detail
+            resolveStopFinalization()
         case .unknown:
             break
         }

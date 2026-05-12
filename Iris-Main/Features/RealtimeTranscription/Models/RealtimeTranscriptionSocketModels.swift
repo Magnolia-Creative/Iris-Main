@@ -28,6 +28,14 @@ struct RealtimeTranscriptionClientStopMessage: Encodable {
     }
 }
 
+struct RealtimeTranscriptionClientCommitMessage: Encodable {
+    let type: String
+
+    init() {
+        self.type = "commit"
+    }
+}
+
 // MARK: - Server → client (envelope)
 
 enum RealtimeTranscriptionServerEvent: Equatable {
