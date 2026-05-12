@@ -39,6 +39,9 @@ struct EditorPromptBarView: View {
                 .opacity(showsMic ? 1 : 0)
                 .allowsHitTesting(showsMic)
         }
+        // Hug vertical content (mic + caption / typing row); then enforce a
+        // sensible floor so hold-to-talk stays tappable when phases are short.
+        .fixedSize(horizontal: false, vertical: true)
         .frame(minHeight: barMinHeight)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: viewModel.phase)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isClipSelected)
@@ -353,7 +356,7 @@ struct EditorPromptBarView: View {
         case .submitting:
             // The mic itself shows the processing ring and the caption
             // surfaces the status text, so no extra row content is needed.
-            Color.clear
+            phaseRowSpacer
         case .clarification(let message):
             HStack(spacing: .spacing(.sp2)) {
                 clarificationContent(message)
@@ -365,8 +368,15 @@ struct EditorPromptBarView: View {
             errorContent(message)
                 .transition(.opacity)
         case .idle, .recording:
-            Color.clear
+            phaseRowSpacer
         }
+    }
+
+    /// `Color.clear` alone expands to fill all vertical space offered by the
+    /// parent `ZStack`, stretching the whole prompt bar; a zero-height spacer
+    /// keeps layout hugging the mic and caption.
+    private var phaseRowSpacer: some View {
+        Color.clear.frame(height: 0)
     }
 
     private var typingField: some View {
