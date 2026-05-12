@@ -192,11 +192,6 @@ struct EditorPromptBarView: View {
 
     private var micButton: some View {
         ZStack {
-            if viewModel.phase == .recording {
-                micGlow(base: max(micButtonWidth, micButtonHeight))
-                    .transition(.scale(scale: 0.6).combined(with: .opacity))
-            }
-
             micCore(width: micButtonWidth, height: micButtonHeight)
 
             if isProcessing {
@@ -269,11 +264,12 @@ struct EditorPromptBarView: View {
         return LinearGradient(
             colors: [
                 Color.ds.accentBg,
-                Color.ds.accentFg.opacity(0.82 + 0.18 * Double(v)),
+                Color.ds.accentFg.opacity(0.75 + 0.2 * Double(v)),
+                Color.white.opacity(0.35 + 0.25 * Double(v)),
                 Color.ds.accentFg
             ],
-            startPoint: UnitPoint(x: 0.05 + v * 0.12, y: 0.15),
-            endPoint: UnitPoint(x: 0.92 - v * 0.08, y: 0.88)
+            startPoint: UnitPoint(x: 0.02 + v * 0.1, y: 0.1),
+            endPoint: UnitPoint(x: 0.98 - v * 0.06, y: 0.95)
         )
     }
 
@@ -310,50 +306,11 @@ struct EditorPromptBarView: View {
                     .blur(radius: 0.5)
                     .blendMode(.plusLighter)
             }
-            .shadow(
-                color: recording ? Color.ds.accentBg.opacity(0.55) : .clear,
-                radius: 14,
-                x: 0,
-                y: 4
-            )
             .frame(width: width, height: height)
             .scaleEffect(
                 recording ? (1.0 + CGFloat(viewModel.voiceLevel) * (micUsesCapsuleShape ? 0.03 : 0.06)) : 1.0
             )
             .animation(.easeOut(duration: 0.12), value: viewModel.voiceLevel)
-    }
-
-    /// Reactive Siri-like halo: soft radial glow plus three concentric
-    /// expanding rings whose intensity tracks the audio level.
-    private func micGlow(base: CGFloat) -> some View {
-        let level = CGFloat(viewModel.voiceLevel)
-
-        return ZStack {
-            Ellipse()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.ds.accentBg.opacity(0.50 + level * 0.35),
-                            Color.ds.accentFg.opacity(0.20 + level * 0.30),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: base * 0.18,
-                        endRadius: base * (1.05 + level * 0.55)
-                    )
-                )
-                .frame(width: base * 2.4, height: base * 2.4)
-                .blur(radius: 14)
-
-            ForEach(0..<3, id: \.self) { i in
-                ReactiveRing(
-                    baseSize: base,
-                    levelBoost: level,
-                    delay: Double(i) * 0.45
-                )
-            }
-        }
-        .allowsHitTesting(false)
     }
 
     // MARK: - Chat / send / cancel
@@ -573,42 +530,6 @@ private struct VoiceMemoPillWaveform: View {
         let floorH = 0.07 + v * 0.11
         let amp = floorH + v * CGFloat(envelope) * CGFloat(0.28 + 0.72 * wobble)
         return maxBarHeight * amp
-    }
-}
-
-// MARK: - Reactive pulsing ring
-
-private struct ReactiveRing: View {
-    let baseSize: CGFloat
-    let levelBoost: CGFloat
-    let delay: Double
-
-    @State private var animate = false
-
-    var body: some View {
-        Circle()
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        Color.ds.accentBg.opacity(0.85),
-                        Color.ds.accentFg.opacity(0.55),
-                        Color.ds.accentBg.opacity(0.35)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1.6
-            )
-            .frame(
-                width: baseSize * (animate ? 1.55 + levelBoost * 0.6 : 1.05),
-                height: baseSize * (animate ? 1.55 + levelBoost * 0.6 : 1.05)
-            )
-            .opacity(animate ? 0 : 0.7)
-            .animation(
-                .easeOut(duration: 1.6).repeatForever(autoreverses: false).delay(delay),
-                value: animate
-            )
-            .onAppear { animate = true }
     }
 }
 
