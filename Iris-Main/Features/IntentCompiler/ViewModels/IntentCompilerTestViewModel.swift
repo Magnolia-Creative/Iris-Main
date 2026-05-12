@@ -98,15 +98,14 @@ private extension IntentCompilerTestViewModel {
             )
         ]
 
-        return IntentCompilerContext(
-            timelineId: "timeline-test",
-            selectedClipId: "clip-b",
-            selectedTrackId: "track-video",
-            selectedRange: nil,
-            playheadTimeUs: 10_000_000,
-            clipsById: Dictionary(uniqueKeysWithValues: clips.map { ($0.clipId, $0) }),
-            orderedClipIdsByTrackId: ["track-video": ["clip-a", "clip-b", "clip-c"]]
-        )
+        var state = TimelineState(timelineId: "timeline-test")
+        state.tracks = [
+            Track(trackId: "track-video", timelineId: "timeline-test", kind: .video)
+        ]
+        state.clips = clips
+        state.selectedClipId = "clip-b"
+        state.currentTimeAtCenter = 10_000_000
+        return state.makeIntentCompilerContext()
     }
 
     func formattedOutput(for result: IntentCompileResult) throws -> String {
