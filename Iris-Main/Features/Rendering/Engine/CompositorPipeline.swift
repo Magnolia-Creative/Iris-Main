@@ -108,8 +108,9 @@ final class CompositorPipeline {
         for caption in captions {
             var transform = caption.transform
             var adjustments = ColorAdjustmentsUniforms(
-                exposure: 0, contrast: 0, saturation: 0,
-                highlights: 0, shadows: 0, opacity: caption.opacity
+                temperature: 0, tint: 0, exposure: 0, brightness: 0,
+                contrast: 0, saturation: 0, highlights: 0, shadows: 0,
+                opacity: caption.opacity
             )
             encoder.setVertexBytes(&transform, length: MemoryLayout<matrix_float4x4>.stride, index: 1)
             encoder.setFragmentTexture(caption.texture, index: 0)

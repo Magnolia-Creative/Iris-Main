@@ -730,7 +730,10 @@ final class RenderEngine: NSObject {
                     transform: clip.transform
                 )
                 let uniforms = ColorAdjustmentsUniforms(
+                    temperature: clip.colorAdjustments.temperature,
+                    tint: clip.colorAdjustments.tint,
                     exposure: clip.colorAdjustments.exposure,
+                    brightness: clip.colorAdjustments.brightness,
                     contrast: clip.colorAdjustments.contrast,
                     saturation: clip.colorAdjustments.saturation,
                     highlights: clip.colorAdjustments.highlights,

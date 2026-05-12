@@ -72,14 +72,24 @@ struct RenderTransformInput: Equatable {
 }
 
 struct RenderColorAdjustmentsInput: Equatable {
+    var temperature: Float
+    var tint: Float
     var exposure: Float
+    var brightness: Float
     var contrast: Float
     var saturation: Float
     var highlights: Float
     var shadows: Float
 
     static let neutral = RenderColorAdjustmentsInput(
-        exposure: 0, contrast: 0, saturation: 0, highlights: 0, shadows: 0
+        temperature: 0,
+        tint: 0,
+        exposure: 0,
+        brightness: 0,
+        contrast: 0,
+        saturation: 0,
+        highlights: 0,
+        shadows: 0
     )
 }
 

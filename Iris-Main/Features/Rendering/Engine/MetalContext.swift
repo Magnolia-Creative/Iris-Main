@@ -208,7 +208,10 @@ extension MetalContext {
     };
 
     struct ColorAdjustments {
+        float temperature;
+        float tint;
         float exposure;
+        float brightness;
         float contrast;
         float saturation;
         float highlights;
@@ -242,6 +245,14 @@ extension MetalContext {
         float3 rgb = color.rgb / alpha;
 
         rgb *= pow(2.0, adjustments.exposure);
+
+        rgb.r += adjustments.temperature * 0.10;
+        rgb.b -= adjustments.temperature * 0.10;
+        rgb.g += adjustments.tint * 0.08;
+        rgb.r -= adjustments.tint * 0.04;
+        rgb.b -= adjustments.tint * 0.04;
+
+        rgb += adjustments.brightness;
 
         rgb = ((rgb - 0.5) * (1.0 + adjustments.contrast)) + 0.5;
 
@@ -294,7 +305,10 @@ extension matrix_float4x4 {
 // MARK: - GPU-matched uniform struct
 
 struct ColorAdjustmentsUniforms {
+    var temperature: Float
+    var tint: Float
     var exposure: Float
+    var brightness: Float
     var contrast: Float
     var saturation: Float
     var highlights: Float

@@ -12,7 +12,10 @@ struct VertexOut {
 };
 
 struct ColorAdjustments {
+    float temperature;
+    float tint;
     float exposure;
+    float brightness;
     float contrast;
     float saturation;
     float highlights;
@@ -48,6 +51,16 @@ fragment float4 compositorFragment(
 
     // Exposure (EV stops)
     rgb *= pow(2.0, adjustments.exposure);
+
+    // Temperature and tint are normalized warm/cool and green/magenta shifts.
+    rgb.r += adjustments.temperature * 0.10;
+    rgb.b -= adjustments.temperature * 0.10;
+    rgb.g += adjustments.tint * 0.08;
+    rgb.r -= adjustments.tint * 0.04;
+    rgb.b -= adjustments.tint * 0.04;
+
+    // Brightness is an additive lift after white balance and exposure.
+    rgb += adjustments.brightness;
 
     // Contrast (pivot at mid-gray)
     rgb = ((rgb - 0.5) * (1.0 + adjustments.contrast)) + 0.5;
