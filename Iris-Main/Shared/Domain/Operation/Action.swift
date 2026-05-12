@@ -8,6 +8,7 @@ enum ActionPayload: Equatable, Codable {
     case removeClip(clipId: String)
     case addClip(clip: Clip)
     case trimClip(clipId: String, sourceRange: TimeRange)
+    case removeClipRanges(clipId: String, sourceRanges: [TimeRange])
     case moveClip(clipId: String, orderedClipIds: [String])
     /// Restores the ordered clip list for a single track (used for undo/redo and inverse actions).
     case replaceTrackClips(trackId: String, clips: [Clip])
@@ -121,6 +122,7 @@ struct Action: Codable, Equatable, Identifiable, FetchableRecord, PersistableRec
         case .removeClip: return .removeClip
         case .addClip: return .addClip
         case .trimClip: return .trimClip
+        case .removeClipRanges: return .removeClipRanges
         case .moveClip: return .moveClip
         case .replaceTrackClips: return .replaceTrackClips
         }
@@ -188,6 +190,19 @@ extension Action {
         )
     }
 
+    static func removeClipRanges(
+        timelineId: String,
+        clipId: String,
+        sourceRanges: [TimeRange],
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .removeClipRanges(clipId: clipId, sourceRanges: sourceRanges),
+            groupId: groupId
+        )
+    }
+
     static func moveClip(
         timelineId: String,
         clipId: String,
@@ -220,6 +235,7 @@ enum ActionType: String, Codable {
     case addClip = "ADD_CLIP"
     case removeClip = "REMOVE_CLIP"
     case trimClip = "TRIM_CLIP"
+    case removeClipRanges = "REMOVE_CLIP_RANGES"
     case splitClip = "SPLIT_CLIP"
     case moveClip = "MOVE_CLIP"
     case replaceTrackClips = "REPLACE_TRACK_CLIPS"

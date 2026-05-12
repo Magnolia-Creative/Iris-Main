@@ -31,6 +31,9 @@ extension TimelineState {
                 sourceRange: sourceRange
             )
 
+        case let .removeClipRanges(clipId, sourceRanges):
+            return applyRemoveClipRanges(clipId: clipId, sourceRanges: sourceRanges)
+
         case let .moveClip(clipId, orderedClipIds):
             return applyMoveClipCommitted(clipId: clipId, orderedClipIds: orderedClipIds)
 
@@ -123,6 +126,36 @@ extension TimelineState {
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
     }
 
+    private mutating func applyRemoveClipRanges(clipId: String, sourceRanges: [TimeRange]) -> [Action] {
+        guard let clip = clips.first(where: { $0.clipId == clipId }) else { return [] }
+        let trackId = clip.trackId
+        let before = orderedClips(for: trackId)
+        let removalRanges = normalizedRemovalRanges(sourceRanges, within: clip.sourceRange)
+        guard removalRanges.isEmpty == false else { return [] }
+
+        let survivors = survivorRanges(from: clip.sourceRange, removing: removalRanges)
+        if survivors.isEmpty {
+            return applyRemoveClip(clipId: clipId)
+        }
+
+        let trackClips = orderedClips(for: trackId)
+        let replacementClips = replacementTrackClips(
+            trackClips: trackClips,
+            replacing: clip,
+            withSourceRanges: survivors
+        )
+        clips.removeAll { $0.trackId == trackId }
+        clips.append(contentsOf: packedClips(from: replacementClips))
+
+        if selectedClipId == clipId {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                selectedClipId = nil
+            }
+        }
+
+        return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
+    }
+
     private mutating func applyMoveClipCommitted(clipId: String, orderedClipIds: [String]) -> [Action] {
         guard let clip = clips.first(where: { $0.clipId == clipId }) else { return [] }
         let trackId = clip.trackId
@@ -141,5 +174,62 @@ extension TimelineState {
         }
 
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: previous)]
+    }
+
+    private func normalizedRemovalRanges(_ ranges: [TimeRange], within sourceRange: TimeRange) -> [TimeRange] {
+        let bounded = ranges.compactMap { range -> TimeRange? in
+            let start = max(sourceRange.start, range.start)
+            let end = min(sourceRange.end, range.end)
+            guard end > start else { return nil }
+            return TimeRange(start: start, end: end)
+        }
+        .sorted { left, right in
+            left.start == right.start ? left.end < right.end : left.start < right.start
+        }
+
+        return bounded.reduce(into: [TimeRange]()) { merged, range in
+            guard let last = merged.last else {
+                merged.append(range)
+                return
+            }
+            if range.start <= last.end {
+                merged[merged.count - 1].end = max(last.end, range.end)
+            } else {
+                merged.append(range)
+            }
+        }
+    }
+
+    private func survivorRanges(from sourceRange: TimeRange, removing removalRanges: [TimeRange]) -> [TimeRange] {
+        var survivors: [TimeRange] = []
+        var cursor = sourceRange.start
+        for range in removalRanges {
+            if range.start > cursor {
+                survivors.append(TimeRange(start: cursor, end: range.start))
+            }
+            cursor = max(cursor, range.end)
+        }
+        if cursor < sourceRange.end {
+            survivors.append(TimeRange(start: cursor, end: sourceRange.end))
+        }
+        return survivors.filter { $0.duration > 0 }
+    }
+
+    private func replacementTrackClips(
+        trackClips: [Clip],
+        replacing clip: Clip,
+        withSourceRanges sourceRanges: [TimeRange]
+    ) -> [Clip] {
+        trackClips.flatMap { candidate -> [Clip] in
+            guard candidate.clipId == clip.clipId else { return [candidate] }
+            return sourceRanges.map { sourceRange in
+                Clip(
+                    trackId: clip.trackId,
+                    mediaId: clip.mediaId,
+                    sourceRange: sourceRange,
+                    timelineRange: TimeRange(start: 0, end: sourceRange.duration)
+                )
+            }
+        }
     }
 }
