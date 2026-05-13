@@ -1,8 +1,14 @@
 internal import Combine
 import Foundation
+import OSLog
 import Photos
 
 extension ImportBrowserViewModel {
+    private static let transcriptPersistenceLog = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "TranscriptPersistence"
+    )
+
     func reloadAlbums() {
         let collections = mediaImportService.fetchVideoAlbums()
         var albums = [ImportBrowserAlbum(id: ImportBrowserAlbum.allVideosID, title: "All Videos", count: mediaImportService.fetchVideos(in: nil).count)]
@@ -189,6 +195,11 @@ extension ImportBrowserViewModel {
                     "[ImportBrowser] transcript response ready localKey=\(localKey) transcriptID=\(transcript.transcriptID) " +
                     "sentences=\(transcript.sentences.count)"
                 )
+                if transcript.transcriptID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Self.transcriptPersistenceLog.warning(
+                        "transcript response had empty transcript_id localKey=\(localKey, privacy: .public) mediaID=\(request.mediaID, privacy: .public)"
+                    )
+                }
                 try self.persistTranscript(transcript, forMediaID: request.mediaID)
                 print("[ImportBrowser] transcript persisted localKey=\(localKey) mediaID=\(request.mediaID)")
                 _ = await self.resyncSemanticIndexIfNeeded(autoBuildIndex: false)
@@ -627,6 +638,9 @@ extension ImportBrowserViewModel {
                 "[ImportBrowser] transcript request skipped existing transcript localKey=\(localKey) " +
                 "mediaID=\(mediaID) sentences=\(transcriptSentences.count)"
             )
+            Self.transcriptPersistenceLog.info(
+                "makeTranscriptRequest skipped: already have sentences localKey=\(localKey, privacy: .public) mediaID=\(mediaID, privacy: .public) transcriptID=\(media.spec.transcriptID ?? "nil", privacy: .public) sentenceCount=\(transcriptSentences.count, privacy: .public)"
+            )
             return nil
         }
 
@@ -649,8 +663,16 @@ extension ImportBrowserViewModel {
     func persistTranscript(_ transcript: ClipTranscriptResponse, forMediaID mediaID: String) throws {
         guard var media = try db.getMedia(mediaId: mediaID) else {
             print("[ImportBrowser] transcript persist skipped missing media mediaID=\(mediaID)")
+            Self.transcriptPersistenceLog.error(
+                "persistTranscript aborted: no media row for mediaID=\(mediaID, privacy: .public)"
+            )
             return
         }
+        let priorTranscriptID = media.spec.transcriptID
+        let priorSentenceCount = media.spec.transcriptSentences?.count ?? 0
+        Self.transcriptPersistenceLog.info(
+            "persistTranscript applying mediaID=\(mediaID, privacy: .public) priorTranscriptID=\(priorTranscriptID ?? "nil", privacy: .public) incomingTranscriptID=\(transcript.transcriptID, privacy: .public) priorSentences=\(priorSentenceCount, privacy: .public) incomingSentences=\(transcript.sentences.count, privacy: .public)"
+        )
         media.spec.transcriptID = transcript.transcriptID
         media.spec.transcriptFullText = transcript.fullText
         media.spec.transcriptSentences = transcript.sentences.map {
@@ -668,6 +690,9 @@ extension ImportBrowserViewModel {
         }
         media.updatedAt = Date()
         try db.update(media)
+        Self.transcriptPersistenceLog.info(
+            "persistTranscript saved mediaID=\(mediaID, privacy: .public) storedTranscriptID=\(media.spec.transcriptID ?? "nil", privacy: .public) storedSentences=\(media.spec.transcriptSentences?.count ?? 0, privacy: .public) fullTextChars=\(media.spec.transcriptFullText?.count ?? 0, privacy: .public)"
+        )
         print(
             "[ImportBrowser] transcript saved mediaID=\(mediaID) transcriptID=\(transcript.transcriptID) " +
             "sentences=\(media.spec.transcriptSentences?.count ?? 0) fullTextChars=\(transcript.fullText.count)"
