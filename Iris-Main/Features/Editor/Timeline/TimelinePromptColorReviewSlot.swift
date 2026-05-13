@@ -19,28 +19,23 @@ struct TimelinePromptColorReviewSlot: View {
                     .lineLimit(1)
 
                 Spacer(minLength: .spacing(.sp2))
-
-                Button(action: onReset) {
-                    HStack(spacing: .spacing(.sp1)) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Reset")
-                            .typography(.bodySmall)
-                    }
-                    .foregroundStyle(Color.ds.textMuted)
-                    .padding(.vertical, .spacing(.sp2))
-                    .padding(.horizontal, .spacing(.sp2))
-                    .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Reset \(propertyTitle)"))
             }
 
             HStack(spacing: .spacing(.sp3)) {
+                Button(action: onReset) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.ds.textMuted)
+                        .frame(width: 40, height: 40)
+                        .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Reset \(propertyTitle)"))
+
                 Slider(value: sliderRangeBinding, in: Double(sliderRange.lowerBound)...Double(sliderRange.upperBound))
                     .tint(Color.ds.accentFg)
-                    .frame(width: 230)
+                    .frame(width: 200)
 
                 Button(action: onConfirm) {
                     Image(systemName: "checkmark")
