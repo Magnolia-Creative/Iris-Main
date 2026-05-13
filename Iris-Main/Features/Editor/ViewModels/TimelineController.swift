@@ -198,26 +198,37 @@ final class TimelineController: ObservableObject {
     @discardableResult
     func applyActions(_ actions: [Action], recordUndo: Bool = true) -> Bool {
         guard !actions.isEmpty else { return false }
-        let before = state.clips
+        let beforeClips = state.clips
+        let beforeEffects = state.effects
         Self.logger.info(
-            "[TimelineActions] Applying count=\(actions.count, privacy: .public) timeline=\(self.state.timelineId, privacy: .public) selectedClip=\(self.state.selectedClipId ?? "nil", privacy: .public) currentTimeUs=\(self.state.currentTimeAtCenter, privacy: .public) clipCount=\(before.count, privacy: .public)"
+            "[TimelineActions] Applying count=\(actions.count, privacy: .public) timeline=\(self.state.timelineId, privacy: .public) selectedClip=\(self.state.selectedClipId ?? "nil", privacy: .public) currentTimeUs=\(self.state.currentTimeAtCenter, privacy: .public) clipCount=\(beforeClips.count, privacy: .public)"
         )
 
         let inverseActions = state.apply(actions)
-        let diff = clipDiff(before: before, after: state.clips)
-        let didChange = !diff.added.isEmpty || !diff.updated.isEmpty || !diff.deletedIds.isEmpty
+        let diff = clipDiff(before: beforeClips, after: state.clips)
+        let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
+        let didChangeClips = !diff.added.isEmpty || !diff.updated.isEmpty || !diff.deletedIds.isEmpty
+        let didChangeEffects = !effectDiffResult.created.isEmpty
+            || !effectDiffResult.updated.isEmpty
+            || !effectDiffResult.deletedIds.isEmpty
+        let didChange = didChangeClips || didChangeEffects
 
         if didChange {
             Self.logger.info(
-                "[TimelineActions] Applied count=\(actions.count, privacy: .public) added=\(diff.added.count, privacy: .public) updated=\(diff.updated.count, privacy: .public) deleted=\(diff.deletedIds.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public)"
+                "[TimelineActions] Applied count=\(actions.count, privacy: .public) added=\(diff.added.count, privacy: .public) updated=\(diff.updated.count, privacy: .public) deleted=\(diff.deletedIds.count, privacy: .public) effectsCreated=\(effectDiffResult.created.count, privacy: .public) effectsUpdated=\(effectDiffResult.updated.count, privacy: .public) effectsDeleted=\(effectDiffResult.deletedIds.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public)"
             )
         } else {
             Self.logger.error(
-                "[TimelineActions] No-op applying actions count=\(actions.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public) summary=\(Self.actionSummary(actions), privacy: .public) timelineClipSummary=\(Self.clipSummary(before), privacy: .public)"
+                "[TimelineActions] No-op applying actions count=\(actions.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public) summary=\(Self.actionSummary(actions), privacy: .public) timelineClipSummary=\(Self.clipSummary(beforeClips), privacy: .public)"
             )
         }
 
         persistClipChanges(diff)
+        persistEffectChanges(
+            created: effectDiffResult.created,
+            updated: effectDiffResult.updated,
+            deletedIds: effectDiffResult.deletedIds
+        )
 
         if recordUndo, !inverseActions.isEmpty {
             undoStack.append(
@@ -231,9 +242,16 @@ final class TimelineController: ObservableObject {
 
     func undoLastActionGroup() {
         guard let group = undoStack.popLast() else { return }
-        let before = state.clips
+        let beforeClips = state.clips
+        let beforeEffects = state.effects
         let redoForward = state.apply(group.inverseActions)
-        persistClipChanges(before: before, after: state.clips)
+        persistClipChanges(before: beforeClips, after: state.clips)
+        let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
+        persistEffectChanges(
+            created: effectDiffResult.created,
+            updated: effectDiffResult.updated,
+            deletedIds: effectDiffResult.deletedIds
+        )
         redoStack.append(
             TimelineActionGroup(forwardActions: redoForward, inverseActions: group.inverseActions)
         )
@@ -242,9 +260,16 @@ final class TimelineController: ObservableObject {
 
     func redoLastActionGroup() {
         guard let group = redoStack.popLast() else { return }
-        let before = state.clips
+        let beforeClips = state.clips
+        let beforeEffects = state.effects
         let undoInverse = state.apply(group.forwardActions)
-        persistClipChanges(before: before, after: state.clips)
+        persistClipChanges(before: beforeClips, after: state.clips)
+        let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
+        persistEffectChanges(
+            created: effectDiffResult.created,
+            updated: effectDiffResult.updated,
+            deletedIds: effectDiffResult.deletedIds
+        )
         undoStack.append(
             TimelineActionGroup(forwardActions: group.forwardActions, inverseActions: undoInverse)
         )
@@ -510,6 +535,12 @@ final class TimelineController: ObservableObject {
         let deletedIds: [String]
     }
 
+    private struct EffectDiff {
+        let created: [Effect]
+        let updated: [Effect]
+        let deletedIds: [String]
+    }
+
     private func persistClipChanges(before: [Clip], after: [Clip]) {
         let diff = clipDiff(before: before, after: after)
         persistClipChanges(diff)
@@ -596,6 +627,30 @@ final class TimelineController: ObservableObject {
         }
 
         return ClipDiff(added: added, updated: updated, deletedIds: deletedIds)
+    }
+
+    private func effectDiff(before: [Effect], after: [Effect]) -> EffectDiff {
+        let beforeById = Dictionary(uniqueKeysWithValues: before.map { ($0.effectId, $0) })
+        let afterById = Dictionary(uniqueKeysWithValues: after.map { ($0.effectId, $0) })
+        let beforeIds = Set(beforeById.keys)
+        let afterIds = Set(afterById.keys)
+
+        let created = afterIds.subtracting(beforeIds).compactMap { afterById[$0] }
+        let deletedIds = Array(beforeIds.subtracting(afterIds))
+        let updated = beforeIds.intersection(afterIds).compactMap { id -> Effect? in
+            guard let prev = beforeById[id], let curr = afterById[id] else { return nil }
+            guard didEffectChange(before: prev, after: curr) else { return nil }
+            return curr
+        }
+
+        return EffectDiff(created: created, updated: updated, deletedIds: deletedIds)
+    }
+
+    private func didEffectChange(before: Effect, after: Effect) -> Bool {
+        before.type != after.type
+            || before.appliesTo != after.appliesTo
+            || before.targetId != after.targetId
+            || before.parameters != after.parameters
     }
 
     private func didClipChange(before: Clip, after: Clip) -> Bool {

@@ -74,7 +74,7 @@ enum AppliesTo: String, Codable {
 
 extension AppliesTo: DatabaseValueConvertible {}
 
-enum EffectParameterValue: Codable {
+enum EffectParameterValue: Codable, Equatable {
     case number(Double)
     case boolean(Bool)
     case string(String)

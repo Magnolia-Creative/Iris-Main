@@ -68,6 +68,10 @@ private extension IntentActionValidator {
             return validateMove(clipId: clipId, orderedClipIds: orderedClipIds, context: context)
         case .replaceTrackClips(let trackId, let clips):
             return validateReplaceTrackClips(trackId: trackId, clips: clips, context: context)
+        case .updateClipColorFilter(let clipId, _),
+             .setClipColorFilter(let clipId, _),
+             .resetClipColorFilter(let clipId):
+            return context.clipsById[clipId] == nil ? [.clipNotFound] : []
         }
     }
 

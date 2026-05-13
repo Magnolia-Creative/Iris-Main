@@ -39,6 +39,15 @@ extension TimelineState {
 
         case let .replaceTrackClips(trackId, replacement):
             return applyReplaceTrackClips(trackId: trackId, clips: replacement)
+
+        case let .updateClipColorFilter(clipId, adjustments):
+            return applyUpdateClipColorFilter(clipId: clipId, adjustments: adjustments)
+
+        case let .setClipColorFilter(clipId, filter):
+            return applySetClipColorFilter(clipId: clipId, filter: filter)
+
+        case let .resetClipColorFilter(clipId):
+            return applyResetClipColorFilter(clipId: clipId)
         }
     }
 
@@ -213,6 +222,120 @@ extension TimelineState {
             survivors.append(TimeRange(start: cursor, end: sourceRange.end))
         }
         return survivors.filter { $0.duration > 0 }
+    }
+
+    // MARK: - Color filter executors
+
+    private mutating func applyUpdateClipColorFilter(
+        clipId: String,
+        adjustments: ClipColorFilterPatch
+    ) -> [Action] {
+        guard clips.contains(where: { $0.clipId == clipId }) else { return [] }
+        let previousFilter = latestClipColorFilter(for: clipId)
+        let baseline = previousFilter ?? .neutral
+        let nextFilter = baseline.applying(adjustments)
+        return writeClipColorFilter(
+            clipId: clipId,
+            nextFilter: nextFilter,
+            previousFilter: previousFilter
+        )
+    }
+
+    private mutating func applySetClipColorFilter(
+        clipId: String,
+        filter: ClipColorFilter
+    ) -> [Action] {
+        guard clips.contains(where: { $0.clipId == clipId }) else { return [] }
+        let previousFilter = latestClipColorFilter(for: clipId)
+        return writeClipColorFilter(
+            clipId: clipId,
+            nextFilter: filter,
+            previousFilter: previousFilter
+        )
+    }
+
+    private mutating func applyResetClipColorFilter(clipId: String) -> [Action] {
+        guard clips.contains(where: { $0.clipId == clipId }) else { return [] }
+        let previousFilter = latestClipColorFilter(for: clipId)
+        guard previousFilter != nil else { return [] }
+        removeAllClipColorFilterEffects(for: clipId)
+        return [
+            Action.setClipColorFilter(
+                timelineId: timelineId,
+                clipId: clipId,
+                filter: previousFilter ?? .neutral
+            )
+        ]
+    }
+
+    /// Writes `nextFilter` onto the clip, collapsing any duplicate
+    /// `clip_color_filter` effects to a single row, and returns the inverse
+    /// action that restores the previous filter (or removes it).
+    private mutating func writeClipColorFilter(
+        clipId: String,
+        nextFilter: ClipColorFilter,
+        previousFilter: ClipColorFilter?
+    ) -> [Action] {
+        let inverse: Action
+        if let previousFilter {
+            inverse = Action.setClipColorFilter(
+                timelineId: timelineId,
+                clipId: clipId,
+                filter: previousFilter
+            )
+        } else {
+            inverse = Action.resetClipColorFilter(timelineId: timelineId, clipId: clipId)
+        }
+
+        if nextFilter.isNeutral {
+            removeAllClipColorFilterEffects(for: clipId)
+            return previousFilter == nil ? [] : [inverse]
+        }
+
+        if previousFilter == nextFilter {
+            return []
+        }
+
+        let matching = clipColorFilterEffects(for: clipId)
+        let existing = matching.max { $0.updatedAt < $1.updatedAt }
+        let now = Date()
+        let updatedEffect = Effect.clipColorFilter(
+            timelineId: timelineId,
+            clipId: clipId,
+            filter: nextFilter,
+            effectId: existing?.effectId ?? UUID().uuidString,
+            createdAt: existing?.createdAt ?? now
+        )
+
+        let duplicateIds = Set(matching.map(\.effectId)).subtracting([updatedEffect.effectId])
+        effects.removeAll { duplicateIds.contains($0.effectId) }
+        if let index = effects.firstIndex(where: { $0.effectId == updatedEffect.effectId }) {
+            effects[index] = updatedEffect
+        } else {
+            effects.append(updatedEffect)
+        }
+
+        return [inverse]
+    }
+
+    private func clipColorFilterEffects(for clipId: String) -> [Effect] {
+        effects.filter {
+            $0.targetId == clipId
+                && $0.appliesTo == .clip
+                && $0.type == ClipColorFilter.effectType
+        }
+    }
+
+    private func latestClipColorFilter(for clipId: String) -> ClipColorFilter? {
+        clipColorFilterEffects(for: clipId)
+            .max { $0.updatedAt < $1.updatedAt }?
+            .clipColorFilter
+    }
+
+    private mutating func removeAllClipColorFilterEffects(for clipId: String) {
+        let matchingIds = Set(clipColorFilterEffects(for: clipId).map(\.effectId))
+        guard !matchingIds.isEmpty else { return }
+        effects.removeAll { matchingIds.contains($0.effectId) }
     }
 
     private func replacementTrackClips(
