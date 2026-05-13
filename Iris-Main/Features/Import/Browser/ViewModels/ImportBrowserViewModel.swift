@@ -222,6 +222,17 @@ final class ImportBrowserViewModel: ObservableObject {
 
         updateStatusAndReadiness()
 
+        // Agent upload is debounced by `scheduleUploadFlushIfNeeded` (~1s). Dismissing the import sheet
+        // deinitializes this view model and cancels `uploadFlushTask`, so uploads would never run unless
+        // we flush here before returning (e.g. editor `ClipImportSheetView` dismisses immediately after Add).
+        if model.processingMode.runsAgentPreprocessing {
+            uploadFlushTask?.cancel()
+            uploadFlushTask = nil
+            if !pendingUploadKeys.isEmpty {
+                await flushPendingUploads()
+            }
+        }
+
         return selectedKeys.compactMap { localKey in
             guard let mediaID = clip(for: localKey)?.localMediaID else { return nil }
             return try? db.getMedia(mediaId: mediaID)
