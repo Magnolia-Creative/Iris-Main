@@ -273,6 +273,21 @@ struct EditorPromptBarView: View {
         )
     }
 
+    /// Border while recording: same diagonal flow as the waveform, but only
+    /// accent stops (no white), so it reads as the primary chrome.
+    private var recordingPrimaryBorderGradient: LinearGradient {
+        let v = CGFloat(viewModel.voiceLevel)
+        return LinearGradient(
+            colors: [
+                Color.ds.accentBg,
+                Color.ds.accentFg,
+                Color.ds.accentBg.opacity(0.92)
+            ],
+            startPoint: UnitPoint(x: 0.02 + v * 0.1, y: 0.02),
+            endPoint: UnitPoint(x: 0.98 - v * 0.06, y: 0.98)
+        )
+    }
+
     private func micCore(width: CGFloat, height: CGFloat) -> some View {
         let recording = viewModel.phase == .recording
         let corner = height / 2
@@ -293,15 +308,8 @@ struct EditorPromptBarView: View {
                     if recording {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color.ds.accentFg.opacity(0.42),
-                                        Color.white.opacity(0.16)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.15
+                                recordingPrimaryBorderGradient,
+                                lineWidth: 2.35
                             )
                     } else {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
@@ -310,10 +318,12 @@ struct EditorPromptBarView: View {
                 }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
-                    .blur(radius: 0.5)
-                    .blendMode(.plusLighter)
+                if !recording {
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                        .blur(radius: 0.5)
+                        .blendMode(.plusLighter)
+                }
             }
             .frame(width: width, height: height)
             .scaleEffect(
