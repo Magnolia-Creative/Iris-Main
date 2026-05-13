@@ -15,6 +15,8 @@ enum EditorPromptBarPhase: Equatable {
 final class EditorPromptBarViewModel: ObservableObject {
     typealias ContextProvider = @MainActor () -> IntentCompilerContext
     typealias ActionApplier = @MainActor ([Action]) -> Bool
+    /// Returns `true` when sequence-edit preview/review owns the action batch (do not apply immediately).
+    typealias PromptActionReviewStarter = @MainActor (_ actions: [Action], _ prompt: String) -> Bool
     /// When transcript DB id is not ready yet for transcript-heavy prompts, await before starting the intent run. Returns true if a wait loop ran.
     typealias TranscriptReadinessWaiter = @MainActor (String) async throws -> Bool
 
@@ -34,6 +36,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     private let needsIntentTranscriptDatabaseWait: (@MainActor (String) -> Bool)?
     private let waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter?
     private let applyActions: ActionApplier
+    private let attemptStartPromptActionReview: PromptActionReviewStarter?
     private var cancellables: Set<AnyCancellable> = []
     private var resetTask: Task<Void, Never>?
     /// Owns the in-flight intent compile so the user can cancel from the prompt bar.
@@ -50,7 +53,8 @@ final class EditorPromptBarViewModel: ObservableObject {
         contextProvider: @escaping ContextProvider,
         needsIntentTranscriptDatabaseWait: (@MainActor (String) -> Bool)? = nil,
         waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter? = nil,
-        applyActions: @escaping ActionApplier
+        applyActions: @escaping ActionApplier,
+        attemptStartPromptActionReview: PromptActionReviewStarter? = nil
     ) {
         self.transcription = transcription ?? RealtimeTranscriptionViewModel()
         self.remoteCompiler = remoteCompiler ?? RemoteIntentCompilerClient()
@@ -58,6 +62,7 @@ final class EditorPromptBarViewModel: ObservableObject {
         self.needsIntentTranscriptDatabaseWait = needsIntentTranscriptDatabaseWait
         self.waitForTranscriptReadinessIfNeeded = waitForTranscriptReadinessIfNeeded
         self.applyActions = applyActions
+        self.attemptStartPromptActionReview = attemptStartPromptActionReview
 
         self.transcription.$inputLevel
             .receive(on: DispatchQueue.main)
@@ -129,6 +134,14 @@ final class EditorPromptBarViewModel: ObservableObject {
     func cancelTextPrompt() {
         promptDraft = ""
         phase = .idle
+    }
+
+    /// Reopens the text prompt with an editable draft (e.g. after rejecting a previewed edit).
+    func openRepromptDraft(_ draft: String) {
+        guard !isSubmitting else { return }
+        resetTask?.cancel()
+        promptDraft = draft
+        phase = .typing
     }
 
     func cancelProcessing() {
@@ -220,6 +233,17 @@ final class EditorPromptBarViewModel: ObservableObject {
 
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
+                if result.actions.contains(where: \.isPromptSequenceReviewable),
+                   let attemptStartPromptActionReview {
+                    if attemptStartPromptActionReview(result.actions, trimmedPrompt) {
+                        phase = .idle
+                        return
+                    }
+                    Self.logger.error("[PromptBar] Reviewable actions present but preview review did not start")
+                    showError("Could not start preview for this edit.")
+                    return
+                }
+
                 let didApply = applyActions(result.actions)
                 guard didApply else {
                     Self.logger.error("[PromptBar] Returned actions did not change the current timeline")

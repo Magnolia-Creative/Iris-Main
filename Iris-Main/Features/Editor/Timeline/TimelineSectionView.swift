@@ -23,6 +23,7 @@ struct TimelineSectionView: View {
     var rulerVerticalOffset: CGFloat = 0
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
+    var promptActionPreview: TimelinePromptActionPreview? = nil
 
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var lastScrollOffsetX: CGFloat = 0
@@ -74,7 +75,8 @@ struct TimelineSectionView: View {
                                     onAutoScroll: updateAutoScroll(direction:),
                                     isUserScrolling: isUserScrolling,
                                     reviewFocusedClipIds: reviewFocusedClipIds,
-                                    isReviewInteractionDisabled: isReviewInteractionDisabled
+                                    isReviewInteractionDisabled: isReviewInteractionDisabled,
+                                    promptActionPreview: promptActionPreview
                                 )
                                 .padding(.top, layout.trackTopOffset)
                                 .transaction { transaction in

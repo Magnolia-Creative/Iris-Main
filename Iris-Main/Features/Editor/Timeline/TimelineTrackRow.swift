@@ -15,6 +15,7 @@ struct TimelineTrackRow: View {
     let isUserScrolling: Bool
     let reviewFocusedClipIds: Set<String>
     let isReviewInteractionDisabled: Bool
+    var promptActionPreview: TimelinePromptActionPreview? = nil
 
     private var trackHeight: CGFloat { layout.trackHeight(for: track.kind) }
     private let swapThresholdPx: CGFloat = 75
@@ -69,6 +70,9 @@ struct TimelineTrackRow: View {
                 )
                 .frame(width: max(clipWidth, 20), height: trackHeight)
                 .contentShape(Rectangle())
+                .overlay {
+                    promptPreviewOverlay(for: clip, clipWidth: max(clipWidth, 20))
+                }
                 .overlay(alignment: .leading) {
                     if selectedClipId == clip.clipId {
                         TrimHandleView()
@@ -306,6 +310,37 @@ struct TimelineTrackRow: View {
     private func clamp(_ value: Int64, _ minValue: Int64, _ maxValue: Int64) -> Int64 {
         guard maxValue >= minValue else { return minValue }
         return min(maxValue, max(minValue, value))
+    }
+
+    @ViewBuilder
+    private func promptPreviewOverlay(for clip: Clip, clipWidth: CGFloat) -> some View {
+        if let preview = promptActionPreview,
+           preview.focusClipIds.contains(clip.clipId),
+           clip.trackId == track.trackId {
+            ZStack(alignment: .leading) {
+                let ranges = preview.overlayRanges.filter { $0.clipId == clip.clipId && $0.trackId == track.trackId }
+                ForEach(Array(ranges.enumerated()), id: \.offset) { _, range in
+                    let tStart = clip.timelineRange.start
+                    let x = timeToPixels(range.timelineRange.start - tStart)
+                    let w = timeToPixels(range.timelineRange.duration)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.black.opacity(0.52))
+                        .frame(width: max(0, w), height: trackHeight)
+                        .offset(x: x)
+                }
+
+                if preview.kind == .split, let splitUs = preview.splitMarkerTimeUs,
+                   splitUs > clip.timelineRange.start, splitUs < clip.timelineRange.end {
+                    let x = timeToPixels(splitUs - clip.timelineRange.start)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: 2, height: trackHeight)
+                        .offset(x: x - 1)
+                }
+            }
+            .frame(width: clipWidth, height: trackHeight, alignment: .leading)
+            .allowsHitTesting(false)
+        }
     }
 }
 

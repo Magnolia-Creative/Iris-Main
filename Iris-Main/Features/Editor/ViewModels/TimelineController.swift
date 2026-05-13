@@ -20,6 +20,9 @@ final class TimelineController: ObservableObject {
 
     @Published private(set) var state: TimelineState
     @Published private(set) var cutReview: TimelineCutReviewSession?
+    /// Prompt-bar intent actions awaiting per-step approve/reject (split, trim, remove ranges).
+    @Published private(set) var promptActionReview: TimelinePromptActionReviewSession?
+    @Published private(set) var promptActionReviewMessage: String?
     private let db: DatabaseManager
     private let persistence: TimelinePersistence
     private let importService: MediaImportService
@@ -33,6 +36,15 @@ final class TimelineController: ObservableObject {
 
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
+
+    /// Preview geometry and focus for the current pending prompt action, if any.
+    var promptActionPreview: TimelinePromptActionPreview? {
+        guard let session = promptActionReview,
+              let action = session.currentAction,
+              action.isPromptSequenceReviewable
+        else { return nil }
+        return TimelinePromptActionPreviewBuilder.makePreview(state: state, action: action)
+    }
 
     init(
         timelineId: String,
@@ -50,6 +62,12 @@ final class TimelineController: ObservableObject {
             get: { self.state[keyPath: keyPath] },
             set: { self.state[keyPath: keyPath] = $0 }
         )
+    }
+
+    /// Unit tests only: installs synthetic tracks/clips without touching persistence.
+    internal func replaceTimelineContentForTesting(tracks: [Track], clips: [Clip]) {
+        state.tracks = tracks
+        state.clips = clips
     }
 
     func loadTimelineData() async {
@@ -192,6 +210,109 @@ final class TimelineController: ObservableObject {
 
     func clearSelection() {
         state.clearSelection()
+    }
+
+    // MARK: - Prompt action preview / review
+
+    /// Starts sequential review when the batch includes at least one reviewable sequence action.
+    /// Leading non-reviewable actions are applied immediately in order.
+    /// - Returns: `false` if review could not start (nothing reviewable or invalid timeline id).
+    @discardableResult
+    func startPromptActionReview(actions: [Action], prompt: String) -> Bool {
+        guard actions.contains(where: \.isPromptSequenceReviewable) else { return false }
+        guard actions.allSatisfy({ $0.timelineId == state.timelineId }) else { return false }
+
+        promptActionReviewMessage = nil
+        let session = TimelinePromptActionReviewSession(originalPrompt: prompt, actions: actions, currentIndex: 0)
+        promptActionReview = session
+        flushNonReviewableApplyingAll()
+        guard promptActionReview != nil else { return false }
+        focusCurrentPromptActionPreview()
+        return true
+    }
+
+    func finishPromptActionReview() {
+        promptActionReview = nil
+        promptActionReviewMessage = nil
+    }
+
+    /// Clears review and returns the original user prompt for reprompting.
+    func discardPromptActionReviewReturningPrompt() -> String? {
+        let prompt = promptActionReview?.originalPrompt
+        finishPromptActionReview()
+        return prompt
+    }
+
+    func approveCurrentPromptAction() {
+        guard var session = promptActionReview else { return }
+        guard let action = session.currentAction, action.isPromptSequenceReviewable else { return }
+
+        promptActionReviewMessage = nil
+        if !applyActions([action]) {
+            promptActionReviewMessage = "This edit could not be applied. Skipping."
+        }
+
+        session.currentIndex += 1
+        if session.currentIndex >= session.actions.count {
+            finishPromptActionReview()
+            return
+        }
+
+        promptActionReview = session
+        flushNonReviewableApplyingAll()
+        focusIfStillReviewing()
+    }
+
+    func rejectCurrentPromptAction() {
+        guard var session = promptActionReview else { return }
+        guard let action = session.currentAction, action.isPromptSequenceReviewable else { return }
+
+        promptActionReviewMessage = nil
+        session.currentIndex += 1
+        if session.currentIndex >= session.actions.count {
+            finishPromptActionReview()
+            return
+        }
+
+        promptActionReview = session
+        flushNonReviewableApplyingAll()
+        focusIfStillReviewing()
+    }
+
+    private func flushNonReviewableApplyingAll() {
+        guard var session = promptActionReview else { return }
+        while session.currentIndex < session.actions.count {
+            let action = session.actions[session.currentIndex]
+            guard !action.isPromptSequenceReviewable else { break }
+            _ = applyActions([action])
+            session.currentIndex += 1
+        }
+
+        if session.currentIndex >= session.actions.count {
+            finishPromptActionReview()
+        } else {
+            promptActionReview = session
+        }
+    }
+
+    private func focusIfStillReviewing() {
+        guard promptActionReview != nil else { return }
+        focusCurrentPromptActionPreview()
+    }
+
+    private func focusCurrentPromptActionPreview() {
+        guard let session = promptActionReview,
+              let action = session.currentAction,
+              action.isPromptSequenceReviewable
+        else { return }
+
+        if let preview = TimelinePromptActionPreviewBuilder.makePreview(state: state, action: action) {
+            state.selectedClipId = nil
+            state.currentTimeAtCenter = preview.scrollFocusTimeUs
+            state.requestScrollTo(timeUs: preview.scrollFocusTimeUs)
+        } else {
+            promptActionReviewMessage = "This edit could not be previewed."
+        }
     }
 
     /// Applies timeline commands, persists clip changes, and records an undo group.

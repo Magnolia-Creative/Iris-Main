@@ -39,6 +39,9 @@ struct EditorContainerView: View {
                 },
                 applyActions: { actions in
                     timelineController.applyActions(actions)
+                },
+                attemptStartPromptActionReview: { actions, prompt in
+                    timelineController.startPromptActionReview(actions: actions, prompt: prompt)
                 }
             )
         )
@@ -48,7 +51,7 @@ struct EditorContainerView: View {
 
     /// Canvas fills for edit/export; panels fill for import.
     private var canvasExpandsVertically: Bool {
-        isAgentCutReviewActive || activeSpace == .edit || activeSpace == .export
+        isAgentCutReviewActive || isPromptActionReviewActive || activeSpace == .edit || activeSpace == .export
     }
 
     private var isAgentCutReviewActive: Bool {
@@ -57,9 +60,22 @@ struct EditorContainerView: View {
             && controller.cutReview != nil
     }
 
+    private var isPromptActionReviewActive: Bool {
+        controller.promptActionReview != nil
+    }
+
     private var reviewFocusedClipIds: Set<String> {
-        guard isAgentCutReviewActive else { return [] }
-        return controller.cutReview?.focusedClipIds ?? []
+        if isAgentCutReviewActive {
+            return controller.cutReview?.focusedClipIds ?? []
+        }
+        if isPromptActionReviewActive {
+            return controller.promptActionPreview?.focusClipIds ?? []
+        }
+        return []
+    }
+
+    private var isTimelineReviewInteractionDisabled: Bool {
+        isAgentCutReviewActive || isPromptActionReviewActive
     }
 
     private var selectedClipColorFilter: ClipColorFilter {
@@ -80,7 +96,8 @@ struct EditorContainerView: View {
                 activeSpace: activeSpace,
                 onAddSelection: handleEditorAddSelection(kind:source:),
                 reviewFocusedClipIds: reviewFocusedClipIds,
-                isReviewInteractionDisabled: isAgentCutReviewActive
+                isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
+                promptActionPreview: controller.promptActionPreview
             )
             .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
@@ -104,6 +121,23 @@ struct EditorContainerView: View {
                         onHideRepromptComposer: { controller.hideCutReviewRepromptComposer() },
                         onRepromptTextChange: controller.updateCutReviewRepromptDraft(_:),
                         onSubmitReprompt: submitCutReviewReprompt
+                    )
+                    .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
+                    .transition(.opacity)
+                    .padding(.horizontal, .spacing(.sp3))
+                    .padding(.bottom, .spacing(.sp3))
+                } else if isPromptActionReviewActive, let promptSession = controller.promptActionReview {
+                    TimelinePromptActionReviewBar(
+                        session: promptSession,
+                        preview: controller.promptActionPreview,
+                        message: controller.promptActionReviewMessage,
+                        onApprove: { controller.approveCurrentPromptAction() },
+                        onReject: { controller.rejectCurrentPromptAction() },
+                        onReprompt: {
+                            let original = controller.discardPromptActionReviewReturningPrompt() ?? ""
+                            let draft = original.isEmpty ? "" : "\(original)\n"
+                            editorPromptBarViewModel.openRepromptDraft(draft)
+                        }
                     )
                     .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
                     .transition(.opacity)
@@ -187,6 +221,7 @@ struct EditorContainerView: View {
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isAgentCutReviewActive)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isPromptActionReviewActive)
         }
         .background(Color.ds.bg)
         .navigationBarHidden(true)
@@ -233,6 +268,7 @@ struct EditorContainerView: View {
         }
         .onDisappear {
             editorPromptBarViewModel.tearDown()
+            controller.finishPromptActionReview()
             guard hasAgentSession else { return }
             Task {
                 await agentSessionViewModel.closeIfNeeded()
@@ -258,6 +294,7 @@ struct EditorContainerView: View {
         .onChange(of: activeSpace) { oldSpace, newSpace in
             if oldSpace == .edit, newSpace != .edit {
                 editorPromptBarViewModel.tearDown()
+                controller.finishPromptActionReview()
             }
             EditorDebugTrace.log(
                 "EditorContainerView",

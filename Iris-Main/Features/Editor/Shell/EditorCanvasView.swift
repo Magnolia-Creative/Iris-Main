@@ -9,6 +9,7 @@ struct EditorCanvasView: View {
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
+    var promptActionPreview: TimelinePromptActionPreview? = nil
 
     private var showsPlaybackControls: Bool {
         activeSpace == .edit || activeSpace == .export
@@ -143,7 +144,8 @@ struct EditorCanvasView: View {
             showAddButton: allowsTimelineAdditions,
             rulerVerticalOffset: rulerVerticalOffset,
             reviewFocusedClipIds: reviewFocusedClipIds,
-            isReviewInteractionDisabled: isReviewInteractionDisabled
+            isReviewInteractionDisabled: isReviewInteractionDisabled,
+            promptActionPreview: promptActionPreview
         )
         .frame(height: layout.sectionHeight(for: state.orderedTracks))
         .animation(nil, value: layout.sectionHeight(for: state.orderedTracks))

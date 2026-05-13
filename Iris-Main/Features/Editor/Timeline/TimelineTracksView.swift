@@ -16,6 +16,7 @@ struct TimelineTracksContent: View {
     let isUserScrolling: Bool
     let reviewFocusedClipIds: Set<String>
     let isReviewInteractionDisabled: Bool
+    var promptActionPreview: TimelinePromptActionPreview? = nil
 
     var body: some View {
         VStack(spacing: layout.trackSpacing) {
@@ -34,7 +35,8 @@ struct TimelineTracksContent: View {
                     onAutoScroll: onAutoScroll,
                     isUserScrolling: isUserScrolling,
                     reviewFocusedClipIds: reviewFocusedClipIds,
-                    isReviewInteractionDisabled: isReviewInteractionDisabled
+                    isReviewInteractionDisabled: isReviewInteractionDisabled,
+                    promptActionPreview: promptActionPreview
                 )
             }
         }
