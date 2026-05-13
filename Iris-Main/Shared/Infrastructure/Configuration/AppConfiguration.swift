@@ -8,6 +8,8 @@ enum AppConfiguration {
     static let intentRunsEndpoint = backendBaseURL.appending(path: "intent-runs")
     static let uploadFieldName = "videos"
     static let uploadLocalKeyFieldName = "local_key"
+    static let visualFramesFieldName = "visual_frames"
+    static let visualFrameManifestFieldName = "visual_frame_manifest"
     static let simulateImportProcessing = false
 
     nonisolated static var semanticMobileCLIPEncoderURI: String {

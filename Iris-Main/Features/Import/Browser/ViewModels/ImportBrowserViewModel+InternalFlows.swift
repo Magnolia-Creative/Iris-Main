@@ -269,6 +269,7 @@ extension ImportBrowserViewModel {
 
         print("[ImportBrowser] flushPendingUploads: flushing \(localKeys.count) clip(s): \(localKeys)")
 
+        var visualFramesByLocalKey: [String: [VisualFrameUploadChunk]] = [:]
         do {
             print("[ImportBrowser] flushPendingUploads: ensuring remote session…")
             let remoteSession = try await ensureRemoteSession()
@@ -309,12 +310,24 @@ extension ImportBrowserViewModel {
 
             for localKey in processedAssets.map(\.localKey) {
                 updateClip(localKey: localKey) { clip in
+                    clip.uploadState = .running("Sampling visual frames")
+                }
+            }
+
+            visualFramesByLocalKey = await sampleVisualUploadFrames(for: selectedVideos)
+
+            for localKey in processedAssets.map(\.localKey) {
+                updateClip(localKey: localKey) { clip in
                     clip.uploadState = .running("Uploading to the agent")
                 }
             }
 
             print("[ImportBrowser] flushPendingUploads: calling uploadBatch…")
-            let response = try await projectClipProcessingService.uploadBatch(processedAssets, to: remoteSession)
+            let response = try await projectClipProcessingService.uploadBatch(
+                processedAssets,
+                visualFramesByLocalKey: visualFramesByLocalKey,
+                to: remoteSession
+            )
             print("[ImportBrowser] flushPendingUploads: uploadBatch succeeded")
             cleanupProcessedAssets(processedAssets)
             applyServerResponse(response)
@@ -328,6 +341,8 @@ extension ImportBrowserViewModel {
                 }
             }
         }
+
+        cleanupVisualUploadFrames(visualFramesByLocalKey)
 
         if !pendingUploadKeys.isEmpty {
             scheduleUploadFlushIfNeeded()
@@ -742,6 +757,40 @@ extension ImportBrowserViewModel {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    func sampleVisualUploadFrames(for videos: [SelectedVideoAsset]) async -> [String: [VisualFrameUploadChunk]] {
+        await withTaskGroup(of: (String, [VisualFrameUploadChunk]).self) { group in
+            for video in videos {
+                group.addTask {
+                    let url = video.originalURL
+                    let key = video.localKey
+                    do {
+                        let frames = try await SemanticUploadFrameSampling.buildJPEGFramesForUpload(
+                            videoURL: url,
+                            localKey: key
+                        )
+                        return (key, frames)
+                    } catch {
+                        print("[ImportBrowser] sampleVisualUploadFrames failed localKey=\(key): \(error)")
+                        return (key, [])
+                    }
+                }
+            }
+            var result: [String: [VisualFrameUploadChunk]] = [:]
+            for await (localKey, frames) in group {
+                result[localKey] = frames
+            }
+            return result
+        }
+    }
+
+    func cleanupVisualUploadFrames(_ framesByLocalKey: [String: [VisualFrameUploadChunk]]) {
+        for chunks in framesByLocalKey.values {
+            for chunk in chunks {
+                try? FileManager.default.removeItem(at: chunk.fileURL)
+            }
+        }
     }
 
     func cleanupProcessedAssets(_ assets: [ProcessedAudioAsset]) {

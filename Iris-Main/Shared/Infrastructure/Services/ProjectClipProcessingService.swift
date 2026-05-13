@@ -39,6 +39,7 @@ struct ProjectClipProcessingService {
 
     func uploadBatch(
         _ assets: [ProcessedAudioAsset],
+        visualFramesByLocalKey: [String: [VisualFrameUploadChunk]] = [:],
         to remoteSession: RemoteImportSession
     ) async throws -> IngestResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -48,8 +49,10 @@ struct ProjectClipProcessingService {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 180
 
+        let filteredFrames = visualFramesByLocalKey.filter { !$0.value.isEmpty }
         let body = try makeMultipartBody(
             assets: assets,
+            visualFramesByLocalKey: filteredFrames,
             sessionID: remoteSession.sessionID,
             boundary: boundary
         )
@@ -82,6 +85,7 @@ struct ProjectClipProcessingService {
 
     private func makeMultipartBody(
         assets: [ProcessedAudioAsset],
+        visualFramesByLocalKey: [String: [VisualFrameUploadChunk]],
         sessionID: String,
         boundary: String
     ) throws -> Data {
@@ -108,8 +112,70 @@ struct ProjectClipProcessingService {
             )
         }
 
+        if !visualFramesByLocalKey.isEmpty {
+            try appendVisualFrameManifestAndFiles(
+                assets: assets,
+                visualFramesByLocalKey: visualFramesByLocalKey,
+                to: &body,
+                boundary: boundary
+            )
+        }
+
         body.append("--\(boundary)--\r\n")
         return body
+    }
+
+    private func appendVisualFrameManifestAndFiles(
+        assets: [ProcessedAudioAsset],
+        visualFramesByLocalKey: [String: [VisualFrameUploadChunk]],
+        to body: inout Data,
+        boundary: String
+    ) throws {
+        var clips: [[String: Any]] = []
+        for asset in assets {
+            guard let frames = visualFramesByLocalKey[asset.localKey], !frames.isEmpty else { continue }
+            let frameObjects: [[String: Any]] = frames.map { frame in
+                [
+                    "chunk_index": frame.chunkIndex,
+                    "start_time_seconds": frame.startTimeSeconds,
+                    "end_time_seconds": frame.endTimeSeconds,
+                    "center_time_seconds": frame.centerTimeSeconds,
+                    "filename": frame.formFilename,
+                ]
+            }
+            clips.append([
+                "local_key": asset.localKey,
+                "frames": frameObjects,
+            ])
+        }
+
+        guard !clips.isEmpty else { return }
+
+        let manifest: [String: Any] = ["clips": clips]
+        let jsonData = try JSONSerialization.data(withJSONObject: manifest, options: [])
+        guard let jsonString = String(data: jsonData, encoding: .utf8) else {
+            throw ProjectClipProcessingError.invalidResponse
+        }
+
+        appendTextPart(
+            named: AppConfiguration.visualFrameManifestFieldName,
+            value: jsonString,
+            to: &body,
+            boundary: boundary
+        )
+
+        for asset in assets {
+            guard let frames = visualFramesByLocalKey[asset.localKey] else { continue }
+            for frame in frames {
+                body.append("--\(boundary)\r\n")
+                body.append(
+                    "Content-Disposition: form-data; name=\"\(AppConfiguration.visualFramesFieldName)\"; filename=\"\(frame.formFilename)\"\r\n"
+                )
+                body.append("Content-Type: image/jpeg\r\n\r\n")
+                body.append(try Data(contentsOf: frame.fileURL))
+                body.append("\r\n")
+            }
+        }
     }
 
     private func appendTextPart(named name: String, value: String, to body: inout Data, boundary: String) {

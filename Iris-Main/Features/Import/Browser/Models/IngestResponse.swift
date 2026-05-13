@@ -45,6 +45,18 @@ struct FlexibleIdentifier: Codable, Hashable, CustomStringConvertible {
     }
 }
 
+struct IngestVectorIndexResponse: Decodable, Equatable {
+    let status: String
+    let scheduledClipCount: Int?
+    let reason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case scheduledClipCount = "scheduled_clip_count"
+        case reason
+    }
+}
+
 struct IngestResponse: Decodable {
     let sessionID: FlexibleIdentifier
     let sessionName: String
@@ -56,6 +68,7 @@ struct IngestResponse: Decodable {
     let settledClipCount: Int?
     let readyForWebSocket: Bool?
     let videos: [IngestVideoResponse]
+    let vectorIndex: IngestVectorIndexResponse?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
@@ -68,6 +81,7 @@ struct IngestResponse: Decodable {
         case settledClipCount = "settled_clip_count"
         case readyForWebSocket = "ready_for_websocket"
         case videos
+        case vectorIndex = "vector_index"
     }
 }
 
