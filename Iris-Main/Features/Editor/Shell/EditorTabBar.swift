@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Top chrome pill that sits above the pinned `EditorBottomNavBar`. Houses the
+/// prompt bar, clip tools (when a clip is selected in Edit), or the
+/// space-specific extension content for Import/Export. This view is free to
+/// resize horizontally — the bottom nav row lives in a separate sibling view
+/// so it is never affected by changes here.
 struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @Binding var activeSpace: EditorSpace
     let isClipSelected: Bool
@@ -15,17 +20,12 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    @Namespace private var tabNamespace
     @Namespace private var toolNamespace
     @Namespace private var promptNamespace
     @State private var expandedToolId: Int = -1
 
-    private let tabItemWidth: CGFloat = 62
-    private let tabRowHeight: CGFloat = 48
     private let toolItemWidth: CGFloat = 48
     private let outerCornerRadius: CGFloat = 24
-    private let navCornerRadius: CGFloat = .spacing(.sp4)
-    private let shellInset: CGFloat = 10
 
     init(
         activeSpace: Binding<EditorSpace>,
@@ -53,16 +53,6 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.spaceExtension = spaceExtension()
     }
 
-    private var navWidth: CGFloat {
-        let count = CGFloat(EditorSpace.allCases.count)
-        let hPad = CGFloat.spacing(.sp2) * 2
-        return count * tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
-    }
-
-    private var shellWidth: CGFloat {
-        navWidth + shellInset * 2
-    }
-
     private var rowMaxWidth: CGFloat? {
         // When a clip is selected and the prompt bar is in its compact idle
         // layout, let the entire row size to content so the card pill hugs the
@@ -74,35 +64,14 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         return .infinity
     }
 
-    /// Clip selected with no active prompt: shell should size to content; screen
-    /// edge inset is handled by the parent (e.g. `.sp4` max horizontal margin).
-    private var hugEditChromeToContent: Bool {
-        activeSpace == .edit && isClipSelected && !promptBarIsTakingOver
-    }
-
-    /// Edit + clip tools: shell may grow horizontally; nav stays fixed width and centered.
-    private var editShellUsesFlexibleWidth: Bool {
+    /// Clip selected with no active prompt: shell should size to content; the
+    /// pinned nav bar below is unaffected by this hug.
+    private var hugChromeToContent: Bool {
         activeSpace == .edit && isClipSelected && !promptBarIsTakingOver
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: shellInset * 2) {
-            VStack(spacing: 0) {
-                topChrome
-
-                HStack {
-                    Spacer(minLength: 0)
-                    navCard
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, shellInset)
-                .padding(.bottom, shellInset)
-            }
-            .modifier(EditShellWidthModifier(
-                shellWidth: shellWidth,
-                usesFlexibleWidth: editShellUsesFlexibleWidth,
-                isEditSpace: activeSpace == .edit
-            ))
+        topChrome
             .glassEffect(
                 .regular.tint(shellTint),
                 in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
@@ -119,7 +88,6 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 guard isTakingOver else { return }
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
             }
-        }
     }
 
     private var topChrome: some View {
@@ -131,35 +99,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             }
         }
         .padding(.horizontal, .spacing(.sp3))
-        .padding(.top, .spacing(.sp3))
-        .padding(.bottom, .spacing(.sp2))
-        .modifier(HorizontalHugWhenEnabled(enabled: hugEditChromeToContent))
-        .frame(
-            maxWidth: hugEditChromeToContent ? nil : .infinity,
-            alignment: .leading
-        )
-    }
-
-    // MARK: - Nav Card (raised inner element)
-
-    private var navCard: some View {
-        navigationRow
-            .frame(width: navWidth)
-            .glassEffect(
-                .regular.tint(navTint).interactive(),
-                in: RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous)
-            )
-            .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
-    }
-
-    private var navTint: Color {
-        Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12)
-    }
-
-    private var navInnerShadowColor: Color {
-        colorScheme == .dark
-            ? Color.black.opacity(0.5)
-            : Color.black.opacity(0.1)
+        .padding(.vertical, .spacing(.sp3))
+        .modifier(HorizontalHugWhenEnabled(enabled: hugChromeToContent))
     }
 
     // MARK: - Outer Shell
@@ -172,52 +113,6 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         colorScheme == .dark
             ? Color.black.opacity(0.55)
             : Color.black.opacity(0.12)
-    }
-
-    // MARK: - Navigation Row
-
-    private var navigationRow: some View {
-        HStack(spacing: .spacing(.sp3)) {
-            ForEach(EditorSpace.allCases) { space in
-                Button {
-                    let transitionMark = "space-transition-\(space.rawValue)"
-                    let appearanceMark = "space-content-\(space.rawValue)"
-                    EditorDebugTrace.begin(
-                        transitionMark,
-                        scope: "EditorTabBar",
-                        message: "tap from=\(activeSpace.rawValue) to=\(space.rawValue)"
-                    )
-                    EditorDebugTrace.begin(
-                        appearanceMark,
-                        scope: "EditorTabBar",
-                        message: "waiting for content appearance space=\(space.rawValue)"
-                    )
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        activeSpace = space
-                    }
-                } label: {
-                    Image(systemName: activeSpace == space ? space.selectedIconName : space.unselectedIconName)
-                        .font(.system(size: 21, weight: .medium))
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundStyle(Color.white)
-                        .contentTransition(.symbolEffect(.replace.downUp.byLayer, options: .nonRepeating))
-                        .frame(width: tabItemWidth, height: tabRowHeight)
-                        .background {
-                            if activeSpace == space {
-                                RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous)
-                                    .fill(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.22))
-                                    .matchedGeometryEffect(id: "tabIndicator", in: tabNamespace)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(TabNavigationPressButtonStyle())
-                .accessibilityLabel(Text(space.rawValue))
-            }
-        }
-        .padding(.horizontal, .spacing(.sp2))
-        .padding(.vertical, .spacing(.sp2))
-        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: activeSpace)
     }
 
     // MARK: - Edit Tools Row
@@ -477,17 +372,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     }
 }
 
-/// Springy press feedback for bottom-nav tabs so the highlight eases out on release.
-private struct TabNavigationPressButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .opacity(configuration.isPressed ? 0.88 : 1.0)
-            .animation(.spring(response: 0.34, dampingFraction: 0.72), value: configuration.isPressed)
-    }
-}
-
-/// Lets the top chrome shrink to intrinsic width when clip tools are shown; nav row stays full shell width.
+/// Lets the top chrome shrink to intrinsic width when clip tools are shown.
 private struct HorizontalHugWhenEnabled: ViewModifier {
     let enabled: Bool
 
@@ -495,25 +380,6 @@ private struct HorizontalHugWhenEnabled: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content.fixedSize(horizontal: true, vertical: false)
-        } else {
-            content
-        }
-    }
-}
-
-/// Keeps edit shell at fixed pill width when idle; allows horizontal growth when clip tools are active so the nav card stays stable and centered.
-private struct EditShellWidthModifier: ViewModifier {
-    let shellWidth: CGFloat
-    let usesFlexibleWidth: Bool
-    let isEditSpace: Bool
-
-    func body(content: Content) -> some View {
-        if isEditSpace {
-            if usesFlexibleWidth {
-                content.frame(minWidth: shellWidth, maxWidth: .infinity)
-            } else {
-                content.frame(width: shellWidth)
-            }
         } else {
             content
         }

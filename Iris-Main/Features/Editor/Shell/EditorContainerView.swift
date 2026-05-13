@@ -104,69 +104,75 @@ struct EditorContainerView: View {
                     .padding(.horizontal, .spacing(.sp3))
                     .padding(.bottom, .spacing(.sp3))
                 } else {
-                    EditorTabBar(
-                        activeSpace: $activeSpace,
-                        isClipSelected: state.selectedClipId != nil,
-                        promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
-                        selectedClipColorFilter: selectedClipColorFilter,
-                        onSplitClip: {
-                            guard let clipId = controller.state.selectedClipId else { return }
-                            controller.applyActions([
-                                Action.splitClip(
-                                    timelineId: controller.state.timelineId,
-                                    clipId: clipId,
-                                    atTimeUs: controller.state.currentTimeAtCenter
-                                )
-                            ])
-                        },
-                        onDeleteClip: {
-                            guard let clipId = controller.state.selectedClipId else { return }
-                            controller.applyActions([
-                                Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
-                            ])
-                        },
-                        onSetClipColorFilter: { filter in
-                            guard let clipId = controller.state.selectedClipId else { return }
-                            controller.setClipColorFilter(clipId: clipId, filter: filter)
-                        },
-                        onResetClipColorFilter: {
-                            guard let clipId = controller.state.selectedClipId else { return }
-                            controller.resetClipColorFilter(clipId: clipId)
-                        },
-                        onDeselectClip: {
-                            controller.clearSelection()
-                        },
-                        promptBar: { isClipSelected, micNamespace in
-                            EditorPromptBarView(
-                                viewModel: editorPromptBarViewModel,
-                                isClipSelected: isClipSelected,
-                                micNamespace: micNamespace
-                            )
-                        }
-                    ) {
-                        ZStack {
-                            switch activeSpace {
-                            case .importMedia:
-                                ImportPanelContent(
-                                    controller: controller,
-                                    onOpenVideoImport: {
-                                        presentEditorImport(.library)
+                    GlassEffectContainer(spacing: 20) {
+                        VStack(spacing: .spacing(.sp2)) {
+                            EditorTabBar(
+                                activeSpace: $activeSpace,
+                                isClipSelected: state.selectedClipId != nil,
+                                promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
+                                selectedClipColorFilter: selectedClipColorFilter,
+                                onSplitClip: {
+                                    guard let clipId = controller.state.selectedClipId else { return }
+                                    controller.applyActions([
+                                        Action.splitClip(
+                                            timelineId: controller.state.timelineId,
+                                            clipId: clipId,
+                                            atTimeUs: controller.state.currentTimeAtCenter
+                                        )
+                                    ])
+                                },
+                                onDeleteClip: {
+                                    guard let clipId = controller.state.selectedClipId else { return }
+                                    controller.applyActions([
+                                        Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
+                                    ])
+                                },
+                                onSetClipColorFilter: { filter in
+                                    guard let clipId = controller.state.selectedClipId else { return }
+                                    controller.setClipColorFilter(clipId: clipId, filter: filter)
+                                },
+                                onResetClipColorFilter: {
+                                    guard let clipId = controller.state.selectedClipId else { return }
+                                    controller.resetClipColorFilter(clipId: clipId)
+                                },
+                                onDeselectClip: {
+                                    controller.clearSelection()
+                                },
+                                promptBar: { isClipSelected, micNamespace in
+                                    EditorPromptBarView(
+                                        viewModel: editorPromptBarViewModel,
+                                        isClipSelected: isClipSelected,
+                                        micNamespace: micNamespace
+                                    )
+                                }
+                            ) {
+                                ZStack {
+                                    switch activeSpace {
+                                    case .importMedia:
+                                        ImportPanelContent(
+                                            controller: controller,
+                                            onOpenVideoImport: {
+                                                presentEditorImport(.library)
+                                            }
+                                        )
+                                            .transition(.opacity)
+                                    case .export:
+                                        ExportPanelContent(controller: controller)
+                                            .transition(.opacity)
+                                    case .edit:
+                                        EmptyView()
                                     }
-                                )
-                                    .transition(.opacity)
-                            case .export:
-                                ExportPanelContent(controller: controller)
-                                    .transition(.opacity)
-                            case .edit:
-                                EmptyView()
+                                }
+                                .animation(.easeInOut(duration: 0.2), value: activeSpace)
                             }
+                            .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
+                            .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
+
+                            EditorBottomNavBar(activeSpace: $activeSpace)
                         }
-                        .animation(.easeInOut(duration: 0.2), value: activeSpace)
                     }
                     .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
                     .transition(.opacity)
-                    .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
-                    .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
                     .padding(.bottom, .spacing(.sp2))
                 }
             }
