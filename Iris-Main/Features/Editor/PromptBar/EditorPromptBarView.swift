@@ -142,24 +142,19 @@ struct EditorPromptBarView: View {
         return max(10, micButtonWidth - inset * 2)
     }
 
-    // MARK: - Mic group (mic + caption + compact chat companion)
+    // MARK: - Mic group (mic + compact chat row + caption)
 
     private var micGroup: some View {
-        HStack(alignment: .top, spacing: .spacing(.sp2)) {
-            VStack(spacing: 4) {
+        VStack(spacing: 4) {
+            HStack(alignment: .center, spacing: .spacing(.sp2)) {
                 micButton
                     .frame(width: micSlotMaxWidth, alignment: .center)
-                captionLine
+                chatButton
+                    .opacity(showsCompactChat ? 1 : 0)
+                    .frame(width: showsCompactChat ? compactSize : 0)
+                    .allowsHitTesting(showsCompactChat)
             }
-
-            // Inline chat button only shown in the compact, clip-selected
-            // idle layout. Always rendered (collapsed when hidden) so the
-            // mic's position in the view tree stays stable.
-            chatButton
-                .opacity(showsCompactChat ? 1 : 0)
-                .frame(width: showsCompactChat ? compactSize : 0)
-                .allowsHitTesting(showsCompactChat)
-                .padding(.top, isClipSelected ? 0 : 0)
+            captionLine
         }
     }
 
