@@ -206,63 +206,91 @@ struct EditorPromptBarView: View {
 
     // MARK: - Mic button
 
+    private var micHoldDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in
+                guard !isMicPressed else { return }
+                isMicPressed = true
+                Task { await viewModel.beginVoicePrompt() }
+            }
+            .onEnded { _ in
+                guard isMicPressed else { return }
+                isMicPressed = false
+                Task { await viewModel.endVoicePrompt() }
+            }
+    }
+
+    private var cancelProcessingButton: some View {
+        Button {
+            viewModel.cancelProcessing()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color.ds.textMuted)
+                .frame(width: micButtonWidth, height: micButtonHeight)
+                .contentShape(RoundedRectangle(cornerRadius: micButtonHeight / 2, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Cancel processing"))
+        .accessibilityHint(Text("Stops the edit request without changing the timeline."))
+    }
+
+    private var micWaveformContent: some View {
+        Group {
+            if viewModel.phase == .recording {
+                TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { context in
+                    VoiceMemoPillWaveform(
+                        isLive: true,
+                        voiceLevel: CGFloat(viewModel.voiceLevel),
+                        timelineDate: context.date,
+                        totalWidth: waveformInnerWidth,
+                        maxBarHeight: micButtonHeight * 0.44,
+                        gradient: recordingWaveformGradient
+                    )
+                }
+            } else {
+                VoiceMemoPillWaveform(
+                    isLive: false,
+                    voiceLevel: 0,
+                    timelineDate: .now,
+                    totalWidth: waveformInnerWidth,
+                    maxBarHeight: micButtonHeight * 0.44,
+                    gradient: idleWaveformGradient
+                )
+            }
+        }
+        .scaleEffect(isMicPressed ? 0.94 : 1.0)
+        .allowsHitTesting(false)
+    }
+
     private var micButton: some View {
-        ZStack {
+        let core = ZStack {
             micCore(width: micButtonWidth, height: micButtonHeight)
                 .animation(.easeInOut(duration: 0.22), value: showRecordingAccentBorder)
 
             if isProcessing {
-                ProcessingRing(size: micButtonHeight + 12)
+                cancelProcessingButton
                     .transition(.opacity)
+            } else {
+                micWaveformContent
             }
-
-            Group {
-                if viewModel.phase == .recording {
-                    TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { context in
-                        VoiceMemoPillWaveform(
-                            isLive: true,
-                            voiceLevel: CGFloat(viewModel.voiceLevel),
-                            timelineDate: context.date,
-                            totalWidth: waveformInnerWidth,
-                            maxBarHeight: micButtonHeight * 0.44,
-                            gradient: recordingWaveformGradient
-                        )
-                    }
-                } else {
-                    VoiceMemoPillWaveform(
-                        isLive: false,
-                        voiceLevel: 0,
-                        timelineDate: .now,
-                        totalWidth: waveformInnerWidth,
-                        maxBarHeight: micButtonHeight * 0.44,
-                        gradient: idleWaveformGradient
-                    )
-                }
-            }
-            .scaleEffect(isMicPressed ? 0.94 : 1.0)
-            .allowsHitTesting(false)
         }
         .frame(width: micButtonWidth, height: micButtonHeight)
         .matchedGeometryEffect(id: "editor-prompt-mic", in: micNamespace)
         .contentShape(
             RoundedRectangle(cornerRadius: micButtonHeight / 2, style: .continuous)
         )
-        .allowsHitTesting(!isProcessing)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard !isMicPressed else { return }
-                    isMicPressed = true
-                    Task { await viewModel.beginVoicePrompt() }
-                }
-                .onEnded { _ in
-                    guard isMicPressed else { return }
-                    isMicPressed = false
-                    Task { await viewModel.endVoicePrompt() }
-                }
-        )
-        .accessibilityLabel(Text(isProcessing ? "Processing prompt" : "Hold to talk"))
-        .accessibilityHint(Text("Press and hold to record a voice prompt."))
+
+        return Group {
+            if isProcessing {
+                core
+            } else {
+                core
+                    .gesture(micHoldDragGesture)
+                    .accessibilityLabel(Text("Hold to talk"))
+                    .accessibilityHint(Text("Press and hold to record a voice prompt."))
+            }
+        }
     }
 
     private var idleWaveformGradient: LinearGradient {
@@ -414,8 +442,7 @@ struct EditorPromptBarView: View {
             }
             .transition(.opacity)
         case .submitting:
-            // The mic itself shows the processing ring and the caption
-            // surfaces the status text, so no extra row content is needed.
+            // The mic shows a cancel control and the caption surfaces status text.
             phaseRowSpacer
         case .clarification(let message):
             HStack(spacing: .spacing(.sp2)) {
@@ -572,37 +599,5 @@ private struct VoiceMemoPillWaveform: View {
         let floorH = 0.07 + v * 0.11
         let amp = floorH + v * CGFloat(envelope) * CGFloat(0.28 + 0.72 * wobble)
         return maxBarHeight * amp
-    }
-}
-
-// MARK: - Processing ring (spins around the mic while the backend works)
-
-private struct ProcessingRing: View {
-    let size: CGFloat
-
-    @State private var rotates = false
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.28)
-            .stroke(
-                AngularGradient(
-                    gradient: Gradient(stops: [
-                        .init(color: Color.ds.accentFg.opacity(0.0), location: 0.0),
-                        .init(color: Color.ds.accentFg.opacity(0.4), location: 0.4),
-                        .init(color: Color.ds.accentFg, location: 1.0)
-                    ]),
-                    center: .center
-                ),
-                style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-            )
-            .frame(width: size, height: size)
-            .rotationEffect(.degrees(rotates ? 360 : 0))
-            .animation(
-                .linear(duration: 1.0).repeatForever(autoreverses: false),
-                value: rotates
-            )
-            .onAppear { rotates = true }
-            .accessibilityHidden(true)
     }
 }

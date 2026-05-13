@@ -36,6 +36,8 @@ final class EditorPromptBarViewModel: ObservableObject {
     private let applyActions: ActionApplier
     private var cancellables: Set<AnyCancellable> = []
     private var resetTask: Task<Void, Never>?
+    /// Owns the in-flight intent compile so the user can cancel from the prompt bar.
+    private var submitTask: Task<Void, Never>?
     private var micIsPressed = false
 
     var isTakingOver: Bool {
@@ -129,6 +131,10 @@ final class EditorPromptBarViewModel: ObservableObject {
         phase = .idle
     }
 
+    func cancelProcessing() {
+        submitTask?.cancel()
+    }
+
     func submitTextPrompt() async {
         let prompt = promptDraft
         promptDraft = ""
@@ -136,6 +142,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     }
 
     func tearDown() {
+        submitTask?.cancel()
         resetTask?.cancel()
         transcription.tearDown()
         micIsPressed = false
@@ -158,6 +165,8 @@ final class EditorPromptBarViewModel: ObservableObject {
     }
 
     private func submit(prompt: String, emptyMessage: String) async {
+        submitTask?.cancel()
+
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else {
             Self.logger.warning("[PromptBar] Submit skipped because prompt was empty")
@@ -168,6 +177,16 @@ final class EditorPromptBarViewModel: ObservableObject {
         phase = .submitting("Starting backend intent run.")
         Self.logger.info("[PromptBar] Submit start promptChars=\(trimmedPrompt.count, privacy: .public)")
 
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runSubmitting(trimmedPrompt: trimmedPrompt)
+        }
+        submitTask = task
+        await task.value
+        submitTask = nil
+    }
+
+    private func runSubmitting(trimmedPrompt: String) async {
         do {
             if let needsIntentTranscriptDatabaseWait,
                let waitForTranscriptReadinessIfNeeded,
@@ -188,6 +207,8 @@ final class EditorPromptBarViewModel: ObservableObject {
                 Self.logger.info("[PromptBar] Status update: \(status, privacy: .public)")
                 self?.phase = .submitting(status)
             }
+
+            try Task.checkCancellation()
 
             Self.logger.info(
                 "[PromptBar] Result received actions=\(result.actions.count, privacy: .public) effects=\(result.experimentalEffectOperations.count, privacy: .public) warnings=\(result.warnings.map(\.rawValue).joined(separator: ","), privacy: .public) needsClarification=\(result.needsClarification, privacy: .public)"
@@ -216,6 +237,17 @@ final class EditorPromptBarViewModel: ObservableObject {
         } catch is CancellationError {
             Self.logger.info("[PromptBar] Submit cancelled during transcript wait or compile")
             phase = .idle
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            Self.logger.info("[PromptBar] Submit cancelled (URL session)")
+            phase = .idle
+        } catch let compilerError as RemoteIntentCompilerError {
+            if case .cancelled = compilerError {
+                Self.logger.info("[PromptBar] Submit cancelled (intent compiler websocket)")
+                phase = .idle
+            } else {
+                Self.logger.error("[PromptBar] Submit failed: \(compilerError.localizedDescription, privacy: .public)")
+                showError(compilerError.localizedDescription)
+            }
         } catch {
             Self.logger.error("[PromptBar] Submit failed: \(error.localizedDescription, privacy: .public)")
             showError(error.localizedDescription)
