@@ -24,27 +24,29 @@ struct TimelinePromptActionReviewPromptSlot: View {
                     .lineLimit(2)
             }
 
-            HStack(spacing: .spacing(.sp2)) {
-                outlinedButton(
-                    title: "Approve",
-                    foreground: Color.ds.accentFg,
-                    border: Color.ds.accentFg,
-                    action: onApprove
-                )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: .spacing(.sp2)) {
+                    outlinedButton(
+                        title: "Approve",
+                        foreground: Color.ds.accentFg,
+                        border: Color.ds.accentFg,
+                        action: onApprove
+                    )
 
-                outlinedButton(
-                    title: "Reject",
-                    foreground: Color.ds.danger,
-                    border: Color.ds.danger,
-                    action: onReject
-                )
+                    outlinedButton(
+                        title: "Reject",
+                        foreground: Color.ds.danger,
+                        border: Color.ds.danger,
+                        action: onReject
+                    )
 
-                outlinedButton(
-                    title: "Reprompt",
-                    foreground: Color.ds.accentFg,
-                    border: Color.ds.accentFg,
-                    action: onReprompt
-                )
+                    outlinedButton(
+                        title: "Reprompt",
+                        foreground: Color.ds.accentFg,
+                        border: Color.ds.accentFg,
+                        action: onReprompt
+                    )
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,9 +68,10 @@ struct TimelinePromptActionReviewPromptSlot: View {
     ) -> some View {
         Button(action: action) {
             Text(title)
-                .frame(maxWidth: .infinity)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .padding(.vertical, .spacing(.sp2))
-                .padding(.horizontal, .spacing(.sp2))
+                .padding(.horizontal, .spacing(.sp3))
         }
         .buttonStyle(.plain)
         .typographyStyle(.action)
