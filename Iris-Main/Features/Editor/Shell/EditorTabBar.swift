@@ -372,7 +372,11 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     }
 
     private var resetColorButton: some View {
-        Button { onResetClipColorFilter() } label: {
+        Button {
+            updateSelectedClipFilter { filter in
+                activeColorProperty.set(0, on: &filter)
+            }
+        } label: {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(Color.ds.textMuted)
@@ -381,7 +385,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("Reset filters"))
+        .accessibilityLabel(Text("Reset \(activeColorProperty.title)"))
     }
 
     private var activeColorBinding: Binding<Double> {
