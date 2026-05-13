@@ -6,9 +6,6 @@ struct EditorPromptBarView: View {
     @ObserveInjection var inject
     let isClipSelected: Bool
     let micNamespace: Namespace.ID
-    /// Clip-selected idle chrome: tap collapses expanded clip tools in the tab
-    /// bar; prompts are not started from this control.
-    let onClipChromeTap: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -19,6 +16,7 @@ struct EditorPromptBarView: View {
 
     private let compactSize: CGFloat = 38
     private let expandedSize: CGFloat = 60
+    private let barMinHeight: CGFloat = 84
 
     /// Reserve pill width so the idle circle stays centered and horizontal
     /// growth is symmetric (avoids a leading-edge “slide in from the right”).
@@ -27,7 +25,7 @@ struct EditorPromptBarView: View {
     }
 
     /// Clip + mic-visible phases: don’t expand the prompt chrome to full width
-    /// so the pill can sit flush leading beside the tab bar divider.
+    /// so the mic can sit flush leading beside the tab bar divider.
     private var hugsLeadingToolbarChrome: Bool {
         isClipSelected && showsMic
     }
@@ -90,20 +88,10 @@ struct EditorPromptBarView: View {
                 showRecordingAccentBorder = false
             }
         }
-        .onDisappear { viewModel.tearDown() }
         .enableInjection()
     }
 
     // MARK: - Layout state
-
-    /// We grow the bar height when there's room for the caption text under
-    /// the mic so the layout doesn't feel cramped.
-    private var barMinHeight: CGFloat {
-        // Compact (clip-selected idle) stays short; everything else makes
-        // room for the caption line under the mic.
-        if isClipSelected, viewModel.phase == .idle { return 48 }
-        return 84
-    }
 
     private var micAlignment: Alignment {
         // Clip layout keeps this column pinned to the leading edge across idle /
@@ -130,14 +118,10 @@ struct EditorPromptBarView: View {
         return false
     }
 
-    private var showsClipChromeStub: Bool {
-        isClipSelected && viewModel.phase == .idle
-    }
-
     private var micButtonSize: CGFloat {
         switch viewModel.phase {
         case .recording, .submitting: return expandedSize
-        case .idle: return isClipSelected ? compactSize : expandedSize
+        case .idle: return expandedSize
         case .typing, .clarification, .error: return compactSize
         }
     }
@@ -165,54 +149,11 @@ struct EditorPromptBarView: View {
     // MARK: - Mic group (mic + caption, or clip-only chrome pill)
 
     private var micGroup: some View {
-        Group {
-            if showsClipChromeStub {
-                VStack(spacing: 4) {
-                    clipChromePill
-                    captionLine
-                }
-            } else {
-                VStack(spacing: 4) {
-                    micButton
-                        .frame(width: micSlotMaxWidth, alignment: .center)
-                    captionLine
-                }
-            }
+        VStack(spacing: 4) {
+            micButton
+                .frame(width: micSlotMaxWidth, alignment: .center)
+            captionLine
         }
-    }
-
-    /// Decorative waveform + message in one pill; does not start voice/text prompts.
-    private var clipChromePill: some View {
-        Button {
-            onClipChromeTap()
-        } label: {
-            HStack(spacing: .spacing(.sp2)) {
-                VoiceMemoPillWaveform(
-                    isLive: false,
-                    voiceLevel: 0,
-                    timelineDate: .now,
-                    totalWidth: 50,
-                    maxBarHeight: 15,
-                    gradient: idleWaveformGradient
-                )
-                Image(systemName: "message.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.ds.textMuted)
-            }
-            .padding(.horizontal, .spacing(.sp3))
-            .frame(height: compactSize)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(micButtonFill)
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Selected clip"))
-        .accessibilityHint(Text("Tap to show the default edit tools."))
     }
 
     private var captionLine: some View {
@@ -238,7 +179,7 @@ struct EditorPromptBarView: View {
     private var captionText: String {
         switch viewModel.phase {
         case .idle:
-            return isClipSelected ? "" : "Hold to talk"
+            return "Hold to talk"
         case .recording:
             return viewModel.liveTranscript.isEmpty
                 ? "Listening…"

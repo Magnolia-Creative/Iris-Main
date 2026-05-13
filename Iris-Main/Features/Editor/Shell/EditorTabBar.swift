@@ -9,7 +9,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let onDeleteClip: () -> Void
     let onSetClipColorFilter: (ClipColorFilter) -> Void
     let onResetClipColorFilter: () -> Void
-    let promptBar: (Bool, Namespace.ID, @escaping () -> Void) -> PromptBar
+    let onDeselectClip: () -> Void
+    let promptBar: (Bool, Namespace.ID) -> PromptBar
     let spaceExtension: SpaceExtension
 
     @Environment(\.colorScheme) private var colorScheme
@@ -35,7 +36,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onDeleteClip: @escaping () -> Void,
         onSetClipColorFilter: @escaping (ClipColorFilter) -> Void = { _ in },
         onResetClipColorFilter: @escaping () -> Void = {},
-        @ViewBuilder promptBar: @escaping (Bool, Namespace.ID, @escaping () -> Void) -> PromptBar,
+        onDeselectClip: @escaping () -> Void = {},
+        @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
         self._activeSpace = activeSpace
@@ -46,6 +48,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.onDeleteClip = onDeleteClip
         self.onSetClipColorFilter = onSetClipColorFilter
         self.onResetClipColorFilter = onResetClipColorFilter
+        self.onDeselectClip = onDeselectClip
         self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
     }
@@ -196,12 +199,14 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @ViewBuilder
     private var toolsRow: some View {
         HStack(spacing: .spacing(.sp2)) {
-            promptBar(isClipSelected, promptNamespace) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                    expandedToolId = -1
+            Group {
+                if isClipSelected && !promptBarIsTakingOver {
+                    clipDeselectButton
+                } else {
+                    promptBar(isClipSelected, promptNamespace)
                 }
             }
-                .layoutPriority(isClipSelected && !promptBarIsTakingOver ? 0 : 1)
+            .layoutPriority(isClipSelected && !promptBarIsTakingOver ? 0 : 1)
 
             if isClipSelected && !promptBarIsTakingOver {
                 promptDivider
@@ -233,6 +238,24 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             .frame(width: 1.5, height: 28)
             .padding(.horizontal, .spacing(.sp1))
             .accessibilityHidden(true)
+    }
+
+    private var clipDeselectButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                expandedToolId = -1
+            }
+            onDeselectClip()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(Color.ds.textMuted)
+                .frame(width: toolItemWidth, height: toolItemWidth)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Deselect clip"))
+        .accessibilityHint(Text("Returns to the full voice prompt bar."))
     }
 
     private var clipToolsCollapsedStrip: some View {

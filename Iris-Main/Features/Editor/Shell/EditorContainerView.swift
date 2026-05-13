@@ -133,12 +133,14 @@ struct EditorContainerView: View {
                             guard let clipId = controller.state.selectedClipId else { return }
                             controller.resetClipColorFilter(clipId: clipId)
                         },
-                        promptBar: { isClipSelected, micNamespace, onClipChromeTap in
+                        onDeselectClip: {
+                            controller.clearSelection()
+                        },
+                        promptBar: { isClipSelected, micNamespace in
                             EditorPromptBarView(
                                 viewModel: editorPromptBarViewModel,
                                 isClipSelected: isClipSelected,
-                                micNamespace: micNamespace,
-                                onClipChromeTap: onClipChromeTap
+                                micNamespace: micNamespace
                             )
                         }
                     ) {
@@ -206,6 +208,7 @@ struct EditorContainerView: View {
             controller.clearSelection()
         }
         .onDisappear {
+            editorPromptBarViewModel.tearDown()
             guard hasAgentSession else { return }
             Task {
                 await agentSessionViewModel.closeIfNeeded()
@@ -229,6 +232,9 @@ struct EditorContainerView: View {
             }
         }
         .onChange(of: activeSpace) { oldSpace, newSpace in
+            if oldSpace == .edit, newSpace != .edit {
+                editorPromptBarViewModel.tearDown()
+            }
             EditorDebugTrace.log(
                 "EditorContainerView",
                 "activeSpace changed from=\(oldSpace.rawValue) to=\(newSpace.rawValue)"
