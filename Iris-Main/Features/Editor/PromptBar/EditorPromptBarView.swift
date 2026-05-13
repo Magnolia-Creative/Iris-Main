@@ -289,23 +289,25 @@ struct EditorPromptBarView: View {
                 )
             )
             .overlay {
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: recording
-                                ? [
-                                    Color.ds.accentFg.opacity(0.42),
-                                    Color.white.opacity(0.16)
-                                ]
-                                : [
-                                    Color.ds.accentFg.opacity(0.55),
-                                    Color.white.opacity(0.10)
-                                ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: recording ? 1.15 : 1
-                    )
+                Group {
+                    if recording {
+                        RoundedRectangle(cornerRadius: corner, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.ds.accentFg.opacity(0.42),
+                                        Color.white.opacity(0.16)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.15
+                            )
+                    } else {
+                        RoundedRectangle(cornerRadius: corner, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+                }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
