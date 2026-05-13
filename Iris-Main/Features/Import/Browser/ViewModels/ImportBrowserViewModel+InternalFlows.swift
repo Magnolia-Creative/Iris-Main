@@ -88,6 +88,8 @@ extension ImportBrowserViewModel {
 
             if model.processingMode.runsEmbeddings {
                 startEmbeddingIfNeeded(for: localKey)
+            }
+            if model.processingMode.usesLocalTranscriptionEndpoint {
                 startTranscriptionIfNeeded(for: localKey)
             }
             if model.processingMode.runsAgentPreprocessing {
@@ -148,7 +150,7 @@ extension ImportBrowserViewModel {
     }
 
     func startTranscriptionIfNeeded(for localKey: String) {
-        guard model.processingMode.runsEmbeddings else { return }
+        guard model.processingMode.usesLocalTranscriptionEndpoint else { return }
         guard let clipIndex = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else { return }
         guard model.clips[clipIndex].originalURL != nil else { return }
         guard model.clips[clipIndex].transcriptState.isSucceeded == false else { return }

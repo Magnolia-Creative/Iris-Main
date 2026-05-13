@@ -111,7 +111,7 @@ final class ImportBrowserViewModel: ObservableObject {
             if !mode.runsEmbeddings, model.clips[index].embeddingState.isRunning {
                 embeddingTasks[model.clips[index].localKey]?.cancel()
             }
-            if !mode.runsEmbeddings {
+            if !mode.usesLocalTranscriptionEndpoint {
                 transcriptionTasks[model.clips[index].localKey]?.cancel()
             }
             if !mode.runsEmbeddings, model.clips[index].embeddingState == .idle {
@@ -126,8 +126,11 @@ final class ImportBrowserViewModel: ObservableObject {
             if mode.runsEmbeddings, model.clips[index].isCommitted, model.clips[index].embeddingState.isSucceeded == false {
                 startEmbeddingIfNeeded(for: model.clips[index].localKey)
             }
-            if mode.runsEmbeddings, model.clips[index].isCommitted, model.clips[index].transcriptState.isSucceeded == false {
+            if mode.usesLocalTranscriptionEndpoint, model.clips[index].isCommitted, model.clips[index].transcriptState.isSucceeded == false {
                 startTranscriptionIfNeeded(for: model.clips[index].localKey)
+            }
+            if mode.runsAgentPreprocessing, mode.runsEmbeddings, model.clips[index].transcriptState.isSucceeded == false {
+                model.clips[index].transcriptState = .succeeded("Transcript on server")
             }
             if mode.runsAgentPreprocessing, model.clips[index].isCommitted, model.clips[index].remoteClipID == nil {
                 enqueueClipForUpload(localKey: model.clips[index].localKey)
@@ -158,7 +161,15 @@ final class ImportBrowserViewModel: ObservableObject {
             isSelected: true,
             isCommitted: false,
             embeddingState: model.processingMode.runsEmbeddings ? .queued("Waiting for commit") : .succeeded("Embeddings skipped"),
-            transcriptState: model.processingMode.runsEmbeddings ? .queued("Waiting for local transcript") : .succeeded("Transcript skipped"),
+            transcriptState: {
+                if model.processingMode.usesLocalTranscriptionEndpoint {
+                    return .queued("Waiting for local transcript")
+                }
+                if model.processingMode.runsAgentPreprocessing, model.processingMode.runsEmbeddings {
+                    return .succeeded("Transcript on server")
+                }
+                return .succeeded("Transcript skipped")
+            }(),
             uploadState: model.processingMode.runsAgentPreprocessing ? .queued("Waiting for commit") : .succeeded("Agent prep skipped"),
             commitmentStatus: "Hold selection to begin processing"
         )

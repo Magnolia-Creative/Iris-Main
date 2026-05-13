@@ -39,6 +39,12 @@ enum ImportProcessingMode: String, CaseIterable, Identifiable {
             false
         }
     }
+
+    /// Local `/transcriptions/sentences` is used only when embeddings run without server clip processing.
+    /// When agent preprocessing is enabled, transcripts come from `POST …/clips/process` instead.
+    var usesLocalTranscriptionEndpoint: Bool {
+        runsEmbeddings && !runsAgentPreprocessing
+    }
 }
 
 enum ImportClipWorkState: Equatable {

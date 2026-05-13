@@ -12,6 +12,9 @@ struct ImportBrowserModelTests {
         #expect(ImportProcessingMode.agentPreprocessingOnly.runsAgentPreprocessing)
         #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.runsEmbeddings)
         #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.runsAgentPreprocessing)
+        #expect(ImportProcessingMode.embeddingsOnly.usesLocalTranscriptionEndpoint)
+        #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.usesLocalTranscriptionEndpoint == false)
+        #expect(ImportProcessingMode.agentPreprocessingOnly.usesLocalTranscriptionEndpoint == false)
     }
 
     @Test func selectedVideoAssetUsesLocalKeyAsStableIdentity() {

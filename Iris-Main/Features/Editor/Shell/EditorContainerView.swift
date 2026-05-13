@@ -550,7 +550,7 @@ private struct EditorClipImportSheet: View {
             }
         )
         .task {
-            viewModel.updateProcessingMode(.embeddingsOnly)
+            viewModel.updateProcessingMode(.embeddingsAndAgentPreprocessing)
         }
     }
 }
