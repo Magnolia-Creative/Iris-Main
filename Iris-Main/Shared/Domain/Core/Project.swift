@@ -13,6 +13,8 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
     let createdAt: Date
     var updatedAt: Date
     var lastAccessedAt: Date?
+    var backendProjectId: String?
+    var backendProjectName: String?
 
     var id: String { projectId }
 
@@ -27,7 +29,9 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         frameRate: Int = 30,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        lastAccessedAt: Date? = Date()
+        lastAccessedAt: Date? = Date(),
+        backendProjectId: String? = nil,
+        backendProjectName: String? = nil
     ) {
         self.projectId = projectId
         self.name = name
@@ -40,6 +44,8 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.lastAccessedAt = lastAccessedAt
+        self.backendProjectId = backendProjectId
+        self.backendProjectName = backendProjectName
     }
 
     enum CodingKeys: String, CodingKey {
@@ -54,6 +60,8 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case lastAccessedAt = "last_accessed_at"
+        case backendProjectId = "backend_project_id"
+        case backendProjectName = "backend_project_name"
     }
 
     static let databaseTableName = "projects"
@@ -70,6 +78,8 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         static let createdAt = Column(CodingKeys.createdAt)
         static let updatedAt = Column(CodingKeys.updatedAt)
         static let lastAccessedAt = Column(CodingKeys.lastAccessedAt)
+        static let backendProjectId = Column(CodingKeys.backendProjectId)
+        static let backendProjectName = Column(CodingKeys.backendProjectName)
     }
 
     var resolutionLabel: String {

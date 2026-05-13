@@ -1,5 +1,15 @@
 import Foundation
 
+struct RemoteProjectCreateResponse: Decodable {
+    let projectID: FlexibleIdentifier
+    let projectName: String
+
+    enum CodingKeys: String, CodingKey {
+        case projectID = "project_id"
+        case projectName = "project_name"
+    }
+}
+
 struct RemoteImportSessionResponse: Decodable {
     let sessionID: FlexibleIdentifier
     let sessionName: String
@@ -27,7 +37,7 @@ struct RemoteImportSessionResponse: Decodable {
 }
 
 struct CancelClipResponse: Decodable {
-    let sessionID: FlexibleIdentifier
+    let sessionID: FlexibleIdentifier?
     let projectID: FlexibleIdentifier
     let localKey: String
     let taskCancelled: Bool
@@ -43,5 +53,16 @@ struct CancelClipResponse: Decodable {
         case deletedClipID = "deleted_clip_id"
         case sessionStatus = "session_status"
         case readyForWebSocket = "ready_for_websocket"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .sessionID)
+        projectID = try container.decode(FlexibleIdentifier.self, forKey: .projectID)
+        localKey = try container.decode(String.self, forKey: .localKey)
+        taskCancelled = try container.decode(Bool.self, forKey: .taskCancelled)
+        deletedClipID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .deletedClipID)
+        sessionStatus = try container.decode(String.self, forKey: .sessionStatus)
+        readyForWebSocket = try container.decode(Bool.self, forKey: .readyForWebSocket)
     }
 }

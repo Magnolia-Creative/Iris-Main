@@ -25,12 +25,24 @@ struct ProjectClipProcessingService {
         self.session = session
     }
 
-    func createRemoteSession(projectName: String? = nil) async throws -> RemoteImportSessionResponse {
-        var request = URLRequest(url: AppConfiguration.agentSessionEndpoint)
+    func createRemoteProject(displayName: String?) async throws -> RemoteProjectCreateResponse {
+        var request = URLRequest(url: AppConfiguration.projectsCreateEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = ["project_name": projectName, "session_name": projectName]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
+        let body = ["name": displayName].compactMapValues { $0 }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(RemoteProjectCreateResponse.self, from: data)
+    }
+
+    func createAgentSession(projectID: String, sessionName: String?) async throws -> RemoteImportSessionResponse {
+        var request = URLRequest(url: AppConfiguration.projectAgentSessionsEndpoint(projectID: projectID))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body = ["session_name": sessionName].compactMapValues { $0 }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
@@ -40,10 +52,10 @@ struct ProjectClipProcessingService {
     func uploadBatch(
         _ assets: [ProcessedAudioAsset],
         visualFramesByLocalKey: [String: [VisualFrameUploadChunk]] = [:],
-        to remoteSession: RemoteImportSession
+        backendProjectID: String
     ) async throws -> IngestResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
-        let endpoint = AppConfiguration.projectClipProcessingEndpoint(projectID: remoteSession.projectID)
+        let endpoint = AppConfiguration.projectClipProcessingEndpoint(projectID: backendProjectID)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -53,10 +65,16 @@ struct ProjectClipProcessingService {
         let body = try makeMultipartBody(
             assets: assets,
             visualFramesByLocalKey: filteredFrames,
-            sessionID: remoteSession.sessionID,
             boundary: boundary
         )
         let (data, response) = try await session.upload(for: request, from: body)
+        try validate(response: response, data: data)
+        return try decoder.decode(IngestResponse.self, from: data)
+    }
+
+    func fetchProjectClipStatus(projectID: String) async throws -> IngestResponse {
+        let endpoint = AppConfiguration.projectClipStatusEndpoint(projectID: projectID)
+        let (data, response) = try await session.data(from: endpoint)
         try validate(response: response, data: data)
         return try decoder.decode(IngestResponse.self, from: data)
     }
@@ -69,11 +87,10 @@ struct ProjectClipProcessingService {
     }
 
     @discardableResult
-    func cancelClip(localKey: String, remoteSession: RemoteImportSession) async throws -> CancelClipResponse {
+    func cancelClip(localKey: String, backendProjectID: String) async throws -> CancelClipResponse {
         let endpoint = AppConfiguration.projectClipCancelEndpoint(
-            projectID: remoteSession.projectID,
-            localKey: localKey,
-            sessionID: remoteSession.sessionID
+            projectID: backendProjectID,
+            localKey: localKey
         )
         var request = URLRequest(url: endpoint)
         request.httpMethod = "DELETE"
@@ -86,17 +103,9 @@ struct ProjectClipProcessingService {
     private func makeMultipartBody(
         assets: [ProcessedAudioAsset],
         visualFramesByLocalKey: [String: [VisualFrameUploadChunk]],
-        sessionID: String,
         boundary: String
     ) throws -> Data {
         var body = Data()
-
-        appendTextPart(
-            named: "session_id",
-            value: sessionID,
-            to: &body,
-            boundary: boundary
-        )
 
         for asset in assets {
             body.append("--\(boundary)\r\n")

@@ -258,9 +258,12 @@ final class ImportBrowserViewModel: ObservableObject {
             _ = await resyncSemanticIndexIfNeeded(autoBuildIndex: true)
         }
 
-        if let remoteSession = model.remoteSession,
+        if let backendProject = model.remoteBackendProject,
            clip.remoteClipID != nil || clip.uploadState.isRunning || clip.uploadState.isSucceeded || clip.uploadState.isFailed {
-            _ = try? await projectClipProcessingService.cancelClip(localKey: localKey, remoteSession: remoteSession)
+            _ = try? await projectClipProcessingService.cancelClip(
+                localKey: localKey,
+                backendProjectID: backendProject.projectID
+            )
         }
 
         if let url = clip.originalURL {

@@ -17,6 +17,8 @@ final class AgentViewModel: ObservableObject {
     var sourceVideos: [SelectedVideoAsset] = []
     var ingestResponse: IngestResponse?
     var ingestEndpoint: URL?
+    /// WebSocket session id from `POST /projects/{id}/agent-sessions` when ingest has no `session_id`.
+    var agentWebSocketSessionID: String?
     var sourceClipsByRemoteID: [String: AgentSourceClip] = [:]
     var webSocketTask: URLSessionWebSocketTask?
     var receiveTask: Task<Void, Never>?
@@ -29,14 +31,19 @@ final class AgentViewModel: ObservableObject {
         promptText: String,
         videos: [SelectedVideoAsset],
         ingestResponse: IngestResponse?,
-        ingestEndpoint: URL
+        ingestEndpoint: URL,
+        agentWebSocketSessionID: String? = nil
     ) {
         closeSocket(sendDoneMessage: false)
 
         sourceVideos = videos
         self.ingestResponse = ingestResponse
         self.ingestEndpoint = ingestEndpoint
+        self.agentWebSocketSessionID = agentWebSocketSessionID
         sourceClipsByRemoteID = [:]
+
+        let resolvedSessionID = agentWebSocketSessionID ?? ingestResponse?.sessionID?.rawValue
+        let resolvedProjectID = ingestResponse?.projectID?.rawValue
 
         model = AgentModel(
             promptText: promptText,
@@ -55,8 +62,8 @@ final class AgentViewModel: ObservableObject {
             pendingEditorSeed: nil,
             timelineNotes: [],
             feedbackDraft: "",
-            sessionID: ingestResponse?.sessionID.rawValue,
-            projectID: nil,
+            sessionID: resolvedSessionID,
+            projectID: resolvedProjectID,
             errorMessage: nil,
             isAwaitingUserInput: false,
             isConnected: false,
@@ -65,7 +72,7 @@ final class AgentViewModel: ObservableObject {
         )
 
         logger.info(
-            "Configured agent view. promptLength=\(promptText.count) localVideos=\(videos.count) sessionID=\(ingestResponse?.sessionID.rawValue ?? "nil", privacy: .public)"
+            "Configured agent view. promptLength=\(promptText.count) localVideos=\(videos.count) sessionID=\(resolvedSessionID ?? "nil", privacy: .public)"
         )
     }
 
@@ -81,16 +88,20 @@ final class AgentViewModel: ObservableObject {
             let response = try requireIngestResponse()
             sourceClipsByRemoteID = await buildSourceClipLookup(from: sourceVideos, response: response)
 
+            guard let socketSessionId = agentWebSocketSessionID ?? response.sessionID?.rawValue else {
+                throw AgentSessionError.missingSessionData
+            }
+
             guard let ingestEndpoint,
                   let socketURL = AppConfiguration.agentWebSocketEndpoint(
-                      sessionID: response.sessionID.rawValue,
+                      sessionID: socketSessionId,
                       basedOn: ingestEndpoint
                   ) else {
                 throw AgentSessionError.invalidSessionEndpoint
             }
 
             logger.info(
-                "Opening websocket session \(response.sessionID.rawValue, privacy: .public) at \(socketURL.absoluteString, privacy: .public)"
+                "Opening websocket session \(socketSessionId, privacy: .public) at \(socketURL.absoluteString, privacy: .public)"
             )
             try await openSocket(at: socketURL)
             try await sendMessage(.startSession(prompt: model.promptText))

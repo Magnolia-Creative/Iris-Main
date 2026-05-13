@@ -99,9 +99,7 @@ struct ImportBrowserAsset: Identifiable, Equatable {
     var isCommitted: Bool
 }
 
-struct RemoteImportSession: Equatable {
-    let sessionID: String
-    let sessionName: String
+struct RemoteBackendProject: Equatable {
     let projectID: String
     let projectName: String
 }
@@ -139,7 +137,8 @@ struct ImportBrowserModel {
     var processingMode: ImportProcessingMode = .embeddingsAndAgentPreprocessing
     var prompt = PromptMessageState()
     var statusMessage = "Select clips to start preparing them for Iris."
-    var remoteSession: RemoteImportSession?
+    var remoteBackendProject: RemoteBackendProject?
+    var agentWebSocketSessionID: String?
     var ingestResponse: IngestResponse?
     var isAwaitingAgentStart = false
     var isPreparingAgentTransition = false

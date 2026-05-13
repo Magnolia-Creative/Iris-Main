@@ -273,9 +273,9 @@ extension ImportBrowserViewModel {
 
         var visualFramesByLocalKey: [String: [VisualFrameUploadChunk]] = [:]
         do {
-            print("[ImportBrowser] flushPendingUploads: ensuring remote session…")
-            let remoteSession = try await ensureRemoteSession()
-            print("[ImportBrowser] flushPendingUploads: remote session ready – projectID=\(remoteSession.projectID) sessionID=\(remoteSession.sessionID)")
+            print("[ImportBrowser] flushPendingUploads: ensuring remote backend project…")
+            let remoteProject = try await ensureRemoteBackendProject()
+            print("[ImportBrowser] flushPendingUploads: remote project ready – projectID=\(remoteProject.projectID)")
 
             let selectedVideos = model.clips.compactMap { clip -> SelectedVideoAsset? in
                 guard localKeys.contains(clip.localKey),
@@ -328,7 +328,7 @@ extension ImportBrowserViewModel {
             let response = try await projectClipProcessingService.uploadBatch(
                 processedAssets,
                 visualFramesByLocalKey: visualFramesByLocalKey,
-                to: remoteSession
+                backendProjectID: remoteProject.projectID
             )
             print("[ImportBrowser] flushPendingUploads: uploadBatch succeeded")
             cleanupProcessedAssets(processedAssets)
@@ -372,15 +372,23 @@ extension ImportBrowserViewModel {
     func applyServerResponse(_ response: IngestResponse) {
         model.ingestResponse = response
 
-        if let remoteSession = model.remoteSession,
-           let projectID = response.projectID?.rawValue,
-           projectID != remoteSession.projectID {
-            model.remoteSession = RemoteImportSession(
-                sessionID: response.sessionID.rawValue,
-                sessionName: response.sessionName,
+        if let projectID = response.projectID?.rawValue {
+            let projectName = response.projectName
+                ?? model.remoteBackendProject?.projectName
+                ?? localProjectName()
+                ?? "Iris Project"
+            model.remoteBackendProject = RemoteBackendProject(
                 projectID: projectID,
-                projectName: response.projectName ?? remoteSession.projectName
+                projectName: projectName
             )
+            if let timelineId,
+               let timeline = try? db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") {
+                try? db.saveBackendProjectMapping(
+                    localProjectId: timeline.projectId,
+                    backendProjectId: projectID,
+                    backendProjectName: projectName
+                )
+            }
         }
 
         let responseByLocalKey: [String: IngestVideoResponse] = Dictionary(
@@ -417,7 +425,7 @@ extension ImportBrowserViewModel {
 
     func startRemoteStatusPollingIfNeeded() {
         guard model.processingMode.runsAgentPreprocessing else { return }
-        guard let remoteSession = model.remoteSession else { return }
+        guard let backendProject = model.remoteBackendProject else { return }
         guard let ingestResponse = model.ingestResponse else { return }
         guard ingestResponse.pendingClipCount ?? 0 > 0 || ingestResponse.readyForWebSocket != true else {
             sessionStatusPollTask?.cancel()
@@ -437,8 +445,8 @@ extension ImportBrowserViewModel {
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
-                    let response = try await projectClipProcessingService.fetchSessionStatus(
-                        sessionID: remoteSession.sessionID
+                    let response = try await projectClipProcessingService.fetchProjectClipStatus(
+                        projectID: backendProject.projectID
                     )
                     await MainActor.run {
                         self.model.ingestResponse = response
@@ -464,23 +472,56 @@ extension ImportBrowserViewModel {
         }
     }
 
-    func ensureRemoteSession() async throws -> RemoteImportSession {
-        if let remoteSession = model.remoteSession {
-            print("[ImportBrowser] ensureRemoteSession: reusing existing session \(remoteSession.sessionID)")
-            return remoteSession
+    func ensureRemoteBackendProject() async throws -> RemoteBackendProject {
+        if let existing = model.remoteBackendProject {
+            print("[ImportBrowser] ensureRemoteBackendProject: reusing project \(existing.projectID)")
+            return existing
         }
 
-        print("[ImportBrowser] ensureRemoteSession: creating new session via \(AppConfiguration.agentSessionEndpoint)")
-        let response = try await projectClipProcessingService.createRemoteSession(projectName: localProjectName())
-        let remoteSession = RemoteImportSession(
-            sessionID: response.sessionID.rawValue,
-            sessionName: response.sessionName,
-            projectID: response.projectID.rawValue,
-            projectName: response.projectName
+        if let timelineId,
+           let timeline = try? db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id"),
+           let project = try? db.get(Project.self, id: timeline.projectId, keyColumn: "project_id"),
+           let bid = project.backendProjectId,
+           !bid.isEmpty {
+            let ctx = RemoteBackendProject(
+                projectID: bid,
+                projectName: project.backendProjectName ?? project.name
+            )
+            print("[ImportBrowser] ensureRemoteBackendProject: loaded from local DB projectID=\(ctx.projectID)")
+            model.remoteBackendProject = ctx
+            return ctx
+        }
+
+        let display = localProjectName() ?? "Iris Project"
+        print("[ImportBrowser] ensureRemoteBackendProject: creating via \(AppConfiguration.projectsCreateEndpoint)")
+        let created = try await projectClipProcessingService.createRemoteProject(displayName: display)
+        let ctx = RemoteBackendProject(
+            projectID: created.projectID.rawValue,
+            projectName: created.projectName
         )
-        print("[ImportBrowser] ensureRemoteSession: created sessionID=\(remoteSession.sessionID) projectID=\(remoteSession.projectID)")
-        model.remoteSession = remoteSession
-        return remoteSession
+        model.remoteBackendProject = ctx
+        if let timelineId,
+           let timeline = try? db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") {
+            try? db.saveBackendProjectMapping(
+                localProjectId: timeline.projectId,
+                backendProjectId: ctx.projectID,
+                backendProjectName: ctx.projectName
+            )
+        }
+        print("[ImportBrowser] ensureRemoteBackendProject: created projectID=\(ctx.projectID)")
+        return ctx
+    }
+
+    /// Creates a backend agent session for WebSocket routing; call only when ingest is ready for AutoMake.
+    func prepareAgentWebSocketSessionIfNeeded() async throws {
+        let ctx = try await ensureRemoteBackendProject()
+        guard model.agentWebSocketSessionID == nil else { return }
+        let agent = try await projectClipProcessingService.createAgentSession(
+            projectID: ctx.projectID,
+            sessionName: localProjectName()
+        )
+        model.agentWebSocketSessionID = agent.sessionID.rawValue
+        print("[ImportBrowser] prepareAgentWebSocketSessionIfNeeded: sessionID=\(agent.sessionID.rawValue)")
     }
 
     func refreshVisibleAssetSelectionState() {

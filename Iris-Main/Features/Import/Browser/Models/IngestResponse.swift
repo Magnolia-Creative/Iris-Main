@@ -58,9 +58,9 @@ struct IngestVectorIndexResponse: Decodable, Equatable {
 }
 
 struct IngestResponse: Decodable {
-    let sessionID: FlexibleIdentifier
-    let sessionName: String
-    let sessionStatus: String
+    let sessionID: FlexibleIdentifier?
+    let sessionName: String?
+    let sessionStatus: String?
     let projectID: FlexibleIdentifier?
     let projectName: String?
     let uploadedCount: Int
@@ -83,11 +83,26 @@ struct IngestResponse: Decodable {
         case videos
         case vectorIndex = "vector_index"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .sessionID)
+        sessionName = try container.decodeIfPresent(String.self, forKey: .sessionName)
+        sessionStatus = try container.decodeIfPresent(String.self, forKey: .sessionStatus)
+        projectID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .projectID)
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        uploadedCount = try container.decode(Int.self, forKey: .uploadedCount)
+        pendingClipCount = try container.decodeIfPresent(Int.self, forKey: .pendingClipCount)
+        settledClipCount = try container.decodeIfPresent(Int.self, forKey: .settledClipCount)
+        readyForWebSocket = try container.decodeIfPresent(Bool.self, forKey: .readyForWebSocket)
+        videos = try container.decode([IngestVideoResponse].self, forKey: .videos)
+        vectorIndex = try container.decodeIfPresent(IngestVectorIndexResponse.self, forKey: .vectorIndex)
+    }
 }
 
 struct IngestVideoResponse: Decodable, Identifiable {
     let index: Int
-    let sessionID: FlexibleIdentifier
+    let sessionID: FlexibleIdentifier?
     let projectID: FlexibleIdentifier?
     let clipID: FlexibleIdentifier
     let transcriptID: FlexibleIdentifier?
@@ -117,7 +132,7 @@ struct IngestVideoResponse: Decodable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         index = try container.decode(Int.self, forKey: .index)
-        sessionID = try container.decode(FlexibleIdentifier.self, forKey: .sessionID)
+        sessionID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .sessionID)
         projectID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .projectID)
         clipID = try container.decode(FlexibleIdentifier.self, forKey: .clipID)
         transcriptID = try container.decodeIfPresent(FlexibleIdentifier.self, forKey: .transcriptID)

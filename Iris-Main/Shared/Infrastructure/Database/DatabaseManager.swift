@@ -221,6 +221,13 @@ extension DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v5_backendProjectMapping") { db in
+            try db.alter(table: "projects") { t in
+                t.add(column: "backend_project_id", .text)
+                t.add(column: "backend_project_name", .text)
+            }
+        }
+
         return migrator
     }
 }
@@ -395,6 +402,20 @@ extension DatabaseManager {
         case .overlay: return 0
         case .video: return 1
         case .audio: return 2
+        }
+    }
+}
+
+extension DatabaseManager {
+    func saveBackendProjectMapping(localProjectId: String, backendProjectId: String, backendProjectName: String?) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE projects SET backend_project_id = ?, backend_project_name = ?, updated_at = ?
+                WHERE project_id = ?
+                """,
+                arguments: [backendProjectId, backendProjectName, Date(), localProjectId]
+            )
         }
     }
 }

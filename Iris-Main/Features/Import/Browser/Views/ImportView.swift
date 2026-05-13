@@ -74,17 +74,25 @@ struct ImportView: View {
             guard shouldPrepare,
                   let response = viewModel.model.ingestResponse else { return }
 
-            agentViewModel.configure(
-                promptText: viewModel.model.prompt.trimmedText,
-                videos: viewModel.model.committedVideos,
-                ingestResponse: response,
-                ingestEndpoint: AppConfiguration.agentSessionEndpoint
-            )
+            Task { @MainActor in
+                do {
+                    try await viewModel.prepareAgentWebSocketSessionIfNeeded()
+                    agentViewModel.configure(
+                        promptText: viewModel.model.prompt.trimmedText,
+                        videos: viewModel.model.committedVideos,
+                        ingestResponse: response,
+                        ingestEndpoint: AppConfiguration.backendBaseURL,
+                        agentWebSocketSessionID: viewModel.model.agentWebSocketSessionID
+                    )
 
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
-                showsAgentView = true
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
+                        showsAgentView = true
+                    }
+                } catch {
+                    print("[ImportView] prepareAgentWebSocketSessionIfNeeded failed: \(error)")
+                }
+                viewModel.finishPreparingAgentTransition()
             }
-            viewModel.finishPreparingAgentTransition()
         }
         .onChange(of: agentViewModel.model.canLaunchEditorReview) { _, canLaunchEditorReview in
             guard canLaunchEditorReview, let seed = agentViewModel.model.pendingEditorSeed else { return }
