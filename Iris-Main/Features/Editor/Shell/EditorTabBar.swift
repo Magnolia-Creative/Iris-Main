@@ -31,6 +31,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @Namespace private var toolNamespace
     @Namespace private var promptNamespace
     @State private var expandedToolId: Int = -1
+    @State private var activeColorProperty: ColorProperty = .temperature
 
     private let toolItemWidth: CGFloat = 48
     private let outerCornerRadius: CGFloat = 24
@@ -79,7 +80,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     /// Clip selected with no active prompt: shell should size to content; the
     /// pinned nav bar below is unaffected by this hug.
     private var hugChromeToContent: Bool {
-        activeSpace == .edit && isClipSelected && !promptBarIsTakingOver
+        activeSpace == .edit
+            && isClipSelected
+            && !promptBarIsTakingOver
+            && expandedToolId != 3
     }
 
     var body: some View {
@@ -218,28 +222,14 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     @ViewBuilder
     private func clipToolsExpandedCluster(selected: ToolItem) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: .spacing(.sp2)) {
-                Button { handleToolTap(selected) } label: {
-                    HStack(spacing: .spacing(.sp2)) {
-                        Image(systemName: selected.systemImage)
-                            .font(.system(size: 18, weight: .medium))
-                            .matchedGeometryEffect(id: "tool-\(selected.id)", in: toolNamespace)
-                        Text(selected.title)
-                            .typography(.body)
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(Color.ds.textMuted)
-                    .padding(.horizontal, .spacing(.sp3))
-                    .padding(.vertical, .spacing(.sp2))
-                    .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
-                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .transition(.move(edge: .leading).combined(with: .opacity))
+        switch selected.kind {
+        case .colorFilters:
+            colorFilterControls
+        case let .expandable(subItems):
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: .spacing(.sp2)) {
+                    expandedToolTitleButton(for: selected)
 
-                switch selected.kind {
-                case let .expandable(subItems):
                     ForEach(subItems) { sub in
                         Button { sub.action() } label: {
                             Image(systemName: sub.systemImage)
@@ -252,13 +242,31 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(Text(sub.title))
                     }
-                case .colorFilters:
-                    colorFilterControls
-                case .action:
-                    EmptyView()
                 }
             }
+        case .action:
+            EmptyView()
         }
+    }
+
+    private func expandedToolTitleButton(for selected: ToolItem) -> some View {
+        Button { handleToolTap(selected) } label: {
+            HStack(spacing: .spacing(.sp2)) {
+                Image(systemName: selected.systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                    .matchedGeometryEffect(id: "tool-\(selected.id)", in: toolNamespace)
+                Text(selected.title)
+                    .typography(.body)
+                    .lineLimit(1)
+            }
+            .foregroundColor(Color.ds.textMuted)
+            .padding(.horizontal, .spacing(.sp3))
+            .padding(.vertical, .spacing(.sp2))
+            .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
+            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .transition(.move(edge: .leading).combined(with: .opacity))
     }
 
     private func toolLabel(
@@ -282,109 +290,167 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             return
         }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            expandedToolId = expandedToolId == item.id ? -1 : item.id
+            let wasExpanded = expandedToolId == item.id
+            expandedToolId = wasExpanded ? -1 : item.id
+            if !wasExpanded, case .colorFilters = item.kind {
+                activeColorProperty = .temperature
+            }
         }
     }
 
     private var colorFilterControls: some View {
         HStack(spacing: .spacing(.sp2)) {
-            filterSlider(
-                title: "Temp",
-                systemImage: "thermometer.medium",
-                value: selectedClipColorFilter.temperature,
-                range: ClipColorFilter.normalizedRange
-            ) { value in
-                updateSelectedClipFilter { $0.temperature = value }
-            }
-
-            filterSlider(
-                title: "Tint",
-                systemImage: "eyedropper.halffull",
-                value: selectedClipColorFilter.tint,
-                range: ClipColorFilter.normalizedRange
-            ) { value in
-                updateSelectedClipFilter { $0.tint = value }
-            }
-
-            filterSlider(
-                title: "Exposure",
-                systemImage: "plusminus.circle",
-                value: selectedClipColorFilter.exposure,
-                range: ClipColorFilter.exposureRange
-            ) { value in
-                updateSelectedClipFilter { $0.exposure = value }
-            }
-
-            filterSlider(
-                title: "Bright",
-                systemImage: "sun.max",
-                value: selectedClipColorFilter.brightness,
-                range: ClipColorFilter.normalizedRange
-            ) { value in
-                updateSelectedClipFilter { $0.brightness = value }
-            }
-
-            filterSlider(
-                title: "Sat",
-                systemImage: "camera.filters",
-                value: selectedClipColorFilter.saturation,
-                range: ClipColorFilter.normalizedRange
-            ) { value in
-                updateSelectedClipFilter { $0.saturation = value }
-            }
-
-            Button { onResetClipColorFilter() } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Color.ds.textMuted)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Reset filters"))
+            backToToolsButton
+            colorPropertyMenu
+            Slider(
+                value: activeColorBinding,
+                in: Double(activeColorProperty.range.lowerBound)...Double(activeColorProperty.range.upperBound)
+            )
+            .tint(Color.ds.accentFg)
+            .frame(maxWidth: .infinity)
+            resetColorButton
         }
+        .frame(maxWidth: .infinity)
         .transition(.opacity)
     }
 
-    private func filterSlider(
-        title: String,
-        systemImage: String,
-        value: Float,
-        range: ClosedRange<Float>,
-        onChange: @escaping (Float) -> Void
-    ) -> some View {
-        VStack(spacing: .spacing(.sp1)) {
+    private var backToToolsButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                expandedToolId = -1
+            }
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Color.ds.textMuted)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Back to clip tools"))
+    }
+
+    private var colorPropertyMenu: some View {
+        Menu {
+            ForEach(ColorProperty.allCases) { property in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        activeColorProperty = property
+                    }
+                } label: {
+                    Label(property.title, systemImage: property.systemImage)
+                }
+            }
+        } label: {
             HStack(spacing: .spacing(.sp1)) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(title)
+                Image(systemName: activeColorProperty.systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(activeColorProperty.title)
                     .typography(.bodySmall)
                     .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
             }
             .foregroundColor(Color.ds.textMuted)
-
-            Slider(
-                value: Binding(
-                    get: { Double(value) },
-                    set: { onChange(Float($0)) }
-                ),
-                in: Double(range.lowerBound)...Double(range.upperBound)
-            )
-            .frame(width: 92)
-            .tint(Color.ds.accentFg)
+            .padding(.horizontal, .spacing(.sp2))
+            .frame(height: 40)
+            .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
+            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
         }
-        .frame(width: 108)
-        .padding(.horizontal, .spacing(.sp2))
-        .padding(.vertical, .spacing(.sp2))
-        .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+        .menuStyle(.button)
+        .accessibilityLabel(Text("Color property"))
+        .accessibilityValue(Text(activeColorProperty.title))
+    }
+
+    private var resetColorButton: some View {
+        Button { onResetClipColorFilter() } label: {
+            Image(systemName: "arrow.counterclockwise")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Color.ds.textMuted)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Reset filters"))
+    }
+
+    private var activeColorBinding: Binding<Double> {
+        Binding(
+            get: { Double(activeColorProperty.value(in: selectedClipColorFilter)) },
+            set: { newValue in
+                let floatValue = Float(newValue)
+                updateSelectedClipFilter { filter in
+                    activeColorProperty.set(floatValue, on: &filter)
+                }
+            }
+        )
     }
 
     private func updateSelectedClipFilter(_ mutate: (inout ClipColorFilter) -> Void) {
         var filter = selectedClipColorFilter
         mutate(&filter)
         onSetClipColorFilter(filter)
+    }
+}
+
+// MARK: - Color Property
+
+private enum ColorProperty: String, CaseIterable, Identifiable {
+    case temperature
+    case tint
+    case exposure
+    case brightness
+    case saturation
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .temperature: return "Temp"
+        case .tint: return "Tint"
+        case .exposure: return "Exposure"
+        case .brightness: return "Bright"
+        case .saturation: return "Sat"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .temperature: return "thermometer.medium"
+        case .tint: return "eyedropper.halffull"
+        case .exposure: return "plusminus.circle"
+        case .brightness: return "sun.max"
+        case .saturation: return "camera.filters"
+        }
+    }
+
+    var range: ClosedRange<Float> {
+        switch self {
+        case .exposure: return ClipColorFilter.exposureRange
+        default: return ClipColorFilter.normalizedRange
+        }
+    }
+
+    func value(in filter: ClipColorFilter) -> Float {
+        switch self {
+        case .temperature: return filter.temperature
+        case .tint: return filter.tint
+        case .exposure: return filter.exposure
+        case .brightness: return filter.brightness
+        case .saturation: return filter.saturation
+        }
+    }
+
+    func set(_ value: Float, on filter: inout ClipColorFilter) {
+        switch self {
+        case .temperature: filter.temperature = value
+        case .tint: filter.tint = value
+        case .exposure: filter.exposure = value
+        case .brightness: filter.brightness = value
+        case .saturation: filter.saturation = value
+        }
     }
 }
 
