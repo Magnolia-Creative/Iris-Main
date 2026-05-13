@@ -164,7 +164,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     @ViewBuilder
     private var toolsRow: some View {
-        let clipIdle = isClipSelected && !promptBarIsTakingOver
+        let clipIdle = isClipSelected && !promptBarIsTakingOver && !isPromptActionReviewActive
         let leadingCompact = clipIdle || isPromptActionReviewActive
         HStack(spacing: .spacing(.sp2)) {
             if !isColorToolExpanded {

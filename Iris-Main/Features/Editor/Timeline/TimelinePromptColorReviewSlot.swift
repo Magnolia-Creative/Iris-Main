@@ -11,9 +11,9 @@ struct TimelinePromptColorReviewSlot: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
             HStack(spacing: .spacing(.sp2)) {
-                Text(propertyTitle)
+                Text("Adjust \(propertyTitle)")
                     .typography(.bodySmall)
                     .foregroundStyle(Color.ds.text)
                     .lineLimit(1)
@@ -21,33 +21,40 @@ struct TimelinePromptColorReviewSlot: View {
                 Spacer(minLength: .spacing(.sp2))
 
                 Button(action: onReset) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.ds.textMuted)
-                        .frame(width: 36, height: 36)
-                        .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
+                    HStack(spacing: .spacing(.sp1)) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Reset")
+                            .typography(.bodySmall)
+                    }
+                    .foregroundStyle(Color.ds.textMuted)
+                    .padding(.vertical, .spacing(.sp2))
+                    .padding(.horizontal, .spacing(.sp2))
+                    .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Reset \(propertyTitle)"))
+            }
+
+            HStack(spacing: .spacing(.sp3)) {
+                Slider(value: sliderRangeBinding, in: Double(sliderRange.lowerBound)...Double(sliderRange.upperBound))
+                    .tint(Color.ds.accentFg)
+                    .frame(width: 230)
 
                 Button(action: onConfirm) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.ds.accentFg)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 40, height: 40)
                         .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
                         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Confirm \(propertyTitle)"))
             }
-
-            Slider(value: sliderRangeBinding, in: Double(sliderRange.lowerBound)...Double(sliderRange.upperBound))
-                .tint(Color.ds.accentFg)
-                .frame(minWidth: 200)
         }
-        .frame(minWidth: 280, alignment: .leading)
+        .frame(width: 310, alignment: .leading)
     }
 
     private var sliderRangeBinding: Binding<Double> {
