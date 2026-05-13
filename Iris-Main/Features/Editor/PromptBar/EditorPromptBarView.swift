@@ -13,6 +13,8 @@ struct EditorPromptBarView: View {
     @State private var isMicPressed = false
     /// After the pill finishes widening, reveal the thick accent border.
     @State private var showRecordingAccentBorder = false
+    /// Mic chrome width; animated so the recording pill can collapse into a circle before the cancel control appears.
+    @State private var animatedMicWidth: CGFloat = 60
 
     private let compactSize: CGFloat = 38
     private let expandedSize: CGFloat = 60
@@ -73,8 +75,15 @@ struct EditorPromptBarView: View {
         .frame(minHeight: barMinHeight)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: viewModel.phase)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isClipSelected)
+        .onAppear {
+            animatedMicWidth = targetMicWidth(for: viewModel.phase)
+        }
         .onChange(of: viewModel.phase) { _, phase in
             isPromptFocused = (phase == .typing)
+            let collapseSpring = Animation.spring(response: 0.48, dampingFraction: 0.84)
+            withAnimation(collapseSpring) {
+                animatedMicWidth = targetMicWidth(for: phase)
+            }
             if phase == .recording {
                 showRecordingAccentBorder = false
                 Task { @MainActor in
@@ -113,9 +122,33 @@ struct EditorPromptBarView: View {
         return false
     }
 
+    /// Near-circular width before crossfading from waveform to the cancel control during submit.
+    private var micProcessingRevealCancelThreshold: CGFloat { micButtonHeight + 8 }
+
+    private var showMicWaveformInChrome: Bool {
+        !isProcessing || animatedMicWidth > micProcessingRevealCancelThreshold
+    }
+
+    private var showProcessingCancelButton: Bool {
+        isProcessing && animatedMicWidth <= micProcessingRevealCancelThreshold
+    }
+
     private var showsRightChat: Bool {
         if case .idle = viewModel.phase, !isClipSelected { return true }
         return false
+    }
+
+    private var recordingPillWidth: CGFloat {
+        min(220, max(expandedSize * 2.75, 148))
+    }
+
+    private func targetMicWidth(for phase: EditorPromptBarPhase) -> CGFloat {
+        switch phase {
+        case .recording:
+            return recordingPillWidth
+        case .idle, .submitting, .typing, .clarification, .error:
+            return expandedSize
+        }
     }
 
     private var micButtonSize: CGFloat {
@@ -126,24 +159,16 @@ struct EditorPromptBarView: View {
         }
     }
 
-    /// Horizontal extent grows into a capsule while recording so the live
-    /// waveform has room; idle / submitting stay circular.
-    private var micButtonWidth: CGFloat {
-        if viewModel.phase == .recording {
-            return min(220, max(micButtonSize * 2.75, 148))
-        }
-        return micButtonSize
-    }
-
     private var micButtonHeight: CGFloat { micButtonSize }
 
+    /// Horizontal extent grows into a capsule while the animated width is wider than the mic height.
     private var micUsesCapsuleShape: Bool {
-        viewModel.phase == .recording
+        animatedMicWidth > micButtonHeight + 2
     }
 
     private var waveformInnerWidth: CGFloat {
         let inset = micUsesCapsuleShape ? 14.0 : 10.0
-        return max(10, micButtonWidth - inset * 2)
+        return max(10, animatedMicWidth - inset * 2)
     }
 
     // MARK: - Mic group (mic + caption, or clip-only chrome pill)
@@ -227,7 +252,7 @@ struct EditorPromptBarView: View {
             Image(systemName: "xmark")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.ds.textMuted)
-                .frame(width: micButtonWidth, height: micButtonHeight)
+                .frame(width: animatedMicWidth, height: micButtonHeight)
                 .contentShape(RoundedRectangle(cornerRadius: micButtonHeight / 2, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -265,17 +290,20 @@ struct EditorPromptBarView: View {
 
     private var micButton: some View {
         let core = ZStack {
-            micCore(width: micButtonWidth, height: micButtonHeight)
+            micCore(width: animatedMicWidth, height: micButtonHeight)
                 .animation(.easeInOut(duration: 0.22), value: showRecordingAccentBorder)
 
-            if isProcessing {
-                cancelProcessingButton
-                    .transition(.opacity)
-            } else {
+            if showMicWaveformInChrome {
                 micWaveformContent
+                    .transition(.opacity)
+            }
+            if showProcessingCancelButton {
+                cancelProcessingButton
+                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
             }
         }
-        .frame(width: micButtonWidth, height: micButtonHeight)
+        .animation(.easeOut(duration: 0.18), value: showProcessingCancelButton)
+        .frame(width: animatedMicWidth, height: micButtonHeight)
         .matchedGeometryEffect(id: "editor-prompt-mic", in: micNamespace)
         .contentShape(
             RoundedRectangle(cornerRadius: micButtonHeight / 2, style: .continuous)
