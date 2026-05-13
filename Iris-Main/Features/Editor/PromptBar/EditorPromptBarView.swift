@@ -333,6 +333,38 @@ struct EditorPromptBarView: View {
         )
     }
 
+    /// Same color stops as `recordingPrimaryBorderGradient` at neutral voice level,
+    /// with the diagonal axis rotated over time for the processing (cancel) state.
+    private func processingPrimaryBorderGradient(at date: Date) -> LinearGradient {
+        let baseStartX = 0.02
+        let baseStartY = 0.02
+        let baseEndX = 0.98
+        let baseEndY = 0.98
+        let turn = date.timeIntervalSinceReferenceDate / 2.5 * (2 * Double.pi)
+
+        func rotateUnitPoint(x: Double, y: Double, angle: Double) -> UnitPoint {
+            let cx = x - 0.5
+            let cy = y - 0.5
+            let cosA = cos(angle)
+            let sinA = sin(angle)
+            let rx = 0.5 + cx * cosA - cy * sinA
+            let ry = 0.5 + cx * sinA + cy * cosA
+            return UnitPoint(x: rx, y: ry)
+        }
+
+        let start = rotateUnitPoint(x: baseStartX, y: baseStartY, angle: turn)
+        let end = rotateUnitPoint(x: baseEndX, y: baseEndY, angle: turn)
+        return LinearGradient(
+            colors: [
+                Color.ds.accentBg,
+                Color.ds.accentFg,
+                Color.ds.accentBg.opacity(0.92)
+            ],
+            startPoint: start,
+            endPoint: end
+        )
+    }
+
     /// Flat fill so the control reads slightly above the glass shell without
     /// a faux-3D gradient (a touch stronger than the chat companion).
     private var micButtonFill: Color {
@@ -359,6 +391,14 @@ struct EditorPromptBarView: View {
                                 recordingPrimaryBorderGradient,
                                 lineWidth: 2.35
                             )
+                    } else if isProcessing {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+                            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                                .strokeBorder(
+                                    processingPrimaryBorderGradient(at: context.date),
+                                    lineWidth: 2.35
+                                )
+                        }
                     } else if recording {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.14), lineWidth: 1.1)
