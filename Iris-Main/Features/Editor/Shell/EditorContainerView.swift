@@ -133,11 +133,12 @@ struct EditorContainerView: View {
                             guard let clipId = controller.state.selectedClipId else { return }
                             controller.resetClipColorFilter(clipId: clipId)
                         },
-                        promptBar: { isClipSelected, micNamespace in
+                        promptBar: { isClipSelected, micNamespace, onClipChromeTap in
                             EditorPromptBarView(
                                 viewModel: editorPromptBarViewModel,
                                 isClipSelected: isClipSelected,
-                                micNamespace: micNamespace
+                                micNamespace: micNamespace,
+                                onClipChromeTap: onClipChromeTap
                             )
                         }
                     ) {

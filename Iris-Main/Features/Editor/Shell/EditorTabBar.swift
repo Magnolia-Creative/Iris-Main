@@ -9,7 +9,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let onDeleteClip: () -> Void
     let onSetClipColorFilter: (ClipColorFilter) -> Void
     let onResetClipColorFilter: () -> Void
-    let promptBar: (Bool, Namespace.ID) -> PromptBar
+    let promptBar: (Bool, Namespace.ID, @escaping () -> Void) -> PromptBar
     let spaceExtension: SpaceExtension
 
     @Environment(\.colorScheme) private var colorScheme
@@ -35,7 +35,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onDeleteClip: @escaping () -> Void,
         onSetClipColorFilter: @escaping (ClipColorFilter) -> Void = { _ in },
         onResetClipColorFilter: @escaping () -> Void = {},
-        @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
+        @ViewBuilder promptBar: @escaping (Bool, Namespace.ID, @escaping () -> Void) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
         self._activeSpace = activeSpace
@@ -196,7 +196,11 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @ViewBuilder
     private var toolsRow: some View {
         HStack(spacing: .spacing(.sp2)) {
-            promptBar(isClipSelected, promptNamespace)
+            promptBar(isClipSelected, promptNamespace) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                    expandedToolId = -1
+                }
+            }
                 .layoutPriority(isClipSelected && !promptBarIsTakingOver ? 0 : 1)
 
             if isClipSelected && !promptBarIsTakingOver {

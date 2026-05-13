@@ -7,6 +7,9 @@ struct EditorPromptBarView: View {
     @ObserveInjection var inject
     let isClipSelected: Bool
     let micNamespace: Namespace.ID
+    /// Clip-selected idle chrome: tap collapses expanded clip tools in the tab
+    /// bar; prompts are not started from this control.
+    let onClipChromeTap: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -109,9 +112,8 @@ struct EditorPromptBarView: View {
         return false
     }
 
-    private var showsCompactChat: Bool {
-        if case .idle = viewModel.phase, isClipSelected { return true }
-        return false
+    private var showsClipChromeStub: Bool {
+        isClipSelected && viewModel.phase == .idle
     }
 
     private var micButtonSize: CGFloat {
@@ -142,20 +144,57 @@ struct EditorPromptBarView: View {
         return max(10, micButtonWidth - inset * 2)
     }
 
-    // MARK: - Mic group (mic + compact chat row + caption)
+    // MARK: - Mic group (mic + caption, or clip-only chrome pill)
 
     private var micGroup: some View {
-        VStack(spacing: 4) {
-            HStack(alignment: .center, spacing: .spacing(.sp2)) {
-                micButton
-                    .frame(width: micSlotMaxWidth, alignment: .center)
-                chatButton
-                    .opacity(showsCompactChat ? 1 : 0)
-                    .frame(width: showsCompactChat ? compactSize : 0)
-                    .allowsHitTesting(showsCompactChat)
+        Group {
+            if showsClipChromeStub {
+                VStack(spacing: 4) {
+                    clipChromePill
+                    captionLine
+                }
+            } else {
+                VStack(spacing: 4) {
+                    micButton
+                        .frame(width: micSlotMaxWidth, alignment: .center)
+                    captionLine
+                }
             }
-            captionLine
         }
+    }
+
+    /// Decorative waveform + message in one pill; does not start voice/text prompts.
+    private var clipChromePill: some View {
+        Button {
+            onClipChromeTap()
+        } label: {
+            HStack(spacing: .spacing(.sp2)) {
+                VoiceMemoPillWaveform(
+                    isLive: false,
+                    voiceLevel: 0,
+                    timelineDate: .now,
+                    totalWidth: 50,
+                    maxBarHeight: 15,
+                    gradient: idleWaveformGradient
+                )
+                Image(systemName: "message.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.ds.textMuted)
+            }
+            .padding(.horizontal, .spacing(.sp3))
+            .frame(height: compactSize)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(micButtonFill)
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Selected clip"))
+        .accessibilityHint(Text("Tap to show the default edit tools."))
     }
 
     private var captionLine: some View {
