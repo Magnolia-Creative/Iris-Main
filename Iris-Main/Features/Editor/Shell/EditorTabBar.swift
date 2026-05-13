@@ -18,6 +18,11 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     /// Extra space reserved inside the glass shell at the bottom so the pinned
     /// nav bar can overlap the chrome in z without changing its layout.
     let bottomReservedSpace: CGFloat
+    /// Maximum width for the top chrome glass shell. When `nil`, the chrome
+    /// fills the proposed width as before. When set, the chrome is capped at
+    /// this width (unless `hugChromeToContent` is true — clip tools always
+    /// hug their intrinsic content width).
+    let chromeMaxWidth: CGFloat?
     let promptBar: (Bool, Namespace.ID) -> PromptBar
     let spaceExtension: SpaceExtension
 
@@ -41,6 +46,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onResetClipColorFilter: @escaping () -> Void = {},
         onDeselectClip: @escaping () -> Void = {},
         bottomReservedSpace: CGFloat = 0,
+        chromeMaxWidth: CGFloat? = nil,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
@@ -54,6 +60,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.onResetClipColorFilter = onResetClipColorFilter
         self.onDeselectClip = onDeselectClip
         self.bottomReservedSpace = bottomReservedSpace
+        self.chromeMaxWidth = chromeMaxWidth
         self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
     }
@@ -77,6 +84,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     var body: some View {
         topChrome
+            .modifier(ChromeMaxWidthModifier(
+                maxWidth: hugChromeToContent ? nil : chromeMaxWidth
+            ))
             .glassEffect(
                 .regular.tint(shellTint),
                 in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
@@ -386,6 +396,20 @@ private struct HorizontalHugWhenEnabled: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content.fixedSize(horizontal: true, vertical: false)
+        } else {
+            content
+        }
+    }
+}
+
+/// Caps the chrome to a maximum width when provided; passes through otherwise.
+private struct ChromeMaxWidthModifier: ViewModifier {
+    let maxWidth: CGFloat?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let maxWidth {
+            content.frame(maxWidth: maxWidth, alignment: .center)
         } else {
             content
         }

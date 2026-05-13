@@ -139,6 +139,9 @@ struct EditorContainerView: View {
                                     controller.clearSelection()
                                 },
                                 bottomReservedSpace: EditorBottomNavBar.totalHeight,
+                                chromeMaxWidth: activeSpace == .edit
+                                    ? EditorBottomNavBar.containerWidth + .spacing(.sp4) * 2
+                                    : nil,
                                 promptBar: { isClipSelected, micNamespace in
                                     EditorPromptBarView(
                                         viewModel: editorPromptBarViewModel,

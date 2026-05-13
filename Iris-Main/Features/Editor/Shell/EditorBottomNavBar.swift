@@ -25,30 +25,36 @@ struct EditorBottomNavBar: View {
         return tabRowHeight + rowInnerVertical + shellInset * 2
     }
 
-    private var navWidth: CGFloat {
+    /// Width of the nav card (3-icon row + its inner padding), without the
+    /// surrounding shell insets.
+    static var navWidth: CGFloat {
         let count = CGFloat(EditorSpace.allCases.count)
         let hPad = CGFloat.spacing(.sp2) * 2
-        return count * Self.tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
+        return count * tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
     }
 
-    /// Outer container width = nav row + symmetrical shell insets. Constant.
-    private var containerWidth: CGFloat {
-        navWidth + Self.shellInset * 2
+    /// Outer container width = nav card + symmetrical shell insets. Constant.
+    static var containerWidth: CGFloat {
+        navWidth + shellInset * 2
     }
 
     var body: some View {
         navCard
             .padding(.horizontal, Self.shellInset)
             .padding(.vertical, Self.shellInset)
-            .frame(width: containerWidth, height: Self.totalHeight)
+            .frame(width: Self.containerWidth, height: Self.totalHeight)
     }
 
     private var navCard: some View {
         navigationRow
-            .frame(width: navWidth)
+            .frame(width: Self.navWidth)
             .glassEffect(
                 .regular.tint(navTint).interactive(),
                 in: RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
+                    .strokeBorder(navBorderColor, lineWidth: 1)
             )
             .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
     }
@@ -99,6 +105,10 @@ struct EditorBottomNavBar: View {
 
     private var navTint: Color {
         Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12)
+    }
+
+    private var navBorderColor: Color {
+        Color.white.opacity(colorScheme == .dark ? 0.14 : 0.22)
     }
 
     private var navInnerShadowColor: Color {
