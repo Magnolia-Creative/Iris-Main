@@ -12,6 +12,15 @@ enum ActionPayload: Equatable, Codable {
     case moveClip(clipId: String, orderedClipIds: [String])
     /// Restores the ordered clip list for a single track (used for undo/redo and inverse actions).
     case replaceTrackClips(trackId: String, clips: [Clip])
+
+    /// Sparse update to a clip's color filter. Unset fields preserve the existing
+    /// value so backend prompts like "make it warmer" only touch `temperature`.
+    case updateClipColorFilter(clipId: String, adjustments: ClipColorFilterPatch)
+    /// Replaces the clip's entire color filter with `filter` (used for inverse
+    /// undo so we can restore the previous state precisely).
+    case setClipColorFilter(clipId: String, filter: ClipColorFilter)
+    /// Removes any color filter on the clip.
+    case resetClipColorFilter(clipId: String)
 }
 
 // MARK: - Action
@@ -125,6 +134,9 @@ struct Action: Codable, Equatable, Identifiable, FetchableRecord, PersistableRec
         case .removeClipRanges: return .removeClipRanges
         case .moveClip: return .moveClip
         case .replaceTrackClips: return .replaceTrackClips
+        case .updateClipColorFilter: return .updateEffectParams
+        case .setClipColorFilter: return .applyEffect
+        case .resetClipColorFilter: return .removeEffect
         }
     }
 
@@ -225,6 +237,44 @@ extension Action {
         Action(
             timelineId: timelineId,
             payload: .replaceTrackClips(trackId: trackId, clips: clips),
+            groupId: groupId
+        )
+    }
+
+    static func updateClipColorFilter(
+        timelineId: String,
+        clipId: String,
+        adjustments: ClipColorFilterPatch,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .updateClipColorFilter(clipId: clipId, adjustments: adjustments),
+            groupId: groupId
+        )
+    }
+
+    static func setClipColorFilter(
+        timelineId: String,
+        clipId: String,
+        filter: ClipColorFilter,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .setClipColorFilter(clipId: clipId, filter: filter),
+            groupId: groupId
+        )
+    }
+
+    static func resetClipColorFilter(
+        timelineId: String,
+        clipId: String,
+        groupId: String? = nil
+    ) -> Action {
+        Action(
+            timelineId: timelineId,
+            payload: .resetClipColorFilter(clipId: clipId),
             groupId: groupId
         )
     }

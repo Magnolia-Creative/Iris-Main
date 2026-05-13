@@ -120,14 +120,20 @@ struct ClipColorFilter: Codable, Equatable {
     var tint: Float
     var exposure: Float
     var brightness: Float
+    var contrast: Float
     var saturation: Float
+    var highlights: Float
+    var shadows: Float
 
     static let neutral = ClipColorFilter(
         temperature: 0,
         tint: 0,
         exposure: 0,
         brightness: 0,
-        saturation: 0
+        contrast: 0,
+        saturation: 0,
+        highlights: 0,
+        shadows: 0
     )
 
     init(
@@ -135,13 +141,19 @@ struct ClipColorFilter: Codable, Equatable {
         tint: Float = 0,
         exposure: Float = 0,
         brightness: Float = 0,
-        saturation: Float = 0
+        contrast: Float = 0,
+        saturation: Float = 0,
+        highlights: Float = 0,
+        shadows: Float = 0
     ) {
         self.temperature = Self.clamp(temperature, to: Self.normalizedRange)
         self.tint = Self.clamp(tint, to: Self.normalizedRange)
         self.exposure = Self.clamp(exposure, to: Self.exposureRange)
         self.brightness = Self.clamp(brightness, to: Self.normalizedRange)
+        self.contrast = Self.clamp(contrast, to: Self.normalizedRange)
         self.saturation = Self.clamp(saturation, to: Self.normalizedRange)
+        self.highlights = Self.clamp(highlights, to: Self.normalizedRange)
+        self.shadows = Self.clamp(shadows, to: Self.normalizedRange)
     }
 }
 
@@ -160,7 +172,10 @@ extension ClipColorFilter {
             "tint": .number(Double(tint)),
             "exposure": .number(Double(exposure)),
             "brightness": .number(Double(brightness)),
+            "contrast": .number(Double(contrast)),
             "saturation": .number(Double(saturation)),
+            "highlights": .number(Double(highlights)),
+            "shadows": .number(Double(shadows)),
         ]
     }
 
@@ -170,7 +185,25 @@ extension ClipColorFilter {
             tint: parameters.floatValue(for: "tint"),
             exposure: parameters.floatValue(for: "exposure"),
             brightness: parameters.floatValue(for: "brightness"),
-            saturation: parameters.floatValue(for: "saturation")
+            contrast: parameters.floatValue(for: "contrast"),
+            saturation: parameters.floatValue(for: "saturation"),
+            highlights: parameters.floatValue(for: "highlights"),
+            shadows: parameters.floatValue(for: "shadows")
+        )
+    }
+
+    /// Returns a copy of this filter with non-nil patch fields applied. Missing
+    /// keys leave existing values unchanged so partial updates compose.
+    func applying(_ patch: ClipColorFilterPatch) -> ClipColorFilter {
+        ClipColorFilter(
+            temperature: patch.temperature ?? temperature,
+            tint: patch.tint ?? tint,
+            exposure: patch.exposure ?? exposure,
+            brightness: patch.brightness ?? brightness,
+            contrast: patch.contrast ?? contrast,
+            saturation: patch.saturation ?? saturation,
+            highlights: patch.highlights ?? highlights,
+            shadows: patch.shadows ?? shadows
         )
     }
 
@@ -208,13 +241,58 @@ extension Effect {
 
 private extension ClipColorFilter {
     static var effectConstraints: [String: EffectConstraints] {
-        [
-            "temperature": EffectConstraints(min: Double(normalizedRange.lowerBound), max: Double(normalizedRange.upperBound)),
-            "tint": EffectConstraints(min: Double(normalizedRange.lowerBound), max: Double(normalizedRange.upperBound)),
+        let normalized = EffectConstraints(min: Double(normalizedRange.lowerBound), max: Double(normalizedRange.upperBound))
+        return [
+            "temperature": normalized,
+            "tint": normalized,
             "exposure": EffectConstraints(min: Double(exposureRange.lowerBound), max: Double(exposureRange.upperBound)),
-            "brightness": EffectConstraints(min: Double(normalizedRange.lowerBound), max: Double(normalizedRange.upperBound)),
-            "saturation": EffectConstraints(min: Double(normalizedRange.lowerBound), max: Double(normalizedRange.upperBound)),
+            "brightness": normalized,
+            "contrast": normalized,
+            "saturation": normalized,
+            "highlights": normalized,
+            "shadows": normalized,
         ]
+    }
+}
+
+// MARK: - ClipColorFilterPatch
+
+/// Sparse update to a `ClipColorFilter`. Each `nil` field keeps the existing
+/// value when applied, making it the natural payload for backend prompts that
+/// only intend to adjust one parameter (e.g. "make it warmer").
+struct ClipColorFilterPatch: Codable, Equatable {
+    var temperature: Float?
+    var tint: Float?
+    var exposure: Float?
+    var brightness: Float?
+    var contrast: Float?
+    var saturation: Float?
+    var highlights: Float?
+    var shadows: Float?
+
+    init(
+        temperature: Float? = nil,
+        tint: Float? = nil,
+        exposure: Float? = nil,
+        brightness: Float? = nil,
+        contrast: Float? = nil,
+        saturation: Float? = nil,
+        highlights: Float? = nil,
+        shadows: Float? = nil
+    ) {
+        self.temperature = temperature
+        self.tint = tint
+        self.exposure = exposure
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.highlights = highlights
+        self.shadows = shadows
+    }
+
+    var isEmpty: Bool {
+        temperature == nil && tint == nil && exposure == nil && brightness == nil
+            && contrast == nil && saturation == nil && highlights == nil && shadows == nil
     }
 }
 
