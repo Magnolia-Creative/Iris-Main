@@ -15,6 +15,8 @@ enum EditorPromptBarPhase: Equatable {
 final class EditorPromptBarViewModel: ObservableObject {
     typealias ContextProvider = @MainActor () -> IntentCompilerContext
     typealias ActionApplier = @MainActor ([Action]) -> Bool
+    /// When transcript DB id is not ready yet for transcript-heavy prompts, await before starting the intent run. Returns true if a wait loop ran.
+    typealias TranscriptReadinessWaiter = @MainActor (String) async throws -> Bool
 
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
@@ -29,6 +31,8 @@ final class EditorPromptBarViewModel: ObservableObject {
     private let transcription: RealtimeTranscriptionViewModel
     private let remoteCompiler: RemoteIntentCompilerClient
     private let contextProvider: ContextProvider
+    private let needsIntentTranscriptDatabaseWait: (@MainActor (String) -> Bool)?
+    private let waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter?
     private let applyActions: ActionApplier
     private var cancellables: Set<AnyCancellable> = []
     private var resetTask: Task<Void, Never>?
@@ -42,11 +46,15 @@ final class EditorPromptBarViewModel: ObservableObject {
         transcription: RealtimeTranscriptionViewModel? = nil,
         remoteCompiler: RemoteIntentCompilerClient? = nil,
         contextProvider: @escaping ContextProvider,
+        needsIntentTranscriptDatabaseWait: (@MainActor (String) -> Bool)? = nil,
+        waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter? = nil,
         applyActions: @escaping ActionApplier
     ) {
         self.transcription = transcription ?? RealtimeTranscriptionViewModel()
         self.remoteCompiler = remoteCompiler ?? RemoteIntentCompilerClient()
         self.contextProvider = contextProvider
+        self.needsIntentTranscriptDatabaseWait = needsIntentTranscriptDatabaseWait
+        self.waitForTranscriptReadinessIfNeeded = waitForTranscriptReadinessIfNeeded
         self.applyActions = applyActions
 
         self.transcription.$inputLevel
@@ -161,6 +169,14 @@ final class EditorPromptBarViewModel: ObservableObject {
         Self.logger.info("[PromptBar] Submit start promptChars=\(trimmedPrompt.count, privacy: .public)")
 
         do {
+            if let needsIntentTranscriptDatabaseWait,
+               let waitForTranscriptReadinessIfNeeded,
+               needsIntentTranscriptDatabaseWait(trimmedPrompt) {
+                phase = .submitting("Processing clip")
+                _ = try await waitForTranscriptReadinessIfNeeded(trimmedPrompt)
+                phase = .submitting("Starting backend intent run.")
+            }
+
             let context = contextProvider()
             Self.logger.info(
                 "[PromptBar] Context timeline=\(context.timelineId, privacy: .public) project=\(context.projectId ?? "nil", privacy: .public) session=\(context.sessionId ?? "nil", privacy: .public) selectedClip=\(context.selectedClipId ?? "nil", privacy: .public) selectedTrack=\(context.selectedTrackId ?? "nil", privacy: .public) clips=\(context.clipsById.count, privacy: .public) tracks=\(context.orderedClipIdsByTrackId.count, privacy: .public) transcripts=\(context.transcriptContextsByClipId.count, privacy: .public)"
@@ -196,6 +212,9 @@ final class EditorPromptBarViewModel: ObservableObject {
                     return
                 }
             }
+            phase = .idle
+        } catch is CancellationError {
+            Self.logger.info("[PromptBar] Submit cancelled during transcript wait or compile")
             phase = .idle
         } catch {
             Self.logger.error("[PromptBar] Submit failed: \(error.localizedDescription, privacy: .public)")

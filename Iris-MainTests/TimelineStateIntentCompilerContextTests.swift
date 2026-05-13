@@ -44,4 +44,57 @@ struct TimelineStateIntentCompilerContextTests {
         #expect(clipPayload?["transcriptId"] as? String == "501")
         #expect(clipPayload?["fullText"] == nil)
     }
+
+    @Test func needsIntentTranscriptHydrationPrompt_detectsQuotedAndSilenceSignals() {
+        let state = TimelineState(timelineId: "tid")
+        #expect(state.needsIntentTranscriptHydrationPrompt("trim the silence") == true)
+        #expect(state.needsIntentTranscriptHydrationPrompt("remove filler words") == true)
+        #expect(state.needsIntentTranscriptHydrationPrompt(#"cut "hello" from the clip"#) == true)
+        #expect(state.needsIntentTranscriptHydrationPrompt("where I say hello") == true)
+        #expect(state.needsIntentTranscriptHydrationPrompt("remove the part where I pause") == true)
+        #expect(state.needsIntentTranscriptHydrationPrompt("make it brighter") == false)
+    }
+
+    @Test func mediaIdAwaitingTranscriptDatabaseIDWhenPromptNeedsTranscriptAndIdMissing() {
+        var state = TimelineState(timelineId: "tid-1")
+        state.tracks = [Track(trackId: "tr-video", timelineId: "tid-1", kind: .video)]
+        let media = Media(
+            mediaLibraryId: "lib-1",
+            kind: .video,
+            assetRefId: "asset-a",
+            spec: MediaSpec()
+        )
+        state.mediaById[media.mediaId] = media
+        state.clips = [
+            Clip(
+                clipId: "clip-1",
+                trackId: "tr-video",
+                mediaId: media.mediaId,
+                sourceRange: TimeRange(start: 0, end: 8_000_000),
+                timelineRange: TimeRange(start: 0, end: 8_000_000)
+            )
+        ]
+        state.selectedClipId = "clip-1"
+        #expect(state.mediaIdAwaitingTranscriptDatabaseIDForIntent(prompt: "remove silence") == media.mediaId)
+
+        var spec2 = MediaSpec()
+        spec2.transcriptID = "uuid-here"
+        let media2 = Media(
+            mediaLibraryId: "lib-1",
+            kind: .video,
+            assetRefId: "asset-b",
+            spec: spec2
+        )
+        state.mediaById[media2.mediaId] = media2
+        state.clips = [
+            Clip(
+                clipId: "clip-1",
+                trackId: "tr-video",
+                mediaId: media2.mediaId,
+                sourceRange: TimeRange(start: 0, end: 8_000_000),
+                timelineRange: TimeRange(start: 0, end: 8_000_000)
+            )
+        ]
+        #expect(state.mediaIdAwaitingTranscriptDatabaseIDForIntent(prompt: "remove silence") == nil)
+    }
 }

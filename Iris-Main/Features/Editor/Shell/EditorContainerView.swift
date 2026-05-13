@@ -31,6 +31,12 @@ struct EditorContainerView: View {
                 contextProvider: {
                     timelineController.state.makeIntentCompilerContext()
                 },
+                needsIntentTranscriptDatabaseWait: { prompt in
+                    timelineController.needsIntentTranscriptDatabaseWait(for: prompt)
+                },
+                waitForTranscriptReadinessIfNeeded: { prompt in
+                    try await timelineController.waitForIntentTranscriptReadinessIfNeeded(prompt: prompt)
+                },
                 applyActions: { actions in
                     timelineController.applyActions(actions)
                 }

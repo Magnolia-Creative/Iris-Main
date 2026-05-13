@@ -124,4 +124,69 @@ extension TimelineState {
 
         return result
     }
+
+    // MARK: - Intent transcript readiness (wait for DB-backed transcript id)
+
+    /// Mirrors backend `needs_transcript_hydration` so we only block when the server would hydrate transcripts.
+    func needsIntentTranscriptHydrationPrompt(_ prompt: String) -> Bool {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        if Self.intentTranscriptDeadSpaceRegex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil {
+            return true
+        }
+        if Self.intentTranscriptFillerRegex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil {
+            return true
+        }
+        if Self.intentTranscriptWhereISayRegex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil {
+            return true
+        }
+        if Self.intentTranscriptRemovePartRegex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil {
+            return true
+        }
+        if text.contains("\"") || text.contains("'") {
+            return true
+        }
+        return false
+    }
+
+    /// Media whose `transcriptID` is still empty for the clip the intent compiler would target, when the prompt needs transcript hydration.
+    func mediaIdAwaitingTranscriptDatabaseIDForIntent(prompt: String, forcingActiveClipId forcedClipId: String? = nil) -> String? {
+        guard needsIntentTranscriptHydrationPrompt(prompt) else { return nil }
+        guard let clip = resolvedIntentContextClip(forcingActiveClipId: forcedClipId) else { return nil }
+        guard let media = mediaById[clip.mediaId] else { return nil }
+        let trimmed = media.spec.transcriptID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? media.mediaId : nil
+    }
+
+    private static let intentTranscriptDeadSpaceRegex: NSRegularExpression = {
+        // \b(dead\s*space|silence|silent|pause|pauses|gap|gaps)\b
+        try! NSRegularExpression(
+            pattern: "\\b(dead\\s*space|silence|silent|pause|pauses|gap|gaps)\\b",
+            options: .caseInsensitive
+        )
+    }()
+
+    private static let intentTranscriptFillerRegex: NSRegularExpression = {
+        // \b(ums?|uhs?|filler|disfluency|stutter|false\s+start|mistake)\b
+        try! NSRegularExpression(
+            pattern: "\\b(ums?|uhs?|filler|disfluency|stutter|false\\s+start|mistake)\\b",
+            options: .caseInsensitive
+        )
+    }()
+
+    private static let intentTranscriptWhereISayRegex: NSRegularExpression = {
+        // \b(where|when)\s+i\s+say\b
+        try! NSRegularExpression(
+            pattern: "\\b(where|when)\\s+i\\s+say\\b",
+            options: .caseInsensitive
+        )
+    }()
+
+    private static let intentTranscriptRemovePartRegex: NSRegularExpression = {
+        // \b(remove|cut)\s+(out\s+)?(the\s+)?(part\s+)?where\b
+        try! NSRegularExpression(
+            pattern: "\\b(remove|cut)\\s+(out\\s+)?(the\\s+)?(part\\s+)?where\\b",
+            options: .caseInsensitive
+        )
+    }()
 }
