@@ -218,6 +218,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         }
         .frame(maxWidth: rowMaxWidth)
         .frame(minHeight: .spacing(.sp8))
+        .frame(
+            maxWidth: .infinity,
+            alignment: (isClipSelected && !promptBarIsTakingOver) ? .leading : .center
+        )
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)

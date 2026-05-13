@@ -2,8 +2,7 @@ import SwiftUI
 import Inject
 
 struct EditorPromptBarView: View {
-    @ObservedObject var viewModel: 
-    EditorPromptBarViewModel
+    @ObservedObject var viewModel: EditorPromptBarViewModel
     @ObserveInjection var inject
     let isClipSelected: Bool
     let micNamespace: Namespace.ID
@@ -27,6 +26,12 @@ struct EditorPromptBarView: View {
         min(220, max(expandedSize * 2.75, 148))
     }
 
+    /// Clip + mic-visible phases: don’t expand the prompt chrome to full width
+    /// so the pill can sit flush leading beside the tab bar divider.
+    private var hugsLeadingToolbarChrome: Bool {
+        isClipSelected && showsMic
+    }
+
     var body: some View {
         // Single stable ZStack. Each layer keeps its own view identity across
         // phase changes, so the mic's DragGesture is preserved (true
@@ -35,21 +40,34 @@ struct EditorPromptBarView: View {
         ZStack {
             // Layer A — phase-specific full-row content (typing field /
             // status / error). Mic is in its own layer so it isn't disturbed.
-            phaseRowContent
-                .frame(maxWidth: .infinity)
+            Group {
+                if hugsLeadingToolbarChrome {
+                    phaseRowContent
+                } else {
+                    phaseRowContent
+                        .frame(maxWidth: .infinity)
+                }
+            }
 
-            // Layer B — right-anchored chat button (no-clip idle).
-            chatButton
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .opacity(showsRightChat ? 1 : 0)
-                .allowsHitTesting(showsRightChat)
+            // Layer B — right-anchored chat button (no-clip idle only; omit from
+            // layout when hidden so the ZStack width hugs the mic column).
+            if showsRightChat {
+                chatButton
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
 
             // Layer C — mic group. Centered without a clip; with a clip,
             // leading-aligned so the control can widen in place beside tools.
-            micGroup
-                .frame(maxWidth: .infinity, alignment: micAlignment)
-                .opacity(showsMic ? 1 : 0)
-                .allowsHitTesting(showsMic)
+            Group {
+                if hugsLeadingToolbarChrome {
+                    micGroup
+                } else {
+                    micGroup
+                        .frame(maxWidth: .infinity, alignment: micAlignment)
+                }
+            }
+            .opacity(showsMic ? 1 : 0)
+            .allowsHitTesting(showsMic)
         }
         // Hug vertical content (mic + caption / typing row); then enforce a
         // sensible floor so hold-to-talk stays tappable when phases are short.
@@ -477,7 +495,11 @@ struct EditorPromptBarView: View {
     /// parent `ZStack`, stretching the whole prompt bar; a zero-height spacer
     /// keeps layout hugging the mic and caption.
     private var phaseRowSpacer: some View {
-        Color.clear.frame(height: 0)
+        Color.clear
+            .frame(height: 0)
+            // When the mic column should set the bar width, don’t let this
+            // spacer absorb the full proposed width (it would re-center the pill).
+            .frame(maxWidth: hugsLeadingToolbarChrome ? 0 : .infinity)
     }
 
     private var typingField: some View {
