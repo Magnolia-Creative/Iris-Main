@@ -83,9 +83,87 @@ struct EditorContainerView: View {
         return controller.clipColorFilter(for: clipId)
     }
 
-    var body: some View {
-        let state = controller.state
+    @ViewBuilder
+    private var editorTabBarChrome: some View {
+        GlassEffectContainer(spacing: 20) {
+            ZStack(alignment: .bottom) {
+                EditorTabBar(
+                    activeSpace: $activeSpace,
+                    isClipSelected: controller.state.selectedClipId != nil,
+                    promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
+                    selectedClipColorFilter: selectedClipColorFilter,
+                    onSplitClip: {
+                        guard let clipId = controller.state.selectedClipId else { return }
+                        controller.applyActions([
+                            Action.splitClip(
+                                timelineId: controller.state.timelineId,
+                                clipId: clipId,
+                                atTimeUs: controller.state.currentTimeAtCenter
+                            )
+                        ])
+                    },
+                    onDeleteClip: {
+                        guard let clipId = controller.state.selectedClipId else { return }
+                        controller.applyActions([
+                            Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
+                        ])
+                    },
+                    onSetClipColorFilter: { filter in
+                        guard let clipId = controller.state.selectedClipId else { return }
+                        controller.setClipColorFilter(clipId: clipId, filter: filter)
+                    },
+                    onResetClipColorFilter: {
+                        guard let clipId = controller.state.selectedClipId else { return }
+                        controller.resetClipColorFilter(clipId: clipId)
+                    },
+                    onDeselectClip: {
+                        controller.clearSelection()
+                    },
+                    isPromptActionReviewActive: isPromptActionReviewActive,
+                    promptActionReviewReplacement: promptActionReviewReplacement(),
+                    bottomReservedSpace: EditorBottomNavBar.totalHeight,
+                    chromeMaxWidth: activeSpace == .edit
+                        ? EditorBottomNavBar.containerWidth + .spacing(.sp4) * 2
+                        : nil,
+                    promptBar: { isClipSelected, micNamespace in
+                        EditorPromptBarView(
+                            viewModel: editorPromptBarViewModel,
+                            isClipSelected: isClipSelected,
+                            micNamespace: micNamespace
+                        )
+                    }
+                ) {
+                    ZStack {
+                        switch activeSpace {
+                        case .importMedia:
+                            ImportPanelContent(
+                                controller: controller,
+                                onOpenVideoImport: {
+                                    presentEditorImport(.library)
+                                }
+                            )
+                            .transition(.opacity)
+                        case .export:
+                            ExportPanelContent(controller: controller)
+                                .transition(.opacity)
+                        case .edit:
+                            EmptyView()
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: activeSpace)
+                }
+                .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
+                .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
 
+                EditorBottomNavBar(activeSpace: $activeSpace)
+            }
+        }
+        .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
+        .transition(.opacity)
+        .padding(.bottom, .spacing(.sp2))
+    }
+
+    var body: some View {
         VStack(spacing: 0) {
             activeHeaderBar
 
@@ -126,102 +204,11 @@ struct EditorContainerView: View {
                     .transition(.opacity)
                     .padding(.horizontal, .spacing(.sp3))
                     .padding(.bottom, .spacing(.sp3))
-                } else if isPromptActionReviewActive, let promptSession = controller.promptActionReview {
-                    TimelinePromptActionReviewBar(
-                        session: promptSession,
-                        preview: controller.promptActionPreview,
-                        message: controller.promptActionReviewMessage,
-                        onApprove: { controller.approveCurrentPromptAction() },
-                        onReject: { controller.rejectCurrentPromptAction() },
-                        onReprompt: {
-                            let original = controller.discardPromptActionReviewReturningPrompt() ?? ""
-                            let draft = original.isEmpty ? "" : "\(original)\n"
-                            editorPromptBarViewModel.openRepromptDraft(draft)
-                        }
-                    )
-                    .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
-                    .transition(.opacity)
-                    .padding(.horizontal, .spacing(.sp3))
-                    .padding(.bottom, .spacing(.sp3))
                 } else {
-                    GlassEffectContainer(spacing: 20) {
-                        ZStack(alignment: .bottom) {
-                            EditorTabBar(
-                                activeSpace: $activeSpace,
-                                isClipSelected: state.selectedClipId != nil,
-                                promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
-                                selectedClipColorFilter: selectedClipColorFilter,
-                                onSplitClip: {
-                                    guard let clipId = controller.state.selectedClipId else { return }
-                                    controller.applyActions([
-                                        Action.splitClip(
-                                            timelineId: controller.state.timelineId,
-                                            clipId: clipId,
-                                            atTimeUs: controller.state.currentTimeAtCenter
-                                        )
-                                    ])
-                                },
-                                onDeleteClip: {
-                                    guard let clipId = controller.state.selectedClipId else { return }
-                                    controller.applyActions([
-                                        Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
-                                    ])
-                                },
-                                onSetClipColorFilter: { filter in
-                                    guard let clipId = controller.state.selectedClipId else { return }
-                                    controller.setClipColorFilter(clipId: clipId, filter: filter)
-                                },
-                                onResetClipColorFilter: {
-                                    guard let clipId = controller.state.selectedClipId else { return }
-                                    controller.resetClipColorFilter(clipId: clipId)
-                                },
-                                onDeselectClip: {
-                                    controller.clearSelection()
-                                },
-                                bottomReservedSpace: EditorBottomNavBar.totalHeight,
-                                chromeMaxWidth: activeSpace == .edit
-                                    ? EditorBottomNavBar.containerWidth + .spacing(.sp4) * 2
-                                    : nil,
-                                promptBar: { isClipSelected, micNamespace in
-                                    EditorPromptBarView(
-                                        viewModel: editorPromptBarViewModel,
-                                        isClipSelected: isClipSelected,
-                                        micNamespace: micNamespace
-                                    )
-                                }
-                            ) {
-                                ZStack {
-                                    switch activeSpace {
-                                    case .importMedia:
-                                        ImportPanelContent(
-                                            controller: controller,
-                                            onOpenVideoImport: {
-                                                presentEditorImport(.library)
-                                            }
-                                        )
-                                            .transition(.opacity)
-                                    case .export:
-                                        ExportPanelContent(controller: controller)
-                                            .transition(.opacity)
-                                    case .edit:
-                                        EmptyView()
-                                    }
-                                }
-                                .animation(.easeInOut(duration: 0.2), value: activeSpace)
-                            }
-                            .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
-                            .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
-
-                            EditorBottomNavBar(activeSpace: $activeSpace)
-                        }
-                    }
-                    .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
-                    .transition(.opacity)
-                    .padding(.bottom, .spacing(.sp2))
+                    editorTabBarChrome
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isAgentCutReviewActive)
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isPromptActionReviewActive)
         }
         .background(Color.ds.bg)
         .navigationBarHidden(true)
@@ -310,11 +297,11 @@ struct EditorContainerView: View {
             isPresented: controller.binding(\.showingMediaPicker),
             selection: $selectedPhotos,
             maxSelectionCount: 20,
-            matching: photosFilter(for: state.pendingImport?.kind)
+            matching: photosFilter(for: controller.state.pendingImport?.kind)
         )
         .fileImporter(
             isPresented: controller.binding(\.showingFilePicker),
-            allowedContentTypes: state.filePickerTypes(),
+            allowedContentTypes: controller.state.filePickerTypes(),
             allowsMultipleSelection: true
         ) { result in
             handleFileImport(result)
@@ -325,6 +312,24 @@ struct EditorContainerView: View {
             controller.importPickerItems(items, kind: kind)
             selectedPhotos = []
         }
+    }
+
+    private func promptActionReviewReplacement() -> AnyView? {
+        guard let session = controller.promptActionReview else { return nil }
+        return AnyView(
+            TimelinePromptActionReviewPromptSlot(
+                session: session,
+                preview: controller.promptActionPreview,
+                message: controller.promptActionReviewMessage,
+                onApprove: { controller.approveCurrentPromptAction() },
+                onReject: { controller.rejectCurrentPromptAction() },
+                onReprompt: {
+                    let original = controller.discardPromptActionReviewReturningPrompt() ?? ""
+                    let draft = original.isEmpty ? "" : "\(original)\n"
+                    editorPromptBarViewModel.openRepromptDraft(draft)
+                }
+            )
+        )
     }
 
     @ViewBuilder

@@ -15,6 +15,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let onSetClipColorFilter: (ClipColorFilter) -> Void
     let onResetClipColorFilter: () -> Void
     let onDeselectClip: () -> Void
+    /// When true, `promptActionReviewReplacement` is shown instead of the normal prompt bar.
+    let isPromptActionReviewActive: Bool
+    /// When set, replaces the prompt bar (mic / typing / chat) with this content while keeping the tab bar shell.
+    let promptActionReviewReplacement: AnyView?
     /// Extra space reserved inside the glass shell at the bottom so the pinned
     /// nav bar can overlap the chrome in z without changing its layout.
     let bottomReservedSpace: CGFloat
@@ -46,6 +50,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onSetClipColorFilter: @escaping (ClipColorFilter) -> Void = { _ in },
         onResetClipColorFilter: @escaping () -> Void = {},
         onDeselectClip: @escaping () -> Void = {},
+        isPromptActionReviewActive: Bool = false,
+        promptActionReviewReplacement: AnyView? = nil,
         bottomReservedSpace: CGFloat = 0,
         chromeMaxWidth: CGFloat? = nil,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
@@ -60,6 +66,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.onSetClipColorFilter = onSetClipColorFilter
         self.onResetClipColorFilter = onResetClipColorFilter
         self.onDeselectClip = onDeselectClip
+        self.isPromptActionReviewActive = isPromptActionReviewActive
+        self.promptActionReviewReplacement = promptActionReviewReplacement
         self.bottomReservedSpace = bottomReservedSpace
         self.chromeMaxWidth = chromeMaxWidth
         self.promptBar = promptBar
@@ -111,6 +119,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 guard isTakingOver else { return }
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
             }
+            .onChange(of: isPromptActionReviewActive) { _, active in
+                guard active else { return }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
+            }
     }
 
     private var topChrome: some View {
@@ -147,7 +159,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         HStack(spacing: .spacing(.sp2)) {
             if !isColorToolExpanded {
                 Group {
-                    if clipIdle {
+                    if let promptActionReviewReplacement {
+                        promptActionReviewReplacement
+                    } else if clipIdle {
                         clipDeselectButton
                     } else {
                         promptBar(isClipSelected, promptNamespace)
@@ -177,6 +191,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isPromptActionReviewActive)
     }
 
     private var promptDivider: some View {
