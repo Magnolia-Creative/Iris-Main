@@ -12,9 +12,17 @@ struct EditorPromptBarView: View {
 
     @FocusState private var isPromptFocused: Bool
     @State private var isMicPressed = false
+    /// After the pill finishes widening, reveal the thick accent border.
+    @State private var showRecordingAccentBorder = false
 
     private let compactSize: CGFloat = 38
     private let expandedSize: CGFloat = 60
+
+    /// Reserve pill width so the idle circle stays centered and horizontal
+    /// growth is symmetric (avoids a leading-edge “slide in from the right”).
+    private var micSlotMaxWidth: CGFloat {
+        min(220, max(expandedSize * 2.75, 148))
+    }
 
     var body: some View {
         // Single stable ZStack. Each layer keeps its own view identity across
@@ -33,9 +41,8 @@ struct EditorPromptBarView: View {
                 .opacity(showsRightChat ? 1 : 0)
                 .allowsHitTesting(showsRightChat)
 
-            // Layer C — mic group. Stays geometrically centered for the
-            // no-clip idle and recording layouts, slides to the leading edge
-            // only for the clip-selected idle layout.
+            // Layer C — mic group. Centered without a clip; with a clip,
+            // leading-aligned so the control can widen in place beside tools.
             micGroup
                 .frame(maxWidth: .infinity, alignment: micAlignment)
                 .opacity(showsMic ? 1 : 0)
@@ -49,6 +56,18 @@ struct EditorPromptBarView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isClipSelected)
         .onChange(of: viewModel.phase) { _, phase in
             isPromptFocused = (phase == .typing)
+            if phase == .recording {
+                showRecordingAccentBorder = false
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard viewModel.phase == .recording else { return }
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        showRecordingAccentBorder = true
+                    }
+                }
+            } else {
+                showRecordingAccentBorder = false
+            }
         }
         .onDisappear { viewModel.tearDown() }
         .enableInjection()
@@ -66,9 +85,10 @@ struct EditorPromptBarView: View {
     }
 
     private var micAlignment: Alignment {
-        // Only slide to the left when the clip-selected compact layout
-        // applies. Recording keeps the mic centered.
-        if isClipSelected, viewModel.phase == .idle { return .leading }
+        // Clip layout keeps this column pinned to the leading edge across idle /
+        // recording so only the control’s width animates (no whole-column
+        // slide when the inline chat hides). Without a clip, stay centered.
+        if isClipSelected { return .leading }
         return .center
     }
 
@@ -128,6 +148,7 @@ struct EditorPromptBarView: View {
         HStack(alignment: .top, spacing: .spacing(.sp2)) {
             VStack(spacing: 4) {
                 micButton
+                    .frame(width: micSlotMaxWidth, alignment: .center)
                 captionLine
             }
 
@@ -195,6 +216,7 @@ struct EditorPromptBarView: View {
     private var micButton: some View {
         ZStack {
             micCore(width: micButtonWidth, height: micButtonHeight)
+                .animation(.easeInOut(duration: 0.22), value: showRecordingAccentBorder)
 
             if isProcessing {
                 ProcessingRing(size: micButtonHeight + 12)
@@ -303,18 +325,22 @@ struct EditorPromptBarView: View {
 
     private func micCore(width: CGFloat, height: CGFloat) -> some View {
         let recording = viewModel.phase == .recording
+        let accentChrome = recording && showRecordingAccentBorder
         let corner = height / 2
 
         return RoundedRectangle(cornerRadius: corner, style: .continuous)
             .fill(micButtonFill)
             .overlay {
                 Group {
-                    if recording {
+                    if accentChrome {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(
                                 recordingPrimaryBorderGradient,
                                 lineWidth: 2.35
                             )
+                    } else if recording {
+                        RoundedRectangle(cornerRadius: corner, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1.1)
                     } else {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
