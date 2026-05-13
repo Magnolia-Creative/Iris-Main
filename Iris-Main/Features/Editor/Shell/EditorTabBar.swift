@@ -164,14 +164,23 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         let leadingCompact = clipIdle || isPromptActionReviewActive
         HStack(spacing: .spacing(.sp2)) {
             if !isColorToolExpanded {
-                Group {
+                ZStack(alignment: .leading) {
                     if let promptActionReviewReplacement {
                         promptActionReviewReplacement
                             .fixedSize(horizontal: true, vertical: false)
+                            .transition(
+                                .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                            )
                     } else if clipIdle {
                         clipDeselectButton
+                            .transition(
+                                .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                            )
                     } else {
                         promptBar(isClipSelected, promptNamespace)
+                            .transition(
+                                .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                            )
                     }
                 }
                 .layoutPriority(leadingCompact ? 0 : 1)

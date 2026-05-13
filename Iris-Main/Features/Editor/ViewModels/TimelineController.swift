@@ -232,8 +232,10 @@ final class TimelineController: ObservableObject {
     }
 
     func finishPromptActionReview() {
-        promptActionReview = nil
-        promptActionReviewMessage = nil
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            promptActionReview = nil
+            promptActionReviewMessage = nil
+        }
     }
 
     /// Clears review and returns the original user prompt for reprompting.
