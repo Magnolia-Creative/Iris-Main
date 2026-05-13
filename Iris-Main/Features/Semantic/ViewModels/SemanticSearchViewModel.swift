@@ -265,6 +265,7 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func prewarmEmbeddingServicesIfNeeded() {
+        guard AppConfiguration.enablesLocalSemanticIndexing else { return }
         guard !hasQueuedEmbeddingPrewarm else { return }
         hasQueuedEmbeddingPrewarm = true
         print("[SemanticIndex] queueing embedding prewarm from editor open")
@@ -360,6 +361,7 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
+        guard AppConfiguration.enablesLocalSemanticIndexing else { return }
         let requestID = enqueueImportedMediaSyncRequest(media, autoBuildIndex: autoBuildIndex)
         let queuedVideoCount = Media.deduplicatedForImportPresentation(media).filter { $0.kind == .video }.count
         EditorDebugTrace.log(
@@ -369,6 +371,9 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func syncImportedMediaAndWait(_ media: [Media], autoBuildIndex: Bool) async -> Set<String> {
+        guard AppConfiguration.enablesLocalSemanticIndexing else {
+            return Set(indexedVideoSignatures.keys)
+        }
         let requestID = enqueueImportedMediaSyncRequest(media, autoBuildIndex: autoBuildIndex)
         await waitForSyncRequest(id: requestID)
         return Set(indexedVideoSignatures.keys)

@@ -6,13 +6,13 @@ struct ImportBrowserModelTests {
     @Test func processingModeFlagsMatchExpectedBehaviors() {
         #expect(ImportProcessingMode.none.runsEmbeddings == false)
         #expect(ImportProcessingMode.none.runsAgentPreprocessing == false)
-        #expect(ImportProcessingMode.embeddingsOnly.runsEmbeddings)
+        #expect(ImportProcessingMode.embeddingsOnly.runsEmbeddings == false)
         #expect(ImportProcessingMode.embeddingsOnly.runsAgentPreprocessing == false)
         #expect(ImportProcessingMode.agentPreprocessingOnly.runsEmbeddings == false)
         #expect(ImportProcessingMode.agentPreprocessingOnly.runsAgentPreprocessing)
-        #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.runsEmbeddings)
+        #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.runsEmbeddings == false)
         #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.runsAgentPreprocessing)
-        #expect(ImportProcessingMode.embeddingsOnly.usesLocalTranscriptionEndpoint)
+        #expect(ImportProcessingMode.embeddingsOnly.usesLocalTranscriptionEndpoint == false)
         #expect(ImportProcessingMode.embeddingsAndAgentPreprocessing.usesLocalTranscriptionEndpoint == false)
         #expect(ImportProcessingMode.agentPreprocessingOnly.usesLocalTranscriptionEndpoint == false)
     }

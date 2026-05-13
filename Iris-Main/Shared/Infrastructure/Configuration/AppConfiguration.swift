@@ -11,6 +11,8 @@ enum AppConfiguration {
     static let visualFramesFieldName = "visual_frames"
     static let visualFrameManifestFieldName = "visual_frame_manifest"
     static let simulateImportProcessing = false
+    /// When false, skips MobileCLIP prewarm, semantic index rebuilds on import, and `queueImportedMediaSync` work.
+    static let enablesLocalSemanticIndexing = false
 
     nonisolated static var semanticMobileCLIPEncoderURI: String {
         guard let modelsDirectoryURL = semanticMobileCLIPModelsDirectoryURL else {

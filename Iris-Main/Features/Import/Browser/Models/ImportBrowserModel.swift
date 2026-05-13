@@ -22,13 +22,9 @@ enum ImportProcessingMode: String, CaseIterable, Identifiable {
         }
     }
 
+    /// MobileCLIP / on-device semantic indexing during import is disabled; server clip processing covers prep.
     var runsEmbeddings: Bool {
-        switch self {
-        case .embeddingsOnly, .embeddingsAndAgentPreprocessing:
-            true
-        case .none, .agentPreprocessingOnly:
-            false
-        }
+        false
     }
 
     var runsAgentPreprocessing: Bool {
@@ -40,8 +36,8 @@ enum ImportProcessingMode: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Local `/transcriptions/sentences` is used only when embeddings run without server clip processing.
-    /// When agent preprocessing is enabled, transcripts come from `POST …/clips/process` instead.
+    /// Local `/transcriptions/sentences` is used when `runsEmbeddings` is true and agent clip upload is off.
+    /// With on-device import embeddings disabled (`runsEmbeddings` is false), this stays false and transcripts come from server clip processing when agent prep runs.
     var usesLocalTranscriptionEndpoint: Bool {
         runsEmbeddings && !runsAgentPreprocessing
     }

@@ -630,6 +630,7 @@ final class TimelineController: ObservableObject {
     }
 
     func syncSemanticIndexForImportedMedia() {
+        guard AppConfiguration.enablesLocalSemanticIndexing else { return }
         let media = Array(state.mediaById.values)
         SemanticSearchViewModel.shared.queueImportedMediaSync(media, autoBuildIndex: true)
     }
