@@ -15,7 +15,8 @@ struct TimelinePromptActionReviewPromptSlot: View {
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.text)
                 .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: true, vertical: true)
 
             if let message, !message.isEmpty {
                 Text(message)
@@ -24,32 +25,30 @@ struct TimelinePromptActionReviewPromptSlot: View {
                     .lineLimit(2)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: .spacing(.sp2)) {
-                    outlinedButton(
-                        title: "Approve",
-                        foreground: Color.ds.accentFg,
-                        border: Color.ds.accentFg,
-                        action: onApprove
-                    )
+            HStack(spacing: .spacing(.sp2)) {
+                outlinedButton(
+                    title: "Approve",
+                    foreground: Color.ds.accentFg,
+                    border: Color.ds.accentFg,
+                    action: onApprove
+                )
 
-                    outlinedButton(
-                        title: "Reject",
-                        foreground: Color.ds.danger,
-                        border: Color.ds.danger,
-                        action: onReject
-                    )
+                outlinedButton(
+                    title: "Reject",
+                    foreground: Color.ds.danger,
+                    border: Color.ds.danger,
+                    action: onReject
+                )
 
-                    outlinedButton(
-                        title: "Reprompt",
-                        foreground: Color.ds.accentFg,
-                        border: Color.ds.accentFg,
-                        action: onReprompt
-                    )
-                }
+                outlinedButton(
+                    title: "Reprompt",
+                    foreground: Color.ds.accentFg,
+                    border: Color.ds.accentFg,
+                    action: onReprompt
+                )
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var headerTitle: String {

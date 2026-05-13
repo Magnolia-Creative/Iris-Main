@@ -76,22 +76,27 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     private var rowMaxWidth: CGFloat? {
         // When a clip is selected and the prompt bar is in its compact idle
-        // layout, let the entire row size to content so the card pill hugs the
-        // mic/chat + divider + clip tools tightly. In every other case the row
-        // should expand so the prompt bar can center properly.
+        // layout, or when prompt-action review replaces the prompt slot, let the
+        // entire row size to content so the glass pill hugs tightly. Otherwise
+        // expand so the prompt bar can center properly.
+        if isPromptActionReviewActive {
+            return nil
+        }
         if isClipSelected && !promptBarIsTakingOver {
             return nil
         }
         return .infinity
     }
 
-    /// Clip selected with no active prompt: shell should size to content; the
-    /// pinned nav bar below is unaffected by this hug.
+    /// Clip idle or prompt-action review: shell sizes to content; the pinned
+    /// nav bar below is unaffected by this hug.
     private var hugChromeToContent: Bool {
         activeSpace == .edit
-            && isClipSelected
-            && !promptBarIsTakingOver
             && expandedToolId != 3
+            && (
+                isPromptActionReviewActive
+                    || (isClipSelected && !promptBarIsTakingOver)
+            )
     }
 
     private var isColorToolExpanded: Bool {
@@ -156,18 +161,20 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @ViewBuilder
     private var toolsRow: some View {
         let clipIdle = isClipSelected && !promptBarIsTakingOver
+        let leadingCompact = clipIdle || isPromptActionReviewActive
         HStack(spacing: .spacing(.sp2)) {
             if !isColorToolExpanded {
                 Group {
                     if let promptActionReviewReplacement {
                         promptActionReviewReplacement
+                            .fixedSize(horizontal: true, vertical: false)
                     } else if clipIdle {
                         clipDeselectButton
                     } else {
                         promptBar(isClipSelected, promptNamespace)
                     }
                 }
-                .layoutPriority(clipIdle ? 0 : 1)
+                .layoutPriority(leadingCompact ? 0 : 1)
             }
 
             if clipIdle {
@@ -187,7 +194,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         }
         .frame(maxWidth: rowMaxWidth)
         .frame(minHeight: .spacing(.sp8))
-        .frame(maxWidth: clipIdle ? nil : .infinity, alignment: clipIdle ? .leading : .center)
+        .frame(
+            maxWidth: leadingCompact ? nil : .infinity,
+            alignment: leadingCompact ? .leading : .center
+        )
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)
