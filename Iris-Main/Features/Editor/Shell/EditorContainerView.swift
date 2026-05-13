@@ -105,7 +105,7 @@ struct EditorContainerView: View {
                     .padding(.bottom, .spacing(.sp3))
                 } else {
                     GlassEffectContainer(spacing: 20) {
-                        VStack(spacing: .spacing(.sp2)) {
+                        ZStack(alignment: .bottom) {
                             EditorTabBar(
                                 activeSpace: $activeSpace,
                                 isClipSelected: state.selectedClipId != nil,
@@ -138,6 +138,7 @@ struct EditorContainerView: View {
                                 onDeselectClip: {
                                     controller.clearSelection()
                                 },
+                                bottomReservedSpace: EditorBottomNavBar.totalHeight,
                                 promptBar: { isClipSelected, micNamespace in
                                     EditorPromptBarView(
                                         viewModel: editorPromptBarViewModel,

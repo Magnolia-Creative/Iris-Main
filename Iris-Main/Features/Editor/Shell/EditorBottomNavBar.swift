@@ -12,27 +12,35 @@ struct EditorBottomNavBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @Namespace private var tabNamespace
 
-    private let tabItemWidth: CGFloat = 62
-    private let tabRowHeight: CGFloat = 48
-    private let navCornerRadius: CGFloat = .spacing(.sp4)
-    private let shellInset: CGFloat = 10
+    fileprivate static let tabItemWidth: CGFloat = 62
+    fileprivate static let tabRowHeight: CGFloat = 48
+    fileprivate static let navCornerRadius: CGFloat = .spacing(.sp4)
+    fileprivate static let shellInset: CGFloat = 10
+
+    /// Total laid-out height including the surrounding shell insets. Callers
+    /// (e.g. `EditorContainerView`) use this to reserve overlap space inside
+    /// the top chrome so the nav bar can float in front of it in z.
+    static var totalHeight: CGFloat {
+        let rowInnerVertical = CGFloat.spacing(.sp2) * 2
+        return tabRowHeight + rowInnerVertical + shellInset * 2
+    }
 
     private var navWidth: CGFloat {
         let count = CGFloat(EditorSpace.allCases.count)
         let hPad = CGFloat.spacing(.sp2) * 2
-        return count * tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
+        return count * Self.tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
     }
 
     /// Outer container width = nav row + symmetrical shell insets. Constant.
     private var containerWidth: CGFloat {
-        navWidth + shellInset * 2
+        navWidth + Self.shellInset * 2
     }
 
     var body: some View {
         navCard
-            .padding(.horizontal, shellInset)
-            .padding(.vertical, shellInset)
-            .frame(width: containerWidth)
+            .padding(.horizontal, Self.shellInset)
+            .padding(.vertical, Self.shellInset)
+            .frame(width: containerWidth, height: Self.totalHeight)
     }
 
     private var navCard: some View {
@@ -40,7 +48,7 @@ struct EditorBottomNavBar: View {
             .frame(width: navWidth)
             .glassEffect(
                 .regular.tint(navTint).interactive(),
-                in: RoundedRectangle(cornerRadius: navCornerRadius, style: .continuous)
+                in: RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
             )
             .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
     }
@@ -70,7 +78,7 @@ struct EditorBottomNavBar: View {
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(Color.white)
                         .contentTransition(.symbolEffect(.replace.downUp.byLayer, options: .nonRepeating))
-                        .frame(width: tabItemWidth, height: tabRowHeight)
+                        .frame(width: Self.tabItemWidth, height: Self.tabRowHeight)
                         .background {
                             if activeSpace == space {
                                 RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous)

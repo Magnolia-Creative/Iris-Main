@@ -15,6 +15,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let onSetClipColorFilter: (ClipColorFilter) -> Void
     let onResetClipColorFilter: () -> Void
     let onDeselectClip: () -> Void
+    /// Extra space reserved inside the glass shell at the bottom so the pinned
+    /// nav bar can overlap the chrome in z without changing its layout.
+    let bottomReservedSpace: CGFloat
     let promptBar: (Bool, Namespace.ID) -> PromptBar
     let spaceExtension: SpaceExtension
 
@@ -37,6 +40,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onSetClipColorFilter: @escaping (ClipColorFilter) -> Void = { _ in },
         onResetClipColorFilter: @escaping () -> Void = {},
         onDeselectClip: @escaping () -> Void = {},
+        bottomReservedSpace: CGFloat = 0,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
@@ -49,6 +53,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.onSetClipColorFilter = onSetClipColorFilter
         self.onResetClipColorFilter = onResetClipColorFilter
         self.onDeselectClip = onDeselectClip
+        self.bottomReservedSpace = bottomReservedSpace
         self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
     }
@@ -99,7 +104,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             }
         }
         .padding(.horizontal, .spacing(.sp3))
-        .padding(.vertical, .spacing(.sp3))
+        .padding(.top, .spacing(.sp3))
+        .padding(.bottom, .spacing(.sp3) + bottomReservedSpace)
         .modifier(HorizontalHugWhenEnabled(enabled: hugChromeToContent))
     }
 
