@@ -19,6 +19,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let isPromptActionReviewActive: Bool
     /// When set, replaces the prompt bar (mic / typing / chat) with this content while keeping the tab bar shell.
     let promptActionReviewReplacement: AnyView?
+    /// Drives cross-fade when switching between sequence review, color review substeps, and other leading content.
+    let promptReviewReplacementSlotIdentity: String
     /// Extra space reserved inside the glass shell at the bottom so the pinned
     /// nav bar can overlap the chrome in z without changing its layout.
     let bottomReservedSpace: CGFloat
@@ -52,6 +54,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onDeselectClip: @escaping () -> Void = {},
         isPromptActionReviewActive: Bool = false,
         promptActionReviewReplacement: AnyView? = nil,
+        promptReviewReplacementSlotIdentity: String = "",
         bottomReservedSpace: CGFloat = 0,
         chromeMaxWidth: CGFloat? = nil,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
@@ -68,6 +71,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.onDeselectClip = onDeselectClip
         self.isPromptActionReviewActive = isPromptActionReviewActive
         self.promptActionReviewReplacement = promptActionReviewReplacement
+        self.promptReviewReplacementSlotIdentity = promptReviewReplacementSlotIdentity
         self.bottomReservedSpace = bottomReservedSpace
         self.chromeMaxWidth = chromeMaxWidth
         self.promptBar = promptBar
@@ -183,6 +187,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                             )
                     }
                 }
+                .contentTransition(.opacity)
                 .layoutPriority(leadingCompact ? 0 : 1)
             }
 
@@ -211,6 +216,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isPromptActionReviewActive)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptReviewReplacementSlotIdentity)
     }
 
     private var promptDivider: some View {

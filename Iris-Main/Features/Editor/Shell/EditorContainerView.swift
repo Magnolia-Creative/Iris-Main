@@ -121,6 +121,7 @@ struct EditorContainerView: View {
                     },
                     isPromptActionReviewActive: isPromptActionReviewActive,
                     promptActionReviewReplacement: promptActionReviewReplacement(),
+                    promptReviewReplacementSlotIdentity: promptReviewReplacementSlotIdentity,
                     bottomReservedSpace: EditorBottomNavBar.totalHeight,
                     chromeMaxWidth: activeSpace == .edit
                         ? EditorBottomNavBar.containerWidth + .spacing(.sp4) * 2
@@ -150,6 +151,7 @@ struct EditorContainerView: View {
                             EmptyView()
                         }
                     }
+                    .contentTransition(.opacity)
                     .animation(.easeInOut(duration: 0.2), value: activeSpace)
                 }
                 .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
@@ -314,8 +316,64 @@ struct EditorContainerView: View {
         }
     }
 
+    /// Token for animating the leading tab bar slot between color substeps and sequence review.
+    private var promptReviewReplacementSlotIdentity: String {
+        guard let session = controller.promptActionReview else { return "none" }
+        if let color = session.promptColorReview,
+           color.fieldIndex < color.orderedFieldKeys.count {
+            let key = color.orderedFieldKeys[color.fieldIndex]
+            return "color:\(session.currentIndex):\(color.fieldIndex):\(key)"
+        }
+        if session.currentAction?.isPromptSequenceReviewable == true {
+            return "seq:\(session.currentIndex)"
+        }
+        return "review:\(session.currentIndex)"
+    }
+
     private func promptActionReviewReplacement() -> AnyView? {
         guard let session = controller.promptActionReview else { return nil }
+
+        if let colorState = session.promptColorReview,
+           case let .updateClipColorFilter(clipId, _) = session.currentAction?.payload,
+           colorState.fieldIndex < colorState.orderedFieldKeys.count {
+            let key = colorState.orderedFieldKeys[colorState.fieldIndex]
+            guard let field = ClipColorFilterPromptField(patchKey: key) else {
+                return AnyView(
+                    TimelinePromptActionReviewPromptSlot(
+                        session: session,
+                        preview: controller.promptActionPreview,
+                        message: controller.promptActionReviewMessage,
+                        onApprove: { controller.approveCurrentPromptAction() },
+                        onReject: { controller.rejectCurrentPromptAction() },
+                        onReprompt: {
+                            let original = controller.discardPromptActionReviewReturningPrompt() ?? ""
+                            let draft = original.isEmpty ? "" : "\(original)\n"
+                            editorPromptBarViewModel.openRepromptDraft(draft)
+                        }
+                    )
+                )
+            }
+
+            let binding = Binding<Float>(
+                get: { field.floatValue(in: controller.clipColorFilter(for: clipId)) },
+                set: { newValue in
+                    var filter = controller.clipColorFilter(for: clipId)
+                    field.set(newValue, on: &filter)
+                    controller.setClipColorFilter(clipId: clipId, filter: filter)
+                }
+            )
+
+            return AnyView(
+                TimelinePromptColorReviewSlot(
+                    propertyTitle: field.displayTitle,
+                    sliderRange: field.sliderRange,
+                    sliderValue: binding,
+                    onReset: { controller.resetCurrentPromptColorReviewField() },
+                    onConfirm: { controller.confirmCurrentPromptColorSubstep() }
+                )
+            )
+        }
+
         return AnyView(
             TimelinePromptActionReviewPromptSlot(
                 session: session,

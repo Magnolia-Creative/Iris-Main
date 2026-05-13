@@ -214,12 +214,13 @@ final class TimelineController: ObservableObject {
 
     // MARK: - Prompt action preview / review
 
-    /// Starts sequential review when the batch includes at least one reviewable sequence action.
-    /// Leading non-reviewable actions are applied immediately in order.
+    /// Starts sequential review when the batch includes sequence edits and/or color filter updates.
+    /// Leading actions that are neither sequence- nor color-reviewable are applied immediately in order.
     /// - Returns: `false` if review could not start (nothing reviewable or invalid timeline id).
     @discardableResult
     func startPromptActionReview(actions: [Action], prompt: String) -> Bool {
-        guard actions.contains(where: \.isPromptSequenceReviewable) else { return false }
+        guard actions.contains(where: \.isPromptSequenceReviewable)
+            || actions.contains(where: \.isPromptColorReviewable) else { return false }
         guard actions.allSatisfy({ $0.timelineId == state.timelineId }) else { return false }
 
         promptActionReviewMessage = nil
@@ -227,7 +228,7 @@ final class TimelineController: ObservableObject {
         promptActionReview = session
         flushNonReviewableApplyingAll()
         guard promptActionReview != nil else { return false }
-        focusCurrentPromptActionPreview()
+        syncPromptReviewPresentation()
         return true
     }
 
@@ -250,6 +251,7 @@ final class TimelineController: ObservableObject {
         guard let action = session.currentAction, action.isPromptSequenceReviewable else { return }
 
         promptActionReviewMessage = nil
+        session.promptColorReview = nil
         if !applyActions([action]) {
             promptActionReviewMessage = "This edit could not be applied. Skipping."
         }
@@ -270,6 +272,7 @@ final class TimelineController: ObservableObject {
         guard let action = session.currentAction, action.isPromptSequenceReviewable else { return }
 
         promptActionReviewMessage = nil
+        session.promptColorReview = nil
         session.currentIndex += 1
         if session.currentIndex >= session.actions.count {
             finishPromptActionReview()
@@ -281,11 +284,46 @@ final class TimelineController: ObservableObject {
         focusIfStillReviewing()
     }
 
+    /// Advances one color field after the user taps the checkmark, or finishes the color action after the last field.
+    func confirmCurrentPromptColorSubstep() {
+        guard var session = promptActionReview else { return }
+        guard var colorState = session.promptColorReview else { return }
+        guard session.currentAction?.isPromptColorReviewable == true else { return }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            if colorState.fieldIndex < colorState.orderedFieldKeys.count - 1 {
+                colorState.fieldIndex += 1
+                session.promptColorReview = colorState
+                promptActionReview = session
+            } else {
+                session.promptColorReview = nil
+                session.currentIndex += 1
+                promptActionReview = session
+                flushNonReviewableApplyingAll()
+                syncPromptReviewPresentation()
+            }
+        }
+    }
+
+    /// Restores the active color field to its value before the current `updateClipColorFilter` was applied.
+    func resetCurrentPromptColorReviewField() {
+        guard let session = promptActionReview,
+              let colorState = session.promptColorReview,
+              case let .updateClipColorFilter(clipId, _) = session.currentAction?.payload
+        else { return }
+        let key = colorState.orderedFieldKeys[colorState.fieldIndex]
+        guard let field = ClipColorFilterPromptField(patchKey: key) else { return }
+        var filter = clipColorFilter(for: clipId)
+        let baselineValue = field.floatValue(in: colorState.baselineFilter)
+        field.set(baselineValue, on: &filter)
+        setClipColorFilter(clipId: clipId, filter: filter)
+    }
+
     private func flushNonReviewableApplyingAll() {
         guard var session = promptActionReview else { return }
         while session.currentIndex < session.actions.count {
             let action = session.actions[session.currentIndex]
-            guard !action.isPromptSequenceReviewable else { break }
+            guard !action.isPromptSequenceReviewable, !action.isPromptColorReviewable else { break }
             _ = applyActions([action])
             session.currentIndex += 1
         }
@@ -298,8 +336,57 @@ final class TimelineController: ObservableObject {
     }
 
     private func focusIfStillReviewing() {
+        syncPromptReviewPresentation()
+    }
+
+    private func syncPromptReviewPresentation() {
         guard promptActionReview != nil else { return }
-        focusCurrentPromptActionPreview()
+        ensurePromptColorReviewActivated()
+        guard let session = promptActionReview, let action = session.currentAction else { return }
+
+        if action.isPromptColorReviewable, session.promptColorReview != nil {
+            if case let .updateClipColorFilter(clipId, _) = action.payload {
+                state.selectedClipId = clipId
+            }
+            return
+        }
+
+        if action.isPromptSequenceReviewable {
+            focusCurrentPromptActionPreview()
+        }
+    }
+
+    private func ensurePromptColorReviewActivated() {
+        guard var session = promptActionReview,
+              let action = session.currentAction,
+              action.isPromptColorReviewable,
+              session.promptColorReview == nil
+        else { return }
+
+        guard case let .updateClipColorFilter(clipId, patch) = action.payload else { return }
+        let keys = patch.reviewOrderedKeys
+        guard !keys.isEmpty else { return }
+
+        let baseline = clipColorFilter(for: clipId)
+        promptActionReviewMessage = nil
+
+        if !applyActions([action]) {
+            promptActionReviewMessage = "This edit could not be applied. Skipping."
+            session.promptColorReview = nil
+            session.currentIndex += 1
+            promptActionReview = session
+            flushNonReviewableApplyingAll()
+            syncPromptReviewPresentation()
+            return
+        }
+
+        session.promptColorReview = PromptColorReviewState(
+            orderedFieldKeys: keys,
+            fieldIndex: 0,
+            baselineFilter: baseline
+        )
+        state.selectedClipId = clipId
+        promptActionReview = session
     }
 
     private func focusCurrentPromptActionPreview() {

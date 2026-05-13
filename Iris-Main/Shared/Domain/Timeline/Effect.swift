@@ -294,6 +294,28 @@ struct ClipColorFilterPatch: Codable, Equatable {
         temperature == nil && tint == nil && exposure == nil && brightness == nil
             && contrast == nil && saturation == nil && highlights == nil && shadows == nil
     }
+
+    /// Stable key order for prompt-bar per-field color review (matches compiler grouping).
+    static let promptReviewKeyOrder: [String] = [
+        "temperature", "tint", "exposure", "brightness", "contrast", "saturation", "highlights", "shadows"
+    ]
+
+    /// Keys present in this patch, in `promptReviewKeyOrder`.
+    var reviewOrderedKeys: [String] {
+        Self.promptReviewKeyOrder.filter { key in
+            switch key {
+            case "temperature": return temperature != nil
+            case "tint": return tint != nil
+            case "exposure": return exposure != nil
+            case "brightness": return brightness != nil
+            case "contrast": return contrast != nil
+            case "saturation": return saturation != nil
+            case "highlights": return highlights != nil
+            case "shadows": return shadows != nil
+            default: return false
+            }
+        }
+    }
 }
 
 private extension Dictionary where Key == String, Value == EffectParameterValue {

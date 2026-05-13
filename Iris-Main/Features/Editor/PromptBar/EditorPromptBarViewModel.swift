@@ -233,7 +233,8 @@ final class EditorPromptBarViewModel: ObservableObject {
 
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
-                if result.actions.contains(where: \.isPromptSequenceReviewable),
+                if result.actions.contains(where: \.isPromptSequenceReviewable)
+                    || result.actions.contains(where: \.isPromptColorReviewable),
                    let attemptStartPromptActionReview {
                     if attemptStartPromptActionReview(result.actions, trimmedPrompt) {
                         phase = .idle

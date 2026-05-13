@@ -12,14 +12,33 @@ extension Action {
             return false
         }
     }
+
+    /// Color adjustments from the prompt bar: apply patch, then walk fields with sliders before continuing.
+    var isPromptColorReviewable: Bool {
+        switch payload {
+        case let .updateClipColorFilter(_, patch):
+            return !patch.isEmpty
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - Review session
+
+/// Per-field UI state after an `updateClipColorFilter` has been applied for prompt review.
+struct PromptColorReviewState: Equatable {
+    let orderedFieldKeys: [String]
+    var fieldIndex: Int
+    let baselineFilter: ClipColorFilter
+}
 
 struct TimelinePromptActionReviewSession: Equatable {
     let originalPrompt: String
     let actions: [Action]
     var currentIndex: Int
+    /// When non-nil, the current action is a color patch and the user is confirming fields one at a time.
+    var promptColorReview: PromptColorReviewState? = nil
 
     var currentAction: Action? {
         guard currentIndex >= 0, currentIndex < actions.count else { return nil }
