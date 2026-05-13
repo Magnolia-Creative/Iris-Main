@@ -54,7 +54,7 @@ struct EditorBottomNavBar: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
-                    .strokeBorder(navBorderColor, lineWidth: 1)
+                    .stroke(Color.ds.border, lineWidth: 1)
             )
             .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
     }
@@ -105,10 +105,6 @@ struct EditorBottomNavBar: View {
 
     private var navTint: Color {
         Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12)
-    }
-
-    private var navBorderColor: Color {
-        Color.white.opacity(colorScheme == .dark ? 0.14 : 0.22)
     }
 
     private var navInnerShadowColor: Color {
