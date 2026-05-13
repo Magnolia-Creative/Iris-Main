@@ -86,10 +86,14 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             && expandedToolId != 3
     }
 
+    private var isColorToolExpanded: Bool {
+        expandedToolId == 3
+    }
+
     var body: some View {
         topChrome
             .modifier(ChromeMaxWidthModifier(
-                maxWidth: hugChromeToContent ? nil : chromeMaxWidth
+                maxWidth: (hugChromeToContent || isColorToolExpanded) ? nil : chromeMaxWidth
             ))
             .glassEffect(
                 .regular.tint(shellTint),
@@ -141,18 +145,22 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     private var toolsRow: some View {
         let clipIdle = isClipSelected && !promptBarIsTakingOver
         HStack(spacing: .spacing(.sp2)) {
-            Group {
-                if clipIdle {
-                    clipDeselectButton
-                } else {
-                    promptBar(isClipSelected, promptNamespace)
+            if !isColorToolExpanded {
+                Group {
+                    if clipIdle {
+                        clipDeselectButton
+                    } else {
+                        promptBar(isClipSelected, promptNamespace)
+                    }
                 }
+                .layoutPriority(clipIdle ? 0 : 1)
             }
-            .layoutPriority(clipIdle ? 0 : 1)
 
             if clipIdle {
-                promptDivider
-                    .transition(.opacity)
+                if !isColorToolExpanded {
+                    promptDivider
+                        .transition(.opacity)
+                }
                 if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
                     clipToolsExpandedCluster(selected: selected)
                 } else {
