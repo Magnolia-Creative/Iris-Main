@@ -8,6 +8,8 @@ struct EditorPromptBarView: View {
     let isClipSelected: Bool
     let micNamespace: Namespace.ID
 
+    @Environment(\.colorScheme) private var colorScheme
+
     @FocusState private var isPromptFocused: Bool
     @State private var isMicPressed = false
 
@@ -288,21 +290,23 @@ struct EditorPromptBarView: View {
         )
     }
 
+    /// Flat fill so the control reads slightly above the glass shell without
+    /// a faux-3D gradient (a touch stronger than the chat companion).
+    private var micButtonFill: Color {
+        switch colorScheme {
+        case .light:
+            return Color.black.opacity(0.07)
+        default:
+            return Color.white.opacity(0.12)
+        }
+    }
+
     private func micCore(width: CGFloat, height: CGFloat) -> some View {
         let recording = viewModel.phase == .recording
         let corner = height / 2
 
         return RoundedRectangle(cornerRadius: corner, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.20),
-                        Color.white.opacity(0.06)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .fill(micButtonFill)
             .overlay {
                 Group {
                     if recording {
@@ -315,14 +319,6 @@ struct EditorPromptBarView: View {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                     }
-                }
-            }
-            .overlay {
-                if !recording {
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
-                        .blur(radius: 0.5)
-                        .blendMode(.plusLighter)
                 }
             }
             .frame(width: width, height: height)
