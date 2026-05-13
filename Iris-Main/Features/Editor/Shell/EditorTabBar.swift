@@ -78,6 +78,12 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         return .infinity
     }
 
+    /// Clip selected with no active prompt: shell should size to content; screen
+    /// edge inset is handled by the parent (e.g. `.sp4` max horizontal margin).
+    private var hugEditChromeToContent: Bool {
+        activeSpace == .edit && isClipSelected && !promptBarIsTakingOver
+    }
+
     var body: some View {
         GlassEffectContainer(spacing: shellInset * 2) {
             VStack(spacing: 0) {
@@ -96,6 +102,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                     .padding(.horizontal, shellInset)
                     .padding(.bottom, shellInset)
             }
+            .modifier(HorizontalHugWhenEnabled(enabled: hugEditChromeToContent))
             .frame(width: activeSpace == .edit ? editShellWidth : nil)
             .glassEffect(
                 .regular.tint(shellTint),
@@ -176,6 +183,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                         .font(.system(size: 21, weight: .medium))
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(Color.white)
+                        .contentTransition(.symbolEffect(.replace.downUp.byLayer, options: .nonRepeating))
                         .frame(width: tabItemWidth, height: tabRowHeight)
                         .background {
                             if activeSpace == space {
@@ -186,29 +194,31 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                         }
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TabNavigationPressButtonStyle())
                 .accessibilityLabel(Text(space.rawValue))
             }
         }
         .padding(.horizontal, .spacing(.sp2))
         .padding(.vertical, .spacing(.sp2))
+        .animation(.spring(response: 0.38, dampingFraction: 0.78), value: activeSpace)
     }
 
     // MARK: - Edit Tools Row
 
     @ViewBuilder
     private var toolsRow: some View {
+        let clipIdle = isClipSelected && !promptBarIsTakingOver
         HStack(spacing: .spacing(.sp2)) {
             Group {
-                if isClipSelected && !promptBarIsTakingOver {
+                if clipIdle {
                     clipDeselectButton
                 } else {
                     promptBar(isClipSelected, promptNamespace)
                 }
             }
-            .layoutPriority(isClipSelected && !promptBarIsTakingOver ? 0 : 1)
+            .layoutPriority(clipIdle ? 0 : 1)
 
-            if isClipSelected && !promptBarIsTakingOver {
+            if clipIdle {
                 promptDivider
                     .transition(.opacity)
                 if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
@@ -217,16 +227,13 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         clipToolsCollapsedStrip
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
                 }
             }
         }
         .frame(maxWidth: rowMaxWidth)
         .frame(minHeight: .spacing(.sp8))
-        .frame(
-            maxWidth: .infinity,
-            alignment: (isClipSelected && !promptBarIsTakingOver) ? .leading : .center
-        )
+        .frame(maxWidth: clipIdle ? nil : .infinity, alignment: clipIdle ? .leading : .center)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedToolId)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isClipSelected)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptBarIsTakingOver)
@@ -450,6 +457,30 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         var filter = selectedClipColorFilter
         mutate(&filter)
         onSetClipColorFilter(filter)
+    }
+}
+
+/// Springy press feedback for bottom-nav tabs so the highlight eases out on release.
+private struct TabNavigationPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.34, dampingFraction: 0.72), value: configuration.isPressed)
+    }
+}
+
+/// Lets the glass shell shrink to the intrinsic width of tools + nav when clip tools are shown.
+private struct HorizontalHugWhenEnabled: ViewModifier {
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.fixedSize(horizontal: true, vertical: false)
+        } else {
+            content
+        }
     }
 }
 
