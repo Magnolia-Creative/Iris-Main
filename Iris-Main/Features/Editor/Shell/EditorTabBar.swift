@@ -438,10 +438,10 @@ private enum ColorProperty: String, CaseIterable, Identifiable {
     var range: ClosedRange<Float> {
         switch self {
         case .exposure:
-            let bound = ClipColorFilter.exposureRange.upperBound / 3
+            let bound = ClipColorFilter.exposureRange.upperBound / 2
             return -bound...bound
         case .brightness:
-            let bound = ClipColorFilter.normalizedRange.upperBound / 3
+            let bound = ClipColorFilter.normalizedRange.upperBound / 2
             return -bound...bound
         default:
             return ClipColorFilter.normalizedRange
