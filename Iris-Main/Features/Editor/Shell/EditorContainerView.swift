@@ -205,7 +205,9 @@ struct EditorContainerView: View {
             renderBridge.bind(to: controller)
         }
         .onTapGesture {
-            controller.clearSelection()
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                controller.clearSelection()
+            }
         }
         .onDisappear {
             editorPromptBarViewModel.tearDown()

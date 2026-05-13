@@ -28,9 +28,7 @@ extension TimelineState {
 
     mutating func clearSelection() {
         guard selectedClipId != nil else { return }
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-            selectedClipId = nil
-        }
+        selectedClipId = nil
     }
 
     mutating func setPlaybackState(_ playbackState: TimelinePlaybackState) {

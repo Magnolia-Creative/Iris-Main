@@ -63,10 +63,6 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         navWidth + shellInset * 2
     }
 
-    private var editShellWidth: CGFloat? {
-        isClipSelected ? nil : shellWidth
-    }
-
     private var rowMaxWidth: CGFloat? {
         // When a clip is selected and the prompt bar is in its compact idle
         // layout, let the entire row size to content so the card pill hugs the
@@ -84,26 +80,29 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         activeSpace == .edit && isClipSelected && !promptBarIsTakingOver
     }
 
+    /// Edit + clip tools: shell may grow horizontally; nav stays fixed width and centered.
+    private var editShellUsesFlexibleWidth: Bool {
+        activeSpace == .edit && isClipSelected && !promptBarIsTakingOver
+    }
+
     var body: some View {
         GlassEffectContainer(spacing: shellInset * 2) {
             VStack(spacing: 0) {
-                Group {
-                    if activeSpace == .edit {
-                        toolsRow
-                    } else {
-                        spaceExtension
-                    }
-                }
-                .padding(.horizontal, .spacing(.sp3))
-                .padding(.top, .spacing(.sp3))
-                .padding(.bottom, .spacing(.sp2))
+                topChrome
 
-                navCard
-                    .padding(.horizontal, shellInset)
-                    .padding(.bottom, shellInset)
+                HStack {
+                    Spacer(minLength: 0)
+                    navCard
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, shellInset)
+                .padding(.bottom, shellInset)
             }
-            .modifier(HorizontalHugWhenEnabled(enabled: hugEditChromeToContent))
-            .frame(width: activeSpace == .edit ? editShellWidth : nil)
+            .modifier(EditShellWidthModifier(
+                shellWidth: shellWidth,
+                usesFlexibleWidth: editShellUsesFlexibleWidth,
+                isEditSpace: activeSpace == .edit
+            ))
             .glassEffect(
                 .regular.tint(shellTint),
                 in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
@@ -121,6 +120,24 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
             }
         }
+    }
+
+    private var topChrome: some View {
+        Group {
+            if activeSpace == .edit {
+                toolsRow
+            } else {
+                spaceExtension
+            }
+        }
+        .padding(.horizontal, .spacing(.sp3))
+        .padding(.top, .spacing(.sp3))
+        .padding(.bottom, .spacing(.sp2))
+        .modifier(HorizontalHugWhenEnabled(enabled: hugEditChromeToContent))
+        .frame(
+            maxWidth: hugEditChromeToContent ? nil : .infinity,
+            alignment: .leading
+        )
     }
 
     // MARK: - Nav Card (raised inner element)
@@ -249,10 +266,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     private var clipDeselectButton: some View {
         Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                 expandedToolId = -1
+                onDeselectClip()
             }
-            onDeselectClip()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 20, weight: .semibold))
@@ -470,7 +487,7 @@ private struct TabNavigationPressButtonStyle: ButtonStyle {
     }
 }
 
-/// Lets the glass shell shrink to the intrinsic width of tools + nav when clip tools are shown.
+/// Lets the top chrome shrink to intrinsic width when clip tools are shown; nav row stays full shell width.
 private struct HorizontalHugWhenEnabled: ViewModifier {
     let enabled: Bool
 
@@ -478,6 +495,25 @@ private struct HorizontalHugWhenEnabled: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content.fixedSize(horizontal: true, vertical: false)
+        } else {
+            content
+        }
+    }
+}
+
+/// Keeps edit shell at fixed pill width when idle; allows horizontal growth when clip tools are active so the nav card stays stable and centered.
+private struct EditShellWidthModifier: ViewModifier {
+    let shellWidth: CGFloat
+    let usesFlexibleWidth: Bool
+    let isEditSpace: Bool
+
+    func body(content: Content) -> some View {
+        if isEditSpace {
+            if usesFlexibleWidth {
+                content.frame(minWidth: shellWidth, maxWidth: .infinity)
+            } else {
+                content.frame(width: shellWidth)
+            }
         } else {
             content
         }
