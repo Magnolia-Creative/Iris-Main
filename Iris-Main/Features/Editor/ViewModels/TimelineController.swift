@@ -367,6 +367,24 @@ final class TimelineController: ObservableObject {
         state.mediaById[media.mediaId] = media
     }
 
+    /// Re-loads one `Media` row from the database when transcript (or other spec) was updated elsewhere (e.g. import browser background task).
+    @MainActor
+    func refreshMediaFromDatabaseIfOnTimeline(mediaId: String) {
+        guard state.clips.contains(where: { $0.mediaId == mediaId }) else { return }
+        do {
+            guard let fresh = try db.getMedia(mediaId: mediaId) else {
+                Self.logger.warning("refreshMediaFromDatabase: no media row for id=\(mediaId, privacy: .public)")
+                return
+            }
+            updateMedia(fresh)
+            Self.logger.info(
+                "refreshMediaFromDatabase: merged mediaId=\(mediaId, privacy: .public) transcriptID=\(fresh.spec.transcriptID ?? "nil", privacy: .public) sentences=\(fresh.spec.transcriptSentences?.count ?? 0, privacy: .public)"
+            )
+        } catch {
+            Self.logger.error("refreshMediaFromDatabase failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     func generateThumbnailStrips(for media: [Media]) {
         for item in media where item.kind == .video {
             Task(priority: .utility) {

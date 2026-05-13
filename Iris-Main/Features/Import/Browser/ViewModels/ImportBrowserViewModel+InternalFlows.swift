@@ -690,6 +690,11 @@ extension ImportBrowserViewModel {
         }
         media.updatedAt = Date()
         try db.update(media)
+        NotificationCenter.default.post(
+            name: .irisMediaTranscriptDidPersist,
+            object: nil,
+            userInfo: ["mediaId": mediaID]
+        )
         Self.transcriptPersistenceLog.info(
             "persistTranscript saved mediaID=\(mediaID, privacy: .public) storedTranscriptID=\(media.spec.transcriptID ?? "nil", privacy: .public) storedSentences=\(media.spec.transcriptSentences?.count ?? 0, privacy: .public) fullTextChars=\(media.spec.transcriptFullText?.count ?? 0, privacy: .public)"
         )

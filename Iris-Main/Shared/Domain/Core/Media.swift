@@ -116,3 +116,8 @@ struct MediaTranscriptSentence: Codable, Equatable {
     var speaker: String?
     var channel: String?
 }
+
+extension Notification.Name {
+    /// Posted after `Media.spec` transcript fields are persisted (e.g. `persistTranscript`). `userInfo["mediaId"]` is the `media_id` string.
+    static let irisMediaTranscriptDidPersist = Notification.Name("MagnoliaCreative.Iris.mediaTranscriptDidPersist")
+}

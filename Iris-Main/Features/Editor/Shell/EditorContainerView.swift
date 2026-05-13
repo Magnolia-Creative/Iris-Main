@@ -211,6 +211,12 @@ struct EditorContainerView: View {
             playbackController = pc
             renderBridge.bind(to: controller)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .irisMediaTranscriptDidPersist)) { notification in
+            guard let mediaId = notification.userInfo?["mediaId"] as? String else { return }
+            Task { @MainActor in
+                controller.refreshMediaFromDatabaseIfOnTimeline(mediaId: mediaId)
+            }
+        }
         .onTapGesture {
             withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                 controller.clearSelection()
