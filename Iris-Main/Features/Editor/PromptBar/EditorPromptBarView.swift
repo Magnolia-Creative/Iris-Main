@@ -333,35 +333,22 @@ struct EditorPromptBarView: View {
         )
     }
 
-    /// Same color stops as `recordingPrimaryBorderGradient` at neutral voice level,
-    /// with the diagonal axis rotated over time for the processing (cancel) state.
-    private func processingPrimaryBorderGradient(at date: Date) -> LinearGradient {
-        let baseStartX = 0.02
-        let baseStartY = 0.02
-        let baseEndX = 0.98
-        let baseEndY = 0.98
-        let turn = date.timeIntervalSinceReferenceDate / 2.5 * (2 * Double.pi)
-
-        func rotateUnitPoint(x: Double, y: Double, angle: Double) -> UnitPoint {
-            let cx = x - 0.5
-            let cy = y - 0.5
-            let cosA = cos(angle)
-            let sinA = sin(angle)
-            let rx = 0.5 + cx * cosA - cy * sinA
-            let ry = 0.5 + cx * sinA + cy * cosA
-            return UnitPoint(x: rx, y: ry)
-        }
-
-        let start = rotateUnitPoint(x: baseStartX, y: baseStartY, angle: turn)
-        let end = rotateUnitPoint(x: baseEndX, y: baseEndY, angle: turn)
-        return LinearGradient(
-            colors: [
-                Color.ds.accentBg,
-                Color.ds.accentFg,
-                Color.ds.accentBg.opacity(0.92)
-            ],
-            startPoint: start,
-            endPoint: end
+    /// Accent sweep for the processing-state border: same palette as
+    /// `recordingPrimaryBorderGradient`, arranged angularly and rotated so
+    /// motion reads as circular around the pill.
+    private var processingAngularBorderGradient: AngularGradient {
+        AngularGradient(
+            gradient: Gradient(stops: [
+                .init(color: Color.ds.accentBg, location: 0.0),
+                .init(color: Color.ds.accentBg.opacity(0.55), location: 0.18),
+                .init(color: Color.ds.accentFg, location: 0.32),
+                .init(color: Color.ds.accentBg.opacity(0.92), location: 0.46),
+                .init(color: Color.ds.accentBg, location: 0.62),
+                .init(color: Color.ds.accentBg.opacity(0.45), location: 0.78),
+                .init(color: Color.ds.accentBg, location: 1.0)
+            ]),
+            center: .center,
+            angle: .degrees(0)
         )
     }
 
@@ -392,12 +379,11 @@ struct EditorPromptBarView: View {
                                 lineWidth: 2.35
                             )
                     } else if isProcessing {
-                        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+                        TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { context in
+                            let degrees = context.date.timeIntervalSinceReferenceDate * (360.0 / 2.6)
                             RoundedRectangle(cornerRadius: corner, style: .continuous)
-                                .strokeBorder(
-                                    processingPrimaryBorderGradient(at: context.date),
-                                    lineWidth: 2.35
-                                )
+                                .strokeBorder(processingAngularBorderGradient, lineWidth: 2.35)
+                                .rotationEffect(.degrees(degrees))
                         }
                     } else if recording {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
