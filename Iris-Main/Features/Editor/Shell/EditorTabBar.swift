@@ -353,10 +353,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         } label: {
             HStack(spacing: .spacing(.sp1)) {
                 Image(systemName: activeColorProperty.systemImage)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(activeColorProperty.title)
-                    .typography(.bodySmall)
-                    .lineLimit(1)
+                    .font(.system(size: 16, weight: .semibold))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .bold))
             }
@@ -420,11 +417,11 @@ private enum ColorProperty: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .temperature: return "Temp"
+        case .temperature: return "Temperature"
         case .tint: return "Tint"
         case .exposure: return "Exposure"
-        case .brightness: return "Bright"
-        case .saturation: return "Sat"
+        case .brightness: return "Brightness"
+        case .saturation: return "Saturation"
         }
     }
 
