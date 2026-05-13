@@ -206,7 +206,14 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             if isClipSelected && !promptBarIsTakingOver {
                 promptDivider
                     .transition(.opacity)
-                clipToolsCluster
+                if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
+                    clipToolsExpandedCluster(selected: selected)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        clipToolsCollapsedStrip
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .frame(maxWidth: rowMaxWidth)
@@ -224,51 +231,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             .accessibilityHidden(true)
     }
 
-    @ViewBuilder
-    private var clipToolsCluster: some View {
-        if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: .spacing(.sp2)) {
-                    Button { handleToolTap(selected) } label: {
-                        HStack(spacing: .spacing(.sp2)) {
-                            Image(systemName: selected.systemImage)
-                                .font(.system(size: 18, weight: .medium))
-                                .matchedGeometryEffect(id: "tool-\(selected.id)", in: toolNamespace)
-                            Text(selected.title)
-                                .typography(.body)
-                                .lineLimit(1)
-                        }
-                        .foregroundColor(Color.ds.textMuted)
-                        .padding(.horizontal, .spacing(.sp3))
-                        .padding(.vertical, .spacing(.sp2))
-                        .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-
-                    switch selected.kind {
-                    case let .expandable(subItems):
-                        ForEach(subItems) { sub in
-                            Button { sub.action() } label: {
-                                Image(systemName: sub.systemImage)
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(Color.ds.textMuted)
-                                    .frame(width: 40, height: 40)
-                                    .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Text(sub.title))
-                        }
-                    case .colorFilters:
-                        colorFilterControls
-                    case .action:
-                        EmptyView()
-                    }
-                }
-            }
-        } else {
+    private var clipToolsCollapsedStrip: some View {
+        HStack(spacing: .spacing(.sp1)) {
             Button { onDeleteClip() } label: {
                 toolLabel(systemImage: "trash", title: "Delete", foreground: Color.ds.danger)
             }
@@ -286,6 +250,51 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity.combined(with: .scale))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func clipToolsExpandedCluster(selected: ToolItem) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: .spacing(.sp2)) {
+                Button { handleToolTap(selected) } label: {
+                    HStack(spacing: .spacing(.sp2)) {
+                        Image(systemName: selected.systemImage)
+                            .font(.system(size: 18, weight: .medium))
+                            .matchedGeometryEffect(id: "tool-\(selected.id)", in: toolNamespace)
+                        Text(selected.title)
+                            .typography(.body)
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(Color.ds.textMuted)
+                    .padding(.horizontal, .spacing(.sp3))
+                    .padding(.vertical, .spacing(.sp2))
+                    .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+
+                switch selected.kind {
+                case let .expandable(subItems):
+                    ForEach(subItems) { sub in
+                        Button { sub.action() } label: {
+                            Image(systemName: sub.systemImage)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(Color.ds.textMuted)
+                                .frame(width: 40, height: 40)
+                                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(sub.title))
+                    }
+                case .colorFilters:
+                    colorFilterControls
+                case .action:
+                    EmptyView()
+                }
             }
         }
     }

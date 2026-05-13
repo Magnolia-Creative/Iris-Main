@@ -164,7 +164,7 @@ struct EditorContainerView: View {
                     .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
                     .transition(.opacity)
                     .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
-                    .padding(.horizontal, activeSpace != .edit ? .spacing(.sp3) : 0)
+                    .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
                     .padding(.bottom, .spacing(.sp2))
                 }
             }
