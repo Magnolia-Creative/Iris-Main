@@ -215,10 +215,10 @@ private extension RenderColorAdjustmentsInput {
             tint: clipColorFilter.tint,
             exposure: clipColorFilter.exposure,
             brightness: clipColorFilter.brightness,
-            contrast: 0,
+            contrast: clipColorFilter.contrast,
             saturation: clipColorFilter.saturation,
-            highlights: 0,
-            shadows: 0
+            highlights: clipColorFilter.highlights,
+            shadows: clipColorFilter.shadows
         )
     }
 }
