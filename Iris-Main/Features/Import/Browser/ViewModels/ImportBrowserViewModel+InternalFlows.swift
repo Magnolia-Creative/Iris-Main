@@ -542,12 +542,21 @@ extension ImportBrowserViewModel {
         guard let clip = clip(for: localKey), clip.isSelected else {
             throw CancellationError()
         }
-        if clip.localMediaID != nil {
-            print("[ImportBrowser] local media already available localKey=\(localKey) mediaID=\(clip.localMediaID ?? "nil")")
-            if let localMediaID = clip.localMediaID {
-                return localMediaID
+        if let existingMediaID = clip.localMediaID {
+            print("[ImportBrowser] local media already available localKey=\(localKey) mediaID=\(existingMediaID)")
+            if var media = try? db.getMedia(mediaId: existingMediaID) {
+                let trimmedKey = localKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                let existingUpload = media.spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !trimmedKey.isEmpty, existingUpload.caseInsensitiveCompare(trimmedKey) != .orderedSame {
+                    media.spec.clipUploadLocalKey = trimmedKey
+                    media.updatedAt = Date()
+                    try? db.update(media)
+                    print(
+                        "[ImportBrowser] backfilled clipUploadLocalKey for existing media mediaID=\(existingMediaID) localKey=\(trimmedKey)"
+                    )
+                }
             }
-            throw makeLocalLibraryImportError("The clip is missing a local media identifier.")
+            return existingMediaID
         }
         if let task = localMediaTasks[localKey] {
             return try await task.value
