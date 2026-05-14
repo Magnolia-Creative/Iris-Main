@@ -17,11 +17,7 @@ struct AuthenticatedRootView: View {
     }
 
     private var signedOutExperience: some View {
-        NavigationStack {
-            AuthView()
-                .navigationTitle("Welcome")
-                .navigationBarTitleDisplayMode(.inline)
-        }
-        .prefetchClerkImages()
+        AuthView(isDismissable: false)
+            .prefetchClerkImages()
     }
 }
