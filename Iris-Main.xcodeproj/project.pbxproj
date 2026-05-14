@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1F4172482FB67DCE00B40996 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1F4172472FB67DCE00B40996 /* ClerkKit */; };
+		1F41724A2FB67DCE00B40996 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1F4172492FB67DCE00B40996 /* ClerkKitUI */; };
 		1FBF36972F80DBC200086810 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FBF36962F80DBC200086810 /* GRDB */; };
 		1FCBE5392FB3BF30006A178E /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 1FCBE5382FB3BF30006A178E /* Inject */; };
 		4FD6FA6C9C07709570241299 /* Pods_Iris_Main.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F7129C98E42C8E0F06CF8A6 /* Pods_Iris_Main.framework */; };
@@ -60,15 +62,11 @@
 		};
 		1F77B7A92F64B22F00C813F6 /* Iris-MainTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "Iris-MainTests";
 			sourceTree = "<group>";
 		};
 		1F77B7B32F64B22F00C813F6 /* Iris-MainUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = "Iris-MainUITests";
 			sourceTree = "<group>";
 		};
@@ -82,7 +80,9 @@
 				1FBF36972F80DBC200086810 /* GRDB in Frameworks */,
 				9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */,
 				1FCBE5392FB3BF30006A178E /* Inject in Frameworks */,
+				1F4172482FB67DCE00B40996 /* ClerkKit in Frameworks */,
 				4FD6FA6C9C07709570241299 /* Pods_Iris_Main.framework in Frameworks */,
+				1F41724A2FB67DCE00B40996 /* ClerkKitUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -168,6 +168,8 @@
 				1FBF36962F80DBC200086810 /* GRDB */,
 				9A1B2C3D4E5F60718293A002 /* MobileCLIP */,
 				1FCBE5382FB3BF30006A178E /* Inject */,
+				1F4172472FB67DCE00B40996 /* ClerkKit */,
+				1F4172492FB67DCE00B40996 /* ClerkKitUI */,
 			);
 			productName = "Iris-Main";
 			productReference = 1F77B7992F64B22C00C813F6 /* Iris-Main.app */;
@@ -249,8 +251,9 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
-				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
 				1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */,
+				1F4172462FB67DCE00B40996 /* XCRemoteSwiftPackageReference "clerk-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1F77B79A2F64B22C00C813F6 /* Products */;
@@ -341,9 +344,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Iris-Main/Pods-Iris-Main-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Iris-Main/Pods-Iris-Main-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -517,6 +524,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Iris-Main/Iris-Main.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 74UJF5HM7S;
@@ -563,6 +571,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Iris-Main/Iris-Main.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 74UJF5HM7S;
@@ -724,7 +733,15 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+		1F4172462FB67DCE00B40996 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.3;
+			};
+		};
+		1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift";
 			requirement = {
@@ -751,9 +768,19 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		1F4172472FB67DCE00B40996 /* ClerkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1F4172462FB67DCE00B40996 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKit;
+		};
+		1F4172492FB67DCE00B40996 /* ClerkKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1F4172462FB67DCE00B40996 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKitUI;
+		};
 		1FBF36962F80DBC200086810 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
 		};
 		1FCBE5382FB3BF30006A178E /* Inject */ = {
