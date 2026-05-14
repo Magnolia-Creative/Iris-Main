@@ -5,34 +5,70 @@ import os
 #endif
 
 extension RenderTimelineInput {
-    /// Loads asset tracks and drops visual-track clips that have no video track (VideoLab cannot composite them).
-    /// Audio tracks (`zOrder < 0`) keep clips even if video-only, so audio-only sources still play.
+    /// Loads each clip’s asset, drops invalid visual clips, clamps source/timeline ranges to real media duration,
+    /// then returns a timeline VideoLab can consume without out-of-bounds `selectedTimeRange` values.
     func preparedForVideoLabPreview() async -> RenderTimelineInput {
         var newTracks: [RenderTrackInput] = []
 
         for track in tracks {
-            if track.zOrder < 0 {
-                newTracks.append(track)
-                continue
-            }
-
             var keptClips: [RenderClipInput] = []
             for clip in track.clips {
                 let asset = AVURLAsset(url: clip.assetURL)
                 do {
-                    let avTracks = try await asset.load(.tracks)
-                    let hasVideo = avTracks.contains { $0.mediaType == .video }
-                    if hasVideo {
-                        keptClips.append(clip)
-                    } else {
+                    let (avTracks, assetDuration) = try await asset.load(.tracks, .duration)
+                    let isVisualTrack = track.zOrder >= 0
+
+                    if isVisualTrack {
+                        let hasVideo = avTracks.contains { $0.mediaType == .video }
+                        if !hasVideo {
+                            #if DEBUG
+                            VideoLabPreviewDiagnostics.logDroppedClip(
+                                reason: "no_video_track",
+                                zOrder: track.zOrder,
+                                url: clip.assetURL
+                            )
+                            #endif
+                            continue
+                        }
+                    }
+
+                    let mediaSeconds = max(0, assetDuration.seconds)
+                    guard mediaSeconds.isFinite else {
                         #if DEBUG
                         VideoLabPreviewDiagnostics.logDroppedClip(
-                            reason: "no_video_track",
+                            reason: "invalid_media_duration",
                             zOrder: track.zOrder,
                             url: clip.assetURL
                         )
                         #endif
+                        continue
                     }
+
+                    guard let clamped = Self.clampClipToMediaDuration(clip, mediaSeconds: mediaSeconds) else {
+                        #if DEBUG
+                        VideoLabPreviewDiagnostics.logDroppedClip(
+                            reason: "clamp_invalid",
+                            zOrder: track.zOrder,
+                            url: clip.assetURL
+                        )
+                        #endif
+                        continue
+                    }
+
+                    #if DEBUG
+                    if clamped.sourceRange != clip.sourceRange || clamped.timelineRange != clip.timelineRange {
+                        VideoLabPreviewDiagnostics.logClipNormalized(
+                            zOrder: track.zOrder,
+                            url: clip.assetURL,
+                            oldSource: clip.sourceRange,
+                            newSource: clamped.sourceRange,
+                            oldTimeline: clip.timelineRange,
+                            newTimeline: clamped.timelineRange
+                        )
+                    }
+                    #endif
+
+                    keptClips.append(clamped)
                 } catch {
                     #if DEBUG
                     VideoLabPreviewDiagnostics.logDroppedClip(
@@ -64,6 +100,49 @@ extension RenderTimelineInput {
     private static func maximumTimelineEnd(from tracks: [RenderTrackInput]) -> Double {
         tracks.flatMap(\.clips).map(\.timelineRange.upperBound).max() ?? 0
     }
+
+    /// Clamps source range to `[0, mediaSeconds]` and adjusts timeline span to preserve playback speed when possible.
+    private static func clampClipToMediaDuration(
+        _ clip: RenderClipInput,
+        mediaSeconds: Double
+    ) -> RenderClipInput? {
+        let minSpan = 1.0 / 600.0
+
+        var s0 = clip.sourceRange.lowerBound
+        var s1 = clip.sourceRange.upperBound
+        let t0 = clip.timelineRange.lowerBound
+        var t1 = clip.timelineRange.upperBound
+
+        guard s1 > s0, t1 > t0 else { return nil }
+
+        s0 = min(max(s0, 0), mediaSeconds)
+        s1 = min(max(s1, s0 + minSpan), mediaSeconds)
+
+        let oldSourceDur = clip.sourceRange.upperBound - clip.sourceRange.lowerBound
+        let oldTimelineDur = clip.timelineRange.upperBound - clip.timelineRange.lowerBound
+        let newSourceDur = s1 - s0
+
+        if oldSourceDur > 0, oldTimelineDur > 0 {
+            if abs(oldTimelineDur - oldSourceDur) < 1e-6 {
+                t1 = t0 + newSourceDur
+            } else {
+                let rate = oldTimelineDur / oldSourceDur
+                t1 = t0 + newSourceDur * rate
+            }
+        } else {
+            t1 = t0 + newSourceDur
+        }
+
+        return RenderClipInput(
+            id: clip.id,
+            assetURL: clip.assetURL,
+            timelineRange: t0...t1,
+            sourceRange: s0...s1,
+            transform: clip.transform,
+            colorAdjustments: clip.colorAdjustments,
+            opacity: clip.opacity
+        )
+    }
 }
 
 #if DEBUG
@@ -89,6 +168,31 @@ enum VideoLabPreviewDiagnostics {
         } else {
             logger.warning("clip dropped reason=\(reason, privacy: .public) zOrder=\(zOrder) url=\(url.lastPathComponent, privacy: .public)")
         }
+    }
+
+    static func logClipNormalized(
+        zOrder: Int,
+        url: URL,
+        oldSource: ClosedRange<Double>,
+        newSource: ClosedRange<Double>,
+        oldTimeline: ClosedRange<Double>,
+        newTimeline: ClosedRange<Double>
+    ) {
+        logger.debug(
+            "clip normalized zOrder=\(zOrder) url=\(url.lastPathComponent, privacy: .public) source \(oldSource.lowerBound, privacy: .public)-\(oldSource.upperBound, privacy: .public) -> \(newSource.lowerBound, privacy: .public)-\(newSource.upperBound, privacy: .public) timeline \(oldTimeline.lowerBound, privacy: .public)-\(oldTimeline.upperBound, privacy: .public) -> \(newTimeline.lowerBound, privacy: .public)-\(newTimeline.upperBound, privacy: .public)"
+        )
+    }
+
+    static func logVideoLabSourcesPrepared(count: Int) {
+        logger.debug("VideoLab bridge: loaded and restored trim on \(count) AVAssetSource instance(s)")
+    }
+
+    static func logPlayerItemWired(_ item: AVPlayerItem, timelineDuration: Double) {
+        let dur = item.duration.seconds
+        let durStr = dur.isFinite ? String(format: "%.3f", dur) : "non-finite"
+        logger.debug(
+            "VideoLab preview wired itemStatus=\(item.status.rawValue) itemDuration=\(durStr, privacy: .public)s timelineDuration=\(timelineDuration, privacy: .public) videoComposition=\(item.videoComposition != nil)"
+        )
     }
 
     static func logTimelineSummary(_ input: RenderTimelineInput) {
