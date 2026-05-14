@@ -24,6 +24,8 @@ struct TimelineSectionView: View {
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
     var promptActionPreview: TimelinePromptActionPreview? = nil
+    /// Invoked when the user scrolls the timeline; reports playhead time (µs) and scroll velocity (points/sec) for preview scrubbing.
+    var onPreviewScrub: ((Int64, Double) -> Void)? = nil
 
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var lastScrollOffsetX: CGFloat = 0
@@ -109,17 +111,26 @@ struct TimelineSectionView: View {
                             scrollTargetTimeUs = nil
                         }
                         let minInterval: TimeInterval = 1.0 / 120
-                        if now.timeIntervalSince(lastScrollUpdate) >= minInterval {
-                            let timeUs = Int64((x / pixelsPerSecond) * 1_000_000)
-                            currentTimeAtCenter = max(0, timeUs)
-                            lastScrollUpdate = now
-                        }
-
                         let deltaX = x - lastScrollOffsetX
                         let deltaT = now.timeIntervalSince(lastScrollTime)
+                        var scrollVelocity: Double = 0
+                        if deltaT > 0 {
+                            scrollVelocity = abs(deltaX) / deltaT
+                        }
+
+                        if now.timeIntervalSince(lastScrollUpdate) >= minInterval {
+                            let timeUs = Int64((x / pixelsPerSecond) * 1_000_000)
+                            let clampedTimeUs = max(0, timeUs)
+                            currentTimeAtCenter = clampedTimeUs
+                            lastScrollUpdate = now
+                            if !isProgrammaticScrolling {
+                                onPreviewScrub?(clampedTimeUs, scrollVelocity)
+                            }
+                        }
+
                         if deltaT > 0 {
                             if !isProgrammaticScrolling { markUserScrolling() }
-                            let velocity = abs(deltaX) / deltaT
+                            let velocity = scrollVelocity
                             if velocity > 450 && !isScrollingFast {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isScrollingFast = true }
                             }

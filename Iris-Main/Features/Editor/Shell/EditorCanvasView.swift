@@ -145,7 +145,10 @@ struct EditorCanvasView: View {
             rulerVerticalOffset: rulerVerticalOffset,
             reviewFocusedClipIds: reviewFocusedClipIds,
             isReviewInteractionDisabled: isReviewInteractionDisabled,
-            promptActionPreview: promptActionPreview
+            promptActionPreview: promptActionPreview,
+            onPreviewScrub: { timeUs, velocity in
+                renderBridge.handleScroll(timeUs: timeUs, velocity: velocity)
+            }
         )
         .frame(height: layout.sectionHeight(for: state.orderedTracks))
         .animation(nil, value: layout.sectionHeight(for: state.orderedTracks))

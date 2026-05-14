@@ -34,27 +34,43 @@ final class VideoLabRenderEngine: NSObject {
     private var captionSyncLayer: AVSynchronizedLayer?
     private var rebuildTask: Task<Void, Never>?
     private var isScrubbing: Bool = false
+    /// Duration of the last built `AVPlayerItem` (after visual-track filtering). Used to clamp `currentTime` when it differs from `timeline.duration`.
+    private var compositionDuration: Double = 0
+
+    private var effectiveTimelineDuration: Double {
+        if compositionDuration > 0 {
+            return min(timeline.duration, compositionDuration)
+        }
+        return timeline.duration
+    }
+
+#if DEBUG
+    private var debugItemStatusObservation: NSKeyValueObservation?
+    private var debugItemVideoCompositionObservation: NSKeyValueObservation?
+    private var debugPlayerTimeControlObservation: NSKeyValueObservation?
+    private var debugPlayerLayerReadyObservation: NSKeyValueObservation?
+#endif
 
     func bindPlayerHost(_ view: UIView) {
-        let previousHost = playerHostView
-        let hostIdentityChanged = previousHost.map { !($0 === view) } ?? true
-        playerHostView = view
-
-        if playerLayer == nil {
-            let layer = AVPlayerLayer()
-            layer.videoGravity = .resizeAspect
-            view.layer.insertSublayer(layer, at: 0)
-            playerLayer = layer
-        } else if playerLayer?.superlayer !== view.layer {
-            playerLayer?.removeFromSuperlayer()
-            view.layer.insertSublayer(playerLayer!, at: 0)
+        guard let avLayer = view.layer as? AVPlayerLayer else {
+            assertionFailure("VideoLab preview requires a UIView whose layerClass is AVPlayerLayer")
+            return
         }
+
+        let hostIdentityChanged = !(playerHostView === view)
+        if let oldLayer = playerLayer, oldLayer !== avLayer {
+            oldLayer.removeFromSuperlayer()
+        }
+
+        playerHostView = view
+        playerLayer = avLayer
+        avLayer.videoGravity = .resizeAspect
 
         layoutPlayerHost()
         if player == nil {
             player = AVPlayer()
         }
-        playerLayer?.player = player
+        avLayer.player = player
 
         if hostIdentityChanged, timeline.duration > 0 {
             scheduleRebuild()
@@ -65,6 +81,11 @@ final class VideoLabRenderEngine: NSObject {
         guard let view = playerHostView else { return }
         playerLayer?.frame = view.bounds
         captionSyncLayer?.frame = view.bounds
+#if DEBUG
+        if view.bounds.width < 1 || view.bounds.height < 1 {
+            VideoLabPreviewDiagnostics.logPlayerLayerReady(playerLayer?.isReadyForDisplay ?? false, bounds: view.bounds)
+        }
+#endif
     }
 
     func configure(timeline: RenderTimelineInput) {
@@ -86,9 +107,9 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     func play() {
-        guard !isPlaying, timeline.duration > 0 else { return }
+        guard !isPlaying, effectiveTimelineDuration > 0 else { return }
         isScrubbing = false
-        if currentTime >= timeline.duration {
+        if currentTime >= effectiveTimelineDuration {
             currentTime = 0
             seekPlayer(to: 0)
         }
@@ -106,7 +127,7 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     func seek(to time: Double, intent: RenderIntent = .scrub(velocity: 0)) {
-        let clamped = max(0, min(time, timeline.duration))
+        let clamped = max(0, min(time, effectiveTimelineDuration))
         switch intent {
         case .playback:
             currentTime = clamped
@@ -120,7 +141,7 @@ final class VideoLabRenderEngine: NSObject {
                 return 1.0 / 60.0
             }()
             let quantized = (clamped / quantum).rounded() * quantum
-            currentTime = max(0, min(quantized, timeline.duration))
+            currentTime = max(0, min(quantized, effectiveTimelineDuration))
         }
         seekPlayer(to: currentTime)
         if isScrubbing {
@@ -156,12 +177,32 @@ final class VideoLabRenderEngine: NSObject {
         captionSyncLayer = nil
 
         guard timeline.duration > 0 else {
+            compositionDuration = 0
             player?.replaceCurrentItem(with: nil)
             return
         }
 
+        let prepared = await timeline.preparedForVideoLabPreview()
+        guard !Task.isCancelled else { return }
+
+        guard prepared.duration > 0 else {
+            compositionDuration = 0
+            player?.replaceCurrentItem(with: nil)
+#if DEBUG
+            VideoLabPreviewDiagnostics.logTimelineSummary(prepared)
+#endif
+            return
+        }
+
+        compositionDuration = prepared.duration
+
+#if DEBUG
+        VideoLabPreviewDiagnostics.logTimelineSummary(prepared)
+        await VideoLabPreviewDiagnostics.logPerAssetTrackSummary(for: prepared)
+#endif
+
         let fps = max(1, previewFrameRate)
-        let videoLab = VideoLabTimelineAdapter.makeVideoLab(from: timeline, frameRate: fps)
+        let videoLab = VideoLabTimelineAdapter.makeVideoLab(from: prepared, frameRate: fps)
         guard !Task.isCancelled else { return }
 
         let item = videoLab.makePlayerItem()
@@ -186,7 +227,7 @@ final class VideoLabRenderEngine: NSObject {
         guard !Task.isCancelled else { return }
 
         addObservers(for: item)
-        seekPlayer(to: min(currentTime, timeline.duration))
+        seekPlayer(to: min(currentTime, prepared.duration))
         onTimeChanged?(currentTime)
     }
 
@@ -197,17 +238,20 @@ final class VideoLabRenderEngine: NSObject {
 
     private func syncCurrentTimeFromPlayer() {
         guard let seconds = player?.currentTime().seconds, seconds.isFinite else { return }
-        currentTime = max(0, min(seconds, timeline.duration))
+        currentTime = max(0, min(seconds, effectiveTimelineDuration))
     }
 
     private func addObservers(for item: AVPlayerItem) {
         let interval = CMTime(value: 1, timescale: Int32(max(1, previewFrameRate)))
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self, self.isPlaying, !self.isScrubbing else { return }
-            let s = time.seconds
-            guard s.isFinite else { return }
-            self.currentTime = max(0, min(s, self.timeline.duration))
-            self.onTimeChanged?(self.currentTime)
+            Task { @MainActor in
+                guard let self, self.isPlaying, !self.isScrubbing else { return }
+                let s = time.seconds
+                guard s.isFinite else { return }
+                let newTime = max(0, min(s, self.effectiveTimelineDuration))
+                self.currentTime = newTime
+                self.onTimeChanged?(newTime)
+            }
         }
 
         endObserver = NotificationCenter.default.addObserver(
@@ -218,13 +262,73 @@ final class VideoLabRenderEngine: NSObject {
             guard let self else { return }
             self.isPlaying = false
             self.player?.pause()
-            self.currentTime = self.timeline.duration
+            self.currentTime = self.effectiveTimelineDuration
             self.onPlaybackStateChanged?(false)
             self.onTimeChanged?(self.currentTime)
         }
+
+#if DEBUG
+        installDebugObservers(for: item)
+#endif
     }
 
+#if DEBUG
+    private func installDebugObservers(for item: AVPlayerItem) {
+        removeDebugObservers()
+
+        VideoLabPreviewDiagnostics.logPlayerItem(item)
+
+        debugItemStatusObservation = item.observe(\.status, options: [.new]) { observed, _ in
+            Task { @MainActor in
+                VideoLabPreviewDiagnostics.logPlayerItem(observed)
+            }
+        }
+
+        debugItemVideoCompositionObservation = item.observe(\.videoComposition, options: [.new]) { observed, _ in
+            Task { @MainActor in
+                VideoLabPreviewDiagnostics.logPlayerItem(observed)
+            }
+        }
+
+        if let player {
+            VideoLabPreviewDiagnostics.logTimeControl(player.timeControlStatus)
+            debugPlayerTimeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { observed, _ in
+                Task { @MainActor in
+                    VideoLabPreviewDiagnostics.logTimeControl(observed.timeControlStatus)
+                }
+            }
+        }
+
+        if let layer = playerLayer {
+            let initialReady = layer.isReadyForDisplay
+            let initialBounds = layer.bounds
+            VideoLabPreviewDiagnostics.logPlayerLayerReady(initialReady, bounds: initialBounds)
+            debugPlayerLayerReadyObservation = layer.observe(\.isReadyForDisplay, options: [.new]) { observed, _ in
+                let ready = observed.isReadyForDisplay
+                let bounds = observed.bounds
+                Task { @MainActor in
+                    VideoLabPreviewDiagnostics.logPlayerLayerReady(ready, bounds: bounds)
+                }
+            }
+        }
+    }
+
+    private func removeDebugObservers() {
+        debugItemStatusObservation?.invalidate()
+        debugItemStatusObservation = nil
+        debugItemVideoCompositionObservation?.invalidate()
+        debugItemVideoCompositionObservation = nil
+        debugPlayerTimeControlObservation?.invalidate()
+        debugPlayerTimeControlObservation = nil
+        debugPlayerLayerReadyObservation?.invalidate()
+        debugPlayerLayerReadyObservation = nil
+    }
+#endif
+
     private func removeObservers() {
+#if DEBUG
+        removeDebugObservers()
+#endif
         if let timeObserver {
             player?.removeTimeObserver(timeObserver)
         }

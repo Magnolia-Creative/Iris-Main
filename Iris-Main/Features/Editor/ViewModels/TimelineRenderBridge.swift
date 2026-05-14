@@ -82,8 +82,7 @@ final class TimelineRenderBridge: ObservableObject {
     }
 
     func handleScroll(timeUs: Int64, velocity: Double = 0) {
-        let seconds = Double(timeUs) / 1_000_000.0
-        engine.seek(to: seconds, intent: .scrub(velocity: velocity))
+        seek(to: timeUs, scrollVelocity: velocity)
     }
 
     func play() {
@@ -95,12 +94,21 @@ final class TimelineRenderBridge: ObservableObject {
     }
 
     func seek(to timeUs: Int64) {
+        seek(to: timeUs, scrollVelocity: nil)
+    }
+
+    private func seek(to timeUs: Int64, scrollVelocity: Double?) {
         let seconds = Double(timeUs) / 1_000_000.0
         let now = CACurrentMediaTime()
         let dt = now - lastSeekTime
-        let velocity = (lastSeekTime > 0 && dt < 0.25)
-            ? (seconds - engine.currentTime) / max(dt, 0.001)
-            : 0
+        let velocity: Double
+        if let scrollVelocity {
+            velocity = scrollVelocity
+        } else {
+            velocity = (lastSeekTime > 0 && dt < 0.25)
+                ? (seconds - engine.currentTime) / max(dt, 0.001)
+                : 0
+        }
         lastSeekTime = now
 
         if !isUserScrubbing {
