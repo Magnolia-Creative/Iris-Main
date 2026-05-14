@@ -916,12 +916,33 @@ final class TimelineController: ObservableObject {
             persistClipChanges(before: before, after: state.clips)
 
             if !resolution.newlyImportedMedia.isEmpty {
-                syncSemanticIndexForImportedMedia()
                 generateThumbnailStrips(for: resolution.newlyImportedMedia)
+            }
+            if !resolution.newlyImportedMedia.isEmpty || resolution.didPersistBackendUploadKeys {
+                syncSemanticIndexForImportedMedia()
             }
         } catch {
             print("Failed to apply imported timeline seed: \(error)")
         }
+    }
+
+    /// Persists `Media.spec.clipUploadLocalKey` so cloud semantic/transcript rows (keyed by upload `local_key`) map to timeline media.
+    @MainActor
+    private func ensureClipUploadLocalKeyPersistedIfNeeded(
+        for video: SelectedVideoAsset,
+        media: Media
+    ) throws -> (Media, didChange: Bool) {
+        let trimmedKey = video.localKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return (media, false) }
+        let existing = media.spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if existing.caseInsensitiveCompare(trimmedKey) == .orderedSame {
+            return (media, false)
+        }
+        var updated = media
+        updated.spec.clipUploadLocalKey = trimmedKey
+        updated.updatedAt = Date()
+        try db.update(updated)
+        return (updated, true)
     }
 
     @MainActor
@@ -971,6 +992,17 @@ final class TimelineController: ObservableObject {
             }
         }
 
+        var didPersistBackendUploadKeys = false
+        for video in sourceVideos {
+            guard let media = importedMediaBySeedLocalKey[video.localKey] else { continue }
+            let (updated, didChange) = try ensureClipUploadLocalKeyPersistedIfNeeded(for: video, media: media)
+            if didChange {
+                didPersistBackendUploadKeys = true
+            }
+            importedMediaBySeedLocalKey[video.localKey] = updated
+            state.mediaById[updated.mediaId] = updated
+        }
+
         let mediaByLocalKey = sourceVideos.reduce(into: [String: Media]()) { result, video in
             guard let media = importedMediaBySeedLocalKey[video.localKey] else { return }
             result[video.localKey] = media
@@ -978,7 +1010,8 @@ final class TimelineController: ObservableObject {
 
         return SeedMediaResolution(
             mediaByLocalKey: mediaByLocalKey,
-            newlyImportedMedia: newlyImportedMedia
+            newlyImportedMedia: newlyImportedMedia,
+            didPersistBackendUploadKeys: didPersistBackendUploadKeys
         )
     }
 
@@ -1082,6 +1115,8 @@ final class TimelineController: ObservableObject {
 private struct SeedMediaResolution {
     let mediaByLocalKey: [String: Media]
     let newlyImportedMedia: [Media]
+    /// True when any timeline `Media` had `clipUploadLocalKey` written for cloud search mapping.
+    let didPersistBackendUploadKeys: Bool
 }
 
 @MainActor
