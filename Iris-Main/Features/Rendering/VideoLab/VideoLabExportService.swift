@@ -31,7 +31,7 @@ enum VideoLabExportService {
         progress: @escaping (Float) -> Void
     ) async throws {
         let preset = presetName ?? Self.presetName(for: input.outputSize.width)
-        let videoLab = VideoLabTimelineAdapter.makeVideoLab(from: input, frameRate: frameRate)
+        let videoLab = await VideoLabTimelineAdapter.makeVideoLabAsync(from: input, frameRate: frameRate)
         guard let session = videoLab.makeExportSession(presetName: preset, outputURL: outputURL) else {
             throw VideoLabExportError.noExportSession
         }

@@ -202,7 +202,7 @@ final class VideoLabRenderEngine: NSObject {
 #endif
 
         let fps = max(1, previewFrameRate)
-        let videoLab = VideoLabTimelineAdapter.makeVideoLab(from: prepared, frameRate: fps)
+        let videoLab = await VideoLabTimelineAdapter.makeVideoLabAsync(from: prepared, frameRate: fps)
         guard !Task.isCancelled else { return }
 
         let item = videoLab.makePlayerItem()
@@ -211,8 +211,16 @@ final class VideoLabRenderEngine: NSObject {
         if player == nil {
             player = AVPlayer()
         }
+
+        // Observe the new item before attaching it so status/videoComposition KVO is not missed during transition.
+        addObservers(for: item)
+
         player?.replaceCurrentItem(with: item)
         playerLayer?.player = player
+
+#if DEBUG
+        VideoLabPreviewDiagnostics.logPlayerItemWired(item, timelineDuration: prepared.duration)
+#endif
 
         if let animationLayer = videoLab.renderComposition.animationLayer,
            let host = playerHostView {
@@ -226,14 +234,18 @@ final class VideoLabRenderEngine: NSObject {
 
         guard !Task.isCancelled else { return }
 
-        addObservers(for: item)
         seekPlayer(to: min(currentTime, prepared.duration))
         onTimeChanged?(currentTime)
     }
 
     private func seekPlayer(to seconds: Double) {
         let t = CMTime(seconds: seconds, preferredTimescale: 600)
-        player?.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+        if isScrubbing {
+            let tol = CMTime(value: 1, timescale: 15)
+            player?.seek(to: t, toleranceBefore: tol, toleranceAfter: tol)
+        } else {
+            player?.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
     }
 
     private func syncCurrentTimeFromPlayer() {
