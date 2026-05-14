@@ -1,5 +1,4 @@
 import SwiftUI
-import MetalKit
 
 struct PreviewSection: View {
     @ObservedObject var controller: PlaybackController
@@ -8,7 +7,7 @@ struct PreviewSection: View {
     var body: some View {
         Group {
             if let bridge = renderBridge {
-                MetalPreviewView(engine: bridge.engine)
+                VideoLabPreviewView(engine: bridge.engine)
                     .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             } else {

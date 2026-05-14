@@ -17,7 +17,7 @@ final class RenderingDemoViewModel: ObservableObject {
     @Published var captions: [RenderCaptionCueInput] = []
     @Published var selectedClipID: UUID?
 
-    let engine: RenderEngine
+    let engine: VideoLabRenderEngine
 
     private var uiTimer: Timer?
     private var lastSeekTime: CFTimeInterval = 0
@@ -45,7 +45,7 @@ final class RenderingDemoViewModel: ObservableObject {
     // MARK: - Init
 
     init() {
-        self.engine = RenderEngine()
+        self.engine = VideoLabRenderEngine()
 
         engine.onTimeChanged = { [weak self] time in
             Task { @MainActor in self?.currentTime = time }

@@ -85,23 +85,47 @@ struct ExportPanelContent: View {
         }
     }
 
+    private func makeExportInput() -> RenderTimelineInput {
+        var input = controller.state.makeRenderTimelineInput()
+        switch selectedResolution {
+        case .hd1080:
+            input.outputSize = CGSize(width: 1920, height: 1080)
+        case .uhd4k:
+            input.outputSize = CGSize(width: 3840, height: 2160)
+        }
+        return input
+    }
+
     private func startExport() {
         isExporting = true
         exportProgress = 0
 
+        let input = makeExportInput()
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("iris_export_\(UUID().uuidString).mp4")
+
         Task {
-            for i in 1...100 {
-                try? await Task.sleep(nanoseconds: 30_000_000)
-                await MainActor.run { exportProgress = Double(i) / 100.0 }
-            }
-
-            let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("iris_export_\(UUID().uuidString).mp4")
-
-            await MainActor.run {
-                isExporting = false
-                exportedFileURL = tempURL
-                showShareSheet = true
+            do {
+                try await VideoLabExportService.export(
+                    input: input,
+                    outputURL: tempURL,
+                    frameRate: selectedFrameRate.rawValue,
+                    progress: { p in
+                        Task { @MainActor in
+                            exportProgress = Double(p)
+                        }
+                    }
+                )
+                await MainActor.run {
+                    isExporting = false
+                    exportedFileURL = tempURL
+                    showShareSheet = true
+                }
+            } catch {
+                await MainActor.run {
+                    isExporting = false
+                    exportProgress = 0
+                }
             }
         }
     }

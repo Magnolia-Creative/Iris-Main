@@ -54,7 +54,7 @@ struct RenderingDemoView: View {
     // MARK: - Preview
 
     private var previewSection: some View {
-        MetalPreviewView(engine: viewModel.engine)
+        VideoLabPreviewView(engine: viewModel.engine)
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
             .overlay(
