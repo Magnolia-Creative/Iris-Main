@@ -1,7 +1,6 @@
 import ClerkKit
 import ClerkKitUI
 import SwiftUI
-import UIKit
 
 /// Routes between Clerk sign-in and the main app based on session state.
 struct AuthenticatedRootView: View {
@@ -28,37 +27,14 @@ struct AuthenticatedRootView: View {
                     .fill(bg)
                     .frame(height: top)
 
-                Image("Iris_Outline")
-                    .resizable()
-                    .renderingMode(.template)
-                    .scaledToFit()
-                    .foregroundStyle(Color.ds.text)
-                    .frame(maxHeight: 56)
-                    .padding(.horizontal, 48)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity)
-                    .background(bg)
-
                 AuthView(isDismissable: false)
-                    .clerkAppIcon(Self.collapsedClerkLogoPlaceholder)
+                    .clerkAppIcon(Image("Iris_Outline"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(clerkTheme.colors.background.ignoresSafeArea())
         .prefetchClerkImages()
     }
-
-    /// Wide transparent image so Clerk’s `AppLogoView` (`scaledToFit` + `maxHeight: 44`) uses almost no height,
-    /// letting the real Iris mark live in the row above `AuthView`.
-    private static let collapsedClerkLogoPlaceholder: Image = {
-        let size = CGSize(width: 800, height: 1)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let uiImage = renderer.image { ctx in
-            UIColor.clear.setFill()
-            ctx.fill(CGRect(origin: .zero, size: size))
-        }
-        return Image(uiImage: uiImage)
-    }()
 
     /// Approximate height of Clerk’s first auth screen (header, field, continue, divider, social, footer).
     private func estimatedAuthFormHeight(for size: DynamicTypeSize) -> CGFloat {
@@ -81,9 +57,7 @@ struct AuthenticatedRootView: View {
     }
 
     private func verticalCenteringPadding(proxy: GeometryProxy) -> CGFloat {
-        // External logo row (~56 + 12) and collapsed in-scroll logo vs the old full-height slot (~+24 net).
-        let signedOutChromeAdjustment: CGFloat = 24
-        let estimate = estimatedAuthFormHeight(for: dynamicTypeSize) + signedOutChromeAdjustment
+        let estimate = estimatedAuthFormHeight(for: dynamicTypeSize)
         let raw = (proxy.size.height - estimate) / 2
         return max(0, raw)
     }
