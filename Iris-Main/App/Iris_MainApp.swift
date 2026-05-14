@@ -10,7 +10,7 @@ struct Iris_MainApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            AuthenticatedRootView()
                 .environment(Clerk.shared)
         }
     }
