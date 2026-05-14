@@ -56,14 +56,7 @@ struct TimelineToolbar: View {
                 kind: .action(action: {
                     onSplitSelectedClip()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { selectedMainIndex = -1 }
-                })),
-            ToolbarItem(id: 1, systemImage: "speedometer", title: "Speed", kind: .action(action: {})),
-            ToolbarItem(id: 2, systemImage: "speaker.wave.2.fill", title: "Audio",
-                kind: .expandable(subItems: [
-                    ToolbarSubItem(id: 0, systemImage: "speaker.wave.1", title: "Fade", action: {}),
-                    ToolbarSubItem(id: 1, systemImage: "waveform", title: "Normalize", action: {}),
-                    ToolbarSubItem(id: 2, systemImage: "mic.fill", title: "Replace", action: {})
-                ]))
+                }))
         ]
     }
 

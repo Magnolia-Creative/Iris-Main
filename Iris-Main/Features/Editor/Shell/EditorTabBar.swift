@@ -583,14 +583,6 @@ private extension EditorTabBar {
                 kind: .action(action: { [onSplitClip] in
                     onSplitClip()
                 })),
-            ToolItem(id: 1, systemImage: "speedometer", title: "Speed",
-                kind: .action(action: {})),
-            ToolItem(id: 2, systemImage: "speaker.wave.2.fill", title: "Audio",
-                kind: .expandable(subItems: [
-                    SubItem(id: 0, systemImage: "speaker.wave.1", title: "Fade", action: {}),
-                    SubItem(id: 1, systemImage: "waveform", title: "Normalize", action: {}),
-                    SubItem(id: 2, systemImage: "mic.fill", title: "Replace", action: {})
-                ])),
             ToolItem(id: 3, systemImage: "camera.filters", title: "Color", kind: .colorFilters)
         ]
     }
