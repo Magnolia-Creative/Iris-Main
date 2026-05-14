@@ -120,6 +120,7 @@ private actor SemanticSearchCoordinator {
                     displayName: imported.displayName,
                     durationSeconds: duration,
                     transcriptSentences: [],
+                    uploadLocalKey: nil,
                     visualContentSignature: imported.localKey,
                     transcriptContentSignature: "",
                     contentSignature: imported.localKey
@@ -155,6 +156,7 @@ private actor SemanticSearchCoordinator {
                     displayName: fileURL.lastPathComponent,
                     durationSeconds: duration,
                     transcriptSentences: item.spec.transcriptSentences ?? [],
+                    uploadLocalKey: item.spec.clipUploadLocalKey,
                     visualContentSignature: [
                         item.semanticSearchVisualSignature,
                         fileURL.path,
@@ -236,6 +238,7 @@ final class SemanticSearchViewModel: ObservableObject {
     private var indexedVisualSignature: String?
     private var indexedVideoSignatures: [String: String] = [:]
     private var hasQueuedEmbeddingPrewarm = false
+    private var importSearchTimelineId: String?
 
     init(
         frameSampler: (any VideoFrameSampling)? = nil,
@@ -360,8 +363,12 @@ final class SemanticSearchViewModel: ObservableObject {
         model.statusMessage = readyStatusMessage()
     }
 
+    func setImportSearchTimelineId(_ timelineId: String?) {
+        importSearchTimelineId = timelineId
+        refreshCloudBackendProjectIdFromDatabase()
+    }
+
     func queueImportedMediaSync(_ media: [Media], autoBuildIndex: Bool) {
-        guard AppConfiguration.enablesLocalSemanticIndexing else { return }
         let requestID = enqueueImportedMediaSyncRequest(media, autoBuildIndex: autoBuildIndex)
         let queuedVideoCount = Media.deduplicatedForImportPresentation(media).filter { $0.kind == .video }.count
         EditorDebugTrace.log(
@@ -371,9 +378,6 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     func syncImportedMediaAndWait(_ media: [Media], autoBuildIndex: Bool) async -> Set<String> {
-        guard AppConfiguration.enablesLocalSemanticIndexing else {
-            return Set(indexedVideoSignatures.keys)
-        }
         let requestID = enqueueImportedMediaSyncRequest(media, autoBuildIndex: autoBuildIndex)
         await waitForSyncRequest(id: requestID)
         return Set(indexedVideoSignatures.keys)
@@ -403,6 +407,7 @@ final class SemanticSearchViewModel: ObservableObject {
                     await runSearch()
                 }
             }
+            refreshCloudBackendProjectIdFromDatabase()
             return
         }
 
@@ -448,6 +453,7 @@ final class SemanticSearchViewModel: ObservableObject {
                 "SemanticSearchViewModel",
                 "sync completed with no imported videos \(EditorDebugTrace.elapsedMessage(since: syncStart))"
             )
+            refreshCloudBackendProjectIdFromDatabase()
             return
         }
 
@@ -479,6 +485,7 @@ final class SemanticSearchViewModel: ObservableObject {
             "SemanticSearchViewModel",
             "sync completed importedVideos=\(importedVideos.count) indexedFrames=\(model.indexedFrameCount) \(EditorDebugTrace.elapsedMessage(since: syncStart))"
         )
+        refreshCloudBackendProjectIdFromDatabase()
     }
 
     func queueLiveSearch() {
@@ -503,8 +510,10 @@ final class SemanticSearchViewModel: ObservableObject {
         liveSearchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled, let self else { return }
-            await self.buildIndexIfNeeded(options: .interactive, invalidatedVideoIDs: [])
-            guard !Task.isCancelled else { return }
+            if AppConfiguration.enablesLocalSemanticIndexing {
+                await self.buildIndexIfNeeded(options: .interactive, invalidatedVideoIDs: [])
+                guard !Task.isCancelled else { return }
+            }
             await self.runSearch()
         }
     }
@@ -518,7 +527,8 @@ final class SemanticSearchViewModel: ObservableObject {
             print(
                 "[SemanticAudioSearch] run search skipped query=\"\(model.queryText)\" " +
                 "trimmedEmpty=\(model.trimmedQuery.isEmpty) indexedFrames=\(model.indexedFrameCount) " +
-                "hasTranscriptData=\(model.hasTranscriptData) videos=\(model.videos.count)"
+                "hasTranscriptData=\(model.hasTranscriptData) cloudProject=\(model.cloudBackendProjectId ?? "nil") " +
+                "videos=\(model.videos.count)"
             )
             return
         }
@@ -540,48 +550,56 @@ final class SemanticSearchViewModel: ObservableObject {
         )
 
         do {
-            let visualCandidateRanges = model.indexedFrameCount > 0
-                ? try await coordinator.search(query: query, videos: videos)
-                : []
-            let audioCandidateRanges = TranscriptSearchScorer.candidates(for: query, in: videos)
-            let visualRanges = resultSelectionMode.select(from: visualCandidateRanges)
-            let audioRanges = resultSelectionMode.select(from: audioCandidateRanges)
-            guard query == model.trimmedQuery, requestedVideoKeys == model.videos.map(\.localKey) else {
-                model.isSearching = false
-                return
-            }
-            logSearchResults(visualRanges, query: query, source: .visual)
-            logSearchResults(audioRanges, query: query, source: .audio)
-            model.visualResults = visualRanges.map {
-                SemanticMatchRange(
-                    videoID: $0.videoID,
-                    videoName: $0.videoName,
-                    startTimeSeconds: $0.startTimeSeconds,
-                    endTimeSeconds: $0.endTimeSeconds,
-                    confidence: $0.confidence,
-                    source: $0.source,
-                    matchText: $0.matchText
+            if !AppConfiguration.enablesLocalSemanticIndexing {
+                try await performCloudImportPanelSearch(
+                    query: query,
+                    videos: videos,
+                    requestedVideoKeys: requestedVideoKeys
+                )
+            } else {
+                let visualCandidateRanges = model.indexedFrameCount > 0
+                    ? try await coordinator.search(query: query, videos: videos)
+                    : []
+                let audioCandidateRanges = TranscriptSearchScorer.candidates(for: query, in: videos)
+                let visualRanges = resultSelectionMode.select(from: visualCandidateRanges)
+                let audioRanges = resultSelectionMode.select(from: audioCandidateRanges)
+                guard query == model.trimmedQuery, requestedVideoKeys == model.videos.map(\.localKey) else {
+                    model.isSearching = false
+                    return
+                }
+                logSearchResults(visualRanges, query: query, source: .visual)
+                logSearchResults(audioRanges, query: query, source: .audio)
+                model.visualResults = visualRanges.map {
+                    SemanticMatchRange(
+                        videoID: $0.videoID,
+                        videoName: $0.videoName,
+                        startTimeSeconds: $0.startTimeSeconds,
+                        endTimeSeconds: $0.endTimeSeconds,
+                        confidence: $0.confidence,
+                        source: $0.source,
+                        matchText: $0.matchText
+                    )
+                }
+                model.audioResults = audioRanges.map {
+                    SemanticMatchRange(
+                        videoID: $0.videoID,
+                        videoName: $0.videoName,
+                        startTimeSeconds: $0.startTimeSeconds,
+                        endTimeSeconds: $0.endTimeSeconds,
+                        confidence: $0.confidence,
+                        source: $0.source,
+                        matchText: $0.matchText
+                    )
+                }
+                let totalRangeCount = model.visualResults.count + model.audioResults.count
+                model.statusMessage = totalRangeCount == 0
+                    ? "No matching ranges found."
+                    : "Found \(totalRangeCount) likely range(s)."
+                print(
+                    "[SemanticAudioSearch] search complete query=\"\(query)\" visualCandidates=\(visualCandidateRanges.count) " +
+                    "visualResults=\(visualRanges.count) audioCandidates=\(audioCandidateRanges.count) audioResults=\(audioRanges.count)"
                 )
             }
-            model.audioResults = audioRanges.map {
-                SemanticMatchRange(
-                    videoID: $0.videoID,
-                    videoName: $0.videoName,
-                    startTimeSeconds: $0.startTimeSeconds,
-                    endTimeSeconds: $0.endTimeSeconds,
-                    confidence: $0.confidence,
-                    source: $0.source,
-                    matchText: $0.matchText
-                )
-            }
-            let totalRangeCount = model.visualResults.count + model.audioResults.count
-            model.statusMessage = totalRangeCount == 0
-                ? "No matching ranges found."
-                : "Found \(totalRangeCount) likely range(s)."
-            print(
-                "[SemanticAudioSearch] search complete query=\"\(query)\" visualCandidates=\(visualCandidateRanges.count) " +
-                "visualResults=\(visualRanges.count) audioCandidates=\(audioCandidateRanges.count) audioResults=\(audioRanges.count)"
-            )
         } catch is CancellationError {
             print("[SemanticAudioSearch] search cancelled query=\"\(query)\"")
             model.isSearching = false
@@ -595,11 +613,134 @@ final class SemanticSearchViewModel: ObservableObject {
         model.isSearching = false
     }
 
+    private func performCloudImportPanelSearch(
+        query: String,
+        videos: [SemanticImportedVideo],
+        requestedVideoKeys: [String]
+    ) async throws {
+        refreshCloudBackendProjectIdFromDatabase()
+        guard let projectId = model.cloudBackendProjectId else {
+            throw ProjectClipProcessingError.missingProjectInformation
+        }
+
+        let limit = SemanticSearchConstants.resultsLimit
+        let service = ProjectClipSearchService()
+        async let semanticMatches = service.semanticSearch(projectID: projectId, query: query, limit: limit)
+        async let transcriptMatches = service.transcriptSearch(projectID: projectId, query: query, limit: limit)
+        let semanticRows = try await semanticMatches
+        let transcriptRows = try await transcriptMatches
+
+        var visualPool: [SemanticRangeCandidate] = []
+        var audioPool: [SemanticRangeCandidate] = []
+        for row in semanticRows {
+            guard let candidate = mapProjectSearchMatch(row, videos: videos) else { continue }
+            if candidate.source == .audio {
+                audioPool.append(candidate)
+            } else {
+                visualPool.append(candidate)
+            }
+        }
+        for row in transcriptRows {
+            guard let candidate = mapProjectSearchMatch(row, videos: videos) else { continue }
+            audioPool.append(candidate)
+        }
+
+        let visualRanges = resultSelectionMode.select(from: visualPool)
+        let audioRanges = resultSelectionMode.select(from: audioPool)
+        guard query == model.trimmedQuery, requestedVideoKeys == model.videos.map(\.localKey) else {
+            model.isSearching = false
+            return
+        }
+        logSearchResults(visualRanges, query: query, source: .visual)
+        logSearchResults(audioRanges, query: query, source: .audio)
+        model.visualResults = visualRanges.map {
+            SemanticMatchRange(
+                videoID: $0.videoID,
+                videoName: $0.videoName,
+                startTimeSeconds: $0.startTimeSeconds,
+                endTimeSeconds: $0.endTimeSeconds,
+                confidence: $0.confidence,
+                source: $0.source,
+                matchText: $0.matchText
+            )
+        }
+        model.audioResults = audioRanges.map {
+            SemanticMatchRange(
+                videoID: $0.videoID,
+                videoName: $0.videoName,
+                startTimeSeconds: $0.startTimeSeconds,
+                endTimeSeconds: $0.endTimeSeconds,
+                confidence: $0.confidence,
+                source: $0.source,
+                matchText: $0.matchText
+            )
+        }
+        let totalRangeCount = model.visualResults.count + model.audioResults.count
+        model.statusMessage = totalRangeCount == 0
+            ? "No matching ranges found."
+            : "Found \(totalRangeCount) likely range(s)."
+        print(
+            "[SemanticCloudSearch] search complete query=\"\(query)\" semanticRows=\(semanticRows.count) " +
+            "transcriptRows=\(transcriptRows.count) visualResults=\(visualRanges.count) audioResults=\(audioRanges.count)"
+        )
+    }
+
+    private func mapProjectSearchMatch(
+        _ match: ProjectClipSearchService.Match,
+        videos: [SemanticImportedVideo]
+    ) -> SemanticRangeCandidate? {
+        guard let (videoID, displayName) = resolveVideoForBackendLocalKey(match.localKey, in: videos) else {
+            return nil
+        }
+        let rawSource = (match.source ?? "").lowercased()
+        let source: SemanticSearchResultSource = (rawSource == "audio") ? .audio : .visual
+        return SemanticRangeCandidate(
+            videoID: videoID,
+            videoName: displayName,
+            startTimeSeconds: match.startTimeSeconds,
+            endTimeSeconds: match.endTimeSeconds,
+            confidence: match.confidence,
+            source: source,
+            matchText: match.matchText
+        )
+    }
+
+    private func resolveVideoForBackendLocalKey(
+        _ backendKey: String,
+        in videos: [SemanticImportedVideo]
+    ) -> (String, String)? {
+        if let hit = videos.first(where: { $0.uploadLocalKey == backendKey }) {
+            return (hit.localKey, hit.displayName)
+        }
+        if let hit = videos.first(where: { $0.localKey == backendKey }) {
+            return (hit.localKey, hit.displayName)
+        }
+        return nil
+    }
+
+    private func refreshCloudBackendProjectIdFromDatabase() {
+        guard !AppConfiguration.enablesLocalSemanticIndexing else {
+            model.cloudBackendProjectId = nil
+            return
+        }
+        guard let timelineId = importSearchTimelineId,
+              let timeline = try? DatabaseManager.shared.get(Timeline.self, id: timelineId, keyColumn: "timeline_id"),
+              let project = try? DatabaseManager.shared.get(Project.self, id: timeline.projectId, keyColumn: "project_id"),
+              let raw = project.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty
+        else {
+            model.cloudBackendProjectId = nil
+            return
+        }
+        model.cloudBackendProjectId = raw
+    }
+
     private func buildIndexIfNeeded() async {
         await buildIndexIfNeeded(options: .interactive, invalidatedVideoIDs: [])
     }
 
     private func buildIndexIfNeeded(options: SemanticIndexBuildOptions, invalidatedVideoIDs: Set<String>) async {
+        guard AppConfiguration.enablesLocalSemanticIndexing else { return }
         guard !model.videos.isEmpty else { return }
         let requestedVisualSignature = visualIndexSignature(for: model.videos)
         guard !requestedVisualSignature.isEmpty else { return }
@@ -747,6 +888,7 @@ final class SemanticSearchViewModel: ObservableObject {
     }
 
     private func executeBuild(_ request: PendingBuildRequest) async {
+        guard AppConfiguration.enablesLocalSemanticIndexing else { return }
         guard !request.videos.isEmpty else { return }
         if indexedVisualSignature == request.visualSignature, model.indexedFrameCount > 0 {
             return
@@ -825,6 +967,12 @@ final class SemanticSearchViewModel: ObservableObject {
     private func readyStatusMessage() -> String {
         if model.videos.isEmpty {
             return "Import videos to build a chunk index."
+        }
+        if !AppConfiguration.enablesLocalSemanticIndexing {
+            if model.cloudBackendProjectId == nil {
+                return "Upload clips to your Iris project to search them in the cloud."
+            }
+            return "Search ready. Start typing to search clips."
         }
         if model.indexedFrameCount > 0 || model.hasTranscriptData {
             return "Search ready. Start typing to search clips."

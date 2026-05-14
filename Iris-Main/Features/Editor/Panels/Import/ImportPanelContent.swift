@@ -67,6 +67,7 @@ struct ImportPanelContent: View {
                 "ImportPanelContent",
                 "queue semantic sync videoCount=\(searchableVideos(from: state).count)"
             )
+            semanticVM.setImportSearchTimelineId(state.timelineId)
             semanticVM.queueImportedMediaSync(searchableVideos(from: state), autoBuildIndex: false)
         }
         .onChange(of: isSemanticSearchActive) { _, isActive in
