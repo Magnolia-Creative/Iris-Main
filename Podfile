@@ -140,12 +140,7 @@ post_install do |installer|
   )
 
   layer_compositor = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Video/LayerCompositor.swift')
-  patch_file(
-    layer_compositor,
-    [
-      [
-        /        \/\/ Render\n        blendOperation\.enableOutputTextureRead = enableOutputTextureRead\n        blendOperation\.addTexture\(texture, at: 0\)\n        blendOperation\.renderTexture\(outputTexture\)/,
-      <<~NEW
+  layer_compositor_blend_body = "        \n" + <<'SWIFT'.chomp
         // Render. Avoid framebuffer fetch in BlendOperation by passing the
         // current output as a normal texture input.
         guard let backgroundTexture = cloneTexture(from: outputTexture) else {
@@ -163,7 +158,36 @@ post_install do |installer|
         blendOperation.addTexture(texture, at: 0)
         blendOperation.addTexture(backgroundTexture, at: 1)
         blendOperation.renderTexture(outputTexture)
-      NEW
+SWIFT
+  layer_compositor_broken_body = "        \n" + <<'BROKEN'.chomp
+// Render. Avoid framebuffer fetch in BlendOperation by passing the
+// current output as a normal texture input.
+guard let backgroundTexture = cloneTexture(from: outputTexture) else {
+    return
+}
+defer {
+    backgroundTexture.unlock()
+}
+
+if !enableOutputTextureRead {
+    Texture.clearTexture(backgroundTexture)
+}
+
+blendOperation.enableOutputTextureRead = false
+blendOperation.addTexture(texture, at: 0)
+blendOperation.addTexture(backgroundTexture, at: 1)
+blendOperation.renderTexture(outputTexture)
+BROKEN
+  patch_file(
+    layer_compositor,
+    [
+      [
+        "        // Render\n        blendOperation.enableOutputTextureRead = enableOutputTextureRead\n        blendOperation.addTexture(texture, at: 0)\n        blendOperation.renderTexture(outputTexture)",
+        layer_compositor_blend_body.chomp,
+      ],
+      [
+        layer_compositor_broken_body.chomp,
+        layer_compositor_blend_body.chomp,
       ],
     ]
   )
