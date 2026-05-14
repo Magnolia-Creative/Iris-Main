@@ -69,7 +69,8 @@ struct Media: Codable, Identifiable, FetchableRecord, PersistableRecord {
         [
             spec.transcriptID ?? "",
             String(spec.transcriptSentences?.count ?? 0),
-            spec.transcriptFullText ?? ""
+            spec.transcriptFullText ?? "",
+            spec.clipUploadLocalKey ?? ""
         ].joined(separator: "::")
     }
 

@@ -510,7 +510,10 @@ struct ImportPanelContent: View {
 
     private func searchableVideoSignature(for state: TimelineState) -> String {
         searchableVideos(from: state)
-            .map(\.mediaId)
+            .map { media in
+                let uploadKey = media.spec.clipUploadLocalKey ?? ""
+                return "\(media.mediaId):\(uploadKey)"
+            }
             .sorted()
             .joined(separator: "|")
     }
