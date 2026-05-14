@@ -23,7 +23,18 @@ extension ClerkTheme {
                 shadow: Color.black.opacity(0.18),
                 border: Color.ds.border
             ),
-            fonts: .init(fontFamily: "Manrope"),
+            fonts: .init(
+                largeTitle: Typography.title.font,
+                title: Typography.heading.font,
+                title2: Typography.action.font,
+                headline: Typography.action.font,
+                subheadline: Typography.body.font,
+                body: Typography.body.font,
+                callout: Typography.body.font,
+                footnote: Typography.bodySmall.font,
+                caption: Typography.bodySmall.font,
+                caption2: Typography.bodySmall.font
+            ),
             design: .init(borderRadius: CGFloat.spacing(.sp1))
         )
     }
