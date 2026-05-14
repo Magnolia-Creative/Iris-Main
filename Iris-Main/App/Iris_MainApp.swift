@@ -1,4 +1,5 @@
 import ClerkKit
+import ClerkKitUI
 import SwiftUI
 
 @main
@@ -12,6 +13,7 @@ struct Iris_MainApp: App {
         WindowGroup {
             AuthenticatedRootView()
                 .environment(Clerk.shared)
+                .environment(\.clerkTheme, .iris)
         }
     }
 }
