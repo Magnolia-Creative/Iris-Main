@@ -12,7 +12,7 @@ enum AppConfiguration {
     static let visualFramesFieldName = "visual_frames"
     static let visualFrameManifestFieldName = "visual_frame_manifest"
     static let simulateImportProcessing = false
-    /// When false, skips MobileCLIP prewarm, semantic index rebuilds on import, and `queueImportedMediaSync` work.
+    /// When false, skips MobileCLIP prewarm and local chunk index rebuilds; import-panel search uses cloud project APIs instead.
     static let enablesLocalSemanticIndexing = false
 
     nonisolated static var semanticMobileCLIPEncoderURI: String {
@@ -92,6 +92,20 @@ enum AppConfiguration {
             .appending(path: projectID)
             .appending(path: "clips")
             .appending(path: localKey)
+    }
+
+    static func projectSemanticSearchEndpoint(projectID: String) -> URL {
+        backendBaseURL
+            .appending(path: "projects")
+            .appending(path: projectID)
+            .appending(path: "semantic-search")
+    }
+
+    static func projectTranscriptSearchEndpoint(projectID: String) -> URL {
+        backendBaseURL
+            .appending(path: "projects")
+            .appending(path: projectID)
+            .appending(path: "transcript-search")
     }
 
     static func agentWebSocketEndpoint(sessionID: String, basedOn baseURL: URL = backendBaseURL) -> URL? {

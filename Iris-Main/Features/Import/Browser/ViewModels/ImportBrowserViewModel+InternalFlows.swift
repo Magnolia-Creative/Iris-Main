@@ -575,15 +575,19 @@ extension ImportBrowserViewModel {
             guard let media = imported.first else {
                 throw makeLocalLibraryImportError("The clip could not be added to the local library.")
             }
+            var mediaWithUploadKey = media
+            mediaWithUploadKey.spec.clipUploadLocalKey = localKey
+            mediaWithUploadKey.updatedAt = Date()
+            try self.db.update(mediaWithUploadKey)
             await MainActor.run {
                 self.updateClip(localKey: localKey) { clip in
-                    clip.localMediaID = media.mediaId
+                    clip.localMediaID = mediaWithUploadKey.mediaId
                 }
             }
             print(
-                "[ImportBrowser] local media imported localKey=\(localKey) mediaID=\(media.mediaId) assetRefID=\(media.assetRefId)"
+                "[ImportBrowser] local media imported localKey=\(localKey) mediaID=\(mediaWithUploadKey.mediaId) assetRefID=\(mediaWithUploadKey.assetRefId)"
             )
-            return media.mediaId
+            return mediaWithUploadKey.mediaId
         }
         localMediaTasks[localKey] = task
         defer {

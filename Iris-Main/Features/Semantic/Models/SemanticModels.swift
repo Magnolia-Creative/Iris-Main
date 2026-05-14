@@ -11,6 +11,8 @@ struct SemanticImportedVideo: Identifiable, Equatable {
     let displayName: String
     let durationSeconds: Double
     let transcriptSentences: [MediaTranscriptSentence]
+    /// Backend `local_key` from clip ingest, when known (see `MediaSpec.clipUploadLocalKey`).
+    let uploadLocalKey: String?
     let visualContentSignature: String
     let transcriptContentSignature: String
     let contentSignature: String
@@ -41,6 +43,8 @@ struct SemanticSearchModel {
     var indexedFrameCount = 0
     var visualResults: [SemanticMatchRange] = []
     var audioResults: [SemanticMatchRange] = []
+    /// Backend Iris project id for cloud import-panel search (from local `Project.backendProjectId`).
+    var cloudBackendProjectId: String?
 
     var results: [SemanticMatchRange] {
         visualResults + audioResults
@@ -62,12 +66,19 @@ struct SemanticSearchModel {
         hasVideos && !isImportingVideos && !isBuildingIndex
     }
 
+    /// When local MobileCLIP indexing is off, import search uses the backend if `cloudBackendProjectId` is set.
+    private var usesCloudImportSearch: Bool {
+        !AppConfiguration.enablesLocalSemanticIndexing
+    }
+
     var canSearch: Bool {
         !trimmedQuery.isEmpty
-            && (indexedFrameCount > 0 || hasTranscriptData)
             && !isImportingVideos
             && !isBuildingIndex
             && !isSearching
+            && (usesCloudImportSearch
+                ? (!videos.isEmpty && cloudBackendProjectId != nil)
+                : (indexedFrameCount > 0 || hasTranscriptData))
     }
 }
 

@@ -106,6 +106,8 @@ struct MediaSpec: Codable {
     var transcriptID: String?
     var transcriptFullText: String?
     var transcriptSentences: [MediaTranscriptSentence]?
+    /// When set, matches `local_key` on backend clips for this timeline media (import-browser clip key).
+    var clipUploadLocalKey: String?
 }
 
 struct MediaTranscriptSentence: Codable, Equatable {
