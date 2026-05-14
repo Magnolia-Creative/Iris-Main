@@ -70,6 +70,19 @@ extension RenderTimelineInput {
 enum VideoLabPreviewDiagnostics {
     private static let logger = Logger(subsystem: "Iris-Main", category: "VideoLabPreview")
 
+    private static var lastTimeControlStatus: AVPlayer.TimeControlStatus?
+    private static var lastLayerReady: Bool?
+    private static var lastLayerBounds: CGRect?
+    private static var lastPlayerItemSignature: String?
+
+    /// Clears de-duplication state when a new `AVPlayerItem` / preview session is wired.
+    static func resetPreviewSessionState() {
+        lastTimeControlStatus = nil
+        lastLayerReady = nil
+        lastLayerBounds = nil
+        lastPlayerItemSignature = nil
+    }
+
     static func logDroppedClip(reason: String, zOrder: Int, url: URL, error: Error? = nil) {
         if let err = error {
             logger.warning("clip dropped reason=\(reason, privacy: .public) zOrder=\(zOrder) url=\(url.lastPathComponent, privacy: .public) error=\(String(describing: err), privacy: .public)")
@@ -85,18 +98,35 @@ enum VideoLabPreviewDiagnostics {
         logger.debug("renderInput tracks=\(input.tracks.count) visualTracks=\(visual) audioTracks=\(audio) clips=\(clips) duration=\(input.duration) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height))")
     }
 
+    static func logPlayerItemIfChanged(_ item: AVPlayerItem) {
+        let sig = "\(item.status.rawValue)|\(item.error.map { String(describing: $0) } ?? "nil")|\(item.videoComposition != nil)"
+        guard sig != lastPlayerItemSignature else { return }
+        lastPlayerItemSignature = sig
+        logPlayerItem(item)
+    }
+
     static func logPlayerItem(_ item: AVPlayerItem) {
         let st = item.status.rawValue
         let err = item.error.map { String(describing: $0) } ?? "nil"
         let hasVC = item.videoComposition != nil
         logger.debug("playerItem status=\(st) error=\(err, privacy: .public) videoComposition=\(hasVC)")
+        if item.status == .failed {
+            logger.warning("playerItem failed; Console may show <<<< CustomVideoCompositor >>>> err=-12784 when VideoLab’s Metal compositor drops a frame (often transient while seeking).")
+        }
     }
 
-    static func logPlayerLayerReady(_ ready: Bool, bounds: CGRect) {
+    static func logPlayerLayerReadyIfChanged(ready: Bool, bounds: CGRect) {
+        if let lr = lastLayerReady, let lb = lastLayerBounds, lr == ready, lb.equalTo(bounds) {
+            return
+        }
+        lastLayerReady = ready
+        lastLayerBounds = bounds
         logger.debug("playerLayer isReadyForDisplay=\(ready) bounds=\(String(describing: bounds))")
     }
 
-    static func logTimeControl(_ status: AVPlayer.TimeControlStatus) {
+    static func logTimeControlIfChanged(_ status: AVPlayer.TimeControlStatus) {
+        guard status != lastTimeControlStatus else { return }
+        lastTimeControlStatus = status
         logger.debug("player timeControlStatus=\(String(describing: status))")
     }
 

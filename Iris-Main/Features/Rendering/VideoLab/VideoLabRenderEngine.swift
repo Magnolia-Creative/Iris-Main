@@ -83,7 +83,7 @@ final class VideoLabRenderEngine: NSObject {
         captionSyncLayer?.frame = view.bounds
 #if DEBUG
         if view.bounds.width < 1 || view.bounds.height < 1 {
-            VideoLabPreviewDiagnostics.logPlayerLayerReady(playerLayer?.isReadyForDisplay ?? false, bounds: view.bounds)
+            VideoLabPreviewDiagnostics.logPlayerLayerReadyIfChanged(ready: playerLayer?.isReadyForDisplay ?? false, bounds: view.bounds)
         }
 #endif
     }
@@ -275,39 +275,38 @@ final class VideoLabRenderEngine: NSObject {
 #if DEBUG
     private func installDebugObservers(for item: AVPlayerItem) {
         removeDebugObservers()
+        VideoLabPreviewDiagnostics.resetPreviewSessionState()
 
-        VideoLabPreviewDiagnostics.logPlayerItem(item)
+        VideoLabPreviewDiagnostics.logPlayerItemIfChanged(item)
 
         debugItemStatusObservation = item.observe(\.status, options: [.new]) { observed, _ in
             Task { @MainActor in
-                VideoLabPreviewDiagnostics.logPlayerItem(observed)
+                VideoLabPreviewDiagnostics.logPlayerItemIfChanged(observed)
             }
         }
 
         debugItemVideoCompositionObservation = item.observe(\.videoComposition, options: [.new]) { observed, _ in
             Task { @MainActor in
-                VideoLabPreviewDiagnostics.logPlayerItem(observed)
+                VideoLabPreviewDiagnostics.logPlayerItemIfChanged(observed)
             }
         }
 
         if let player {
-            VideoLabPreviewDiagnostics.logTimeControl(player.timeControlStatus)
+            VideoLabPreviewDiagnostics.logTimeControlIfChanged(player.timeControlStatus)
             debugPlayerTimeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { observed, _ in
                 Task { @MainActor in
-                    VideoLabPreviewDiagnostics.logTimeControl(observed.timeControlStatus)
+                    VideoLabPreviewDiagnostics.logTimeControlIfChanged(observed.timeControlStatus)
                 }
             }
         }
 
         if let layer = playerLayer {
-            let initialReady = layer.isReadyForDisplay
-            let initialBounds = layer.bounds
-            VideoLabPreviewDiagnostics.logPlayerLayerReady(initialReady, bounds: initialBounds)
+            VideoLabPreviewDiagnostics.logPlayerLayerReadyIfChanged(ready: layer.isReadyForDisplay, bounds: layer.bounds)
             debugPlayerLayerReadyObservation = layer.observe(\.isReadyForDisplay, options: [.new]) { observed, _ in
                 let ready = observed.isReadyForDisplay
                 let bounds = observed.bounds
                 Task { @MainActor in
-                    VideoLabPreviewDiagnostics.logPlayerLayerReady(ready, bounds: bounds)
+                    VideoLabPreviewDiagnostics.logPlayerLayerReadyIfChanged(ready: ready, bounds: bounds)
                 }
             }
         }

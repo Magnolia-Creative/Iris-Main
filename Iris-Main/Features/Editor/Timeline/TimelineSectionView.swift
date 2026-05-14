@@ -124,7 +124,11 @@ struct TimelineSectionView: View {
                             currentTimeAtCenter = clampedTimeUs
                             lastScrollUpdate = now
                             if !isProgrammaticScrolling {
-                                onPreviewScrub?(clampedTimeUs, scrollVelocity)
+                                let tUs = clampedTimeUs
+                                let vel = scrollVelocity
+                                DispatchQueue.main.async {
+                                    onPreviewScrub?(tUs, vel)
+                                }
                             }
                         }
 
