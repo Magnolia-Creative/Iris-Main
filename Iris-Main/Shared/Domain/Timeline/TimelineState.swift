@@ -2,6 +2,12 @@ import Foundation
 import Photos
 import SwiftUI
 
+/// One undo/redo step: a forward action batch and the inverse batch returned by `TimelineState.apply`.
+struct TimelineActionHistoryGroup: Equatable {
+    let forwardActions: [Action]
+    let inverseActions: [Action]
+}
+
 struct TimelineState {
     let timelineId: String
 
@@ -29,6 +35,14 @@ struct TimelineState {
     var captionGroups: [CaptionGroup]
     var captionCues: [CaptionCue]
 
+    // MARK: - Undo / redo (action history)
+
+    private(set) var undoActionStack: [TimelineActionHistoryGroup] = []
+    private(set) var redoActionStack: [TimelineActionHistoryGroup] = []
+
+    var canUndo: Bool { !undoActionStack.isEmpty }
+    var canRedo: Bool { !redoActionStack.isEmpty }
+
     let defaultClipDurationUs: Int64
     let scrollBufferUs: Int64
 
@@ -53,6 +67,8 @@ struct TimelineState {
         self.playbackState = .idle
         self.captionGroups = []
         self.captionCues = []
+        self.undoActionStack = []
+        self.redoActionStack = []
         self.defaultClipDurationUs = 2_000_000
         self.scrollBufferUs = 1_000_000
     }
@@ -111,6 +127,12 @@ struct TimelineState {
         self.backendProjectId = backendProjectId
         self.captionGroups = captionGroups
         self.captionCues = captionCues
+        clearActionHistory()
+    }
+
+    mutating func clearActionHistory() {
+        undoActionStack.removeAll()
+        redoActionStack.removeAll()
     }
 
     mutating func ingestImportedMedia(

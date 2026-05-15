@@ -51,6 +51,43 @@ extension TimelineState {
         }
     }
 
+    // MARK: - Undo / redo (history)
+
+    /// Applies `forward` via `apply`, optionally records an undo group, and returns the combined inverse batch.
+    @discardableResult
+    mutating func applyRecordingUndo(forward actions: [Action], recordUndo: Bool) -> [Action] {
+        let inverse = apply(actions)
+        if recordUndo, !inverse.isEmpty {
+            undoActionStack.append(
+                TimelineActionHistoryGroup(forwardActions: actions, inverseActions: inverse)
+            )
+            redoActionStack.removeAll()
+        }
+        return inverse
+    }
+
+    /// Pops the latest undo group, applies its inverse, and pushes a redo entry. Returns whether a step ran.
+    @discardableResult
+    mutating func undoLastActionGroupFromHistory() -> Bool {
+        guard let group = undoActionStack.popLast() else { return false }
+        let redoForward = apply(group.inverseActions)
+        redoActionStack.append(
+            TimelineActionHistoryGroup(forwardActions: redoForward, inverseActions: group.inverseActions)
+        )
+        return true
+    }
+
+    /// Pops the latest redo group, reapplies its forward batch, and pushes an undo entry. Returns whether a step ran.
+    @discardableResult
+    mutating func redoLastActionGroupFromHistory() -> Bool {
+        guard let group = redoActionStack.popLast() else { return false }
+        let undoInverse = apply(group.forwardActions)
+        undoActionStack.append(
+            TimelineActionHistoryGroup(forwardActions: group.forwardActions, inverseActions: undoInverse)
+        )
+        return true
+    }
+
     // MARK: - Private executors
 
     private mutating func applySplitClip(clipId: String, atTimeUs cutTimeUs: Int64) -> [Action] {
