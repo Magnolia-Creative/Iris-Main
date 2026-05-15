@@ -235,7 +235,7 @@ struct TimelineSectionView: View {
                             .frame(width: 41)
                     }
                     .padding(.leading, .sp3)
-                    .padding(.top, 4)
+                    .padding(.top, 2)
                     .background(Color.ds.bg)
 
                     LinearGradient(
