@@ -246,7 +246,8 @@ struct TimelineSectionView: View {
                     )
                     .frame(width: .spacing(.sp5), height: layout.rulerHeight)
                 }
-                .frame(height: layout.rulerHeight, alignment: .top)
+                .frame(maxHeight: layout.rulerHeight, alignment: .top)
+                .clipped()
                 .offset(y: rulerVerticalOffset)
 
                 PlayheadView(tint: playheadTint)
@@ -264,6 +265,7 @@ struct TimelineSectionView: View {
                     )
                     .frame(width: .spacing(.sp4), height: layout.rulerHeight)
                 }
+                .frame(maxWidth: .infinity, maxHeight: layout.rulerHeight, alignment: .topTrailing)
                 .offset(y: rulerVerticalOffset)
 
                 if showAddButton, let onAddSelection {
