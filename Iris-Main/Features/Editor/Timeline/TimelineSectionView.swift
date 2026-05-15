@@ -15,7 +15,8 @@ struct TimelineSectionView: View {
     @Binding var scrollTargetTimeUs: Int64?
     @Binding var selectedClipId: String?
     var playbackState: TimelinePlaybackState = .idle
-    let onAddSelection: (TrackKind, ImportSource) -> Void
+    let onAddSelection: ((TrackKind, ImportSource) -> Void)?
+    var onTapAddCaptions: (() -> Void)? = nil
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
     var onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)? = nil
@@ -26,6 +27,12 @@ struct TimelineSectionView: View {
     var promptActionPreview: TimelinePromptActionPreview? = nil
     /// Invoked when the user scrolls the timeline; reports playhead time (µs) and scroll velocity (points/sec) for preview scrubbing.
     var onPreviewScrub: ((Int64, Double) -> Void)? = nil
+    var captionHighlightRangeUs: ClosedRange<Int64>? = nil
+    var playheadTint: Color = Color.ds.text
+    var captionGroups: [CaptionGroup] = []
+    var captionCues: [CaptionCue] = []
+    @Binding var selectedCaptionCueId: String?
+    var onCaptionCueSelected: ((String) -> Void)? = nil
 
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var lastScrollOffsetX: CGFloat = 0
@@ -35,7 +42,6 @@ struct TimelineSectionView: View {
     @State private var scrollActivityWorkItem: DispatchWorkItem?
     @State private var isUserScrolling: Bool = false
     @State private var isAutoScrolling: Bool = false
-    @State private var isAddMenuOpen: Bool = false
     @State private var lastScrollUpdate: Date = Date()
     @State private var autoScrollDirection: CGFloat = 0
     @State private var autoScrollTask: Task<Void, Never>?
@@ -69,16 +75,27 @@ struct TimelineSectionView: View {
                                 .offset(y: rulerVerticalOffset)
 
                                 TimelineTracksContent(
-                                    tracks: tracks, clipsByTrackId: clipsByTrackId,
-                                    mediaById: mediaById, layout: layout, pixelsPerSecond: pixelsPerSecond,
-                                    onMoveClip: onMoveClip, onTrimClip: onTrimClip,
-                                    viewportWidth: geometry.size.width, contentWidth: timelineWidth,
-                                    scrollOffset: $sharedScrollOffset, selectedClipId: $selectedClipId,
+                                    tracks: tracks,
+                                    clipsByTrackId: clipsByTrackId,
+                                    mediaById: mediaById,
+                                    captionGroups: captionGroups,
+                                    captionCues: captionCues,
+                                    layout: layout,
+                                    pixelsPerSecond: pixelsPerSecond,
+                                    onMoveClip: onMoveClip,
+                                    onTrimClip: onTrimClip,
+                                    viewportWidth: geometry.size.width,
+                                    contentWidth: timelineWidth,
+                                    scrollOffset: $sharedScrollOffset,
+                                    selectedClipId: $selectedClipId,
+                                    selectedCaptionCueId: $selectedCaptionCueId,
                                     onAutoScroll: updateAutoScroll(direction:),
                                     isUserScrolling: isUserScrolling,
                                     reviewFocusedClipIds: reviewFocusedClipIds,
                                     isReviewInteractionDisabled: isReviewInteractionDisabled,
-                                    promptActionPreview: promptActionPreview
+                                    promptActionPreview: promptActionPreview,
+                                    captionHighlightRangeUs: captionHighlightRangeUs,
+                                    onSelectCaptionCue: onCaptionCueSelected
                                 )
                                 .padding(.top, layout.trackTopOffset)
                                 .transaction { transaction in
@@ -230,7 +247,7 @@ struct TimelineSectionView: View {
                 }
                 .offset(y: rulerVerticalOffset)
 
-                PlayheadView()
+                PlayheadView(tint: playheadTint)
                     .padding(.top, 27)
                     .offset(y: rulerVerticalOffset)
 
@@ -247,17 +264,8 @@ struct TimelineSectionView: View {
                 }
                 .offset(y: rulerVerticalOffset)
 
-                if isAddMenuOpen {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) { isAddMenuOpen = false }
-                        }
-                        .ignoresSafeArea()
-                }
-
-                if showAddButton {
-                    AddClipButton(onSelect: onAddSelection, isMenuOpen: $isAddMenuOpen)
+                if showAddButton, let onTapAddCaptions {
+                    AddClipButton(onTap: onTapAddCaptions)
                         .padding(.top, addButtonTopOffset)
                         .padding(.trailing, .spacing(.sp6))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)

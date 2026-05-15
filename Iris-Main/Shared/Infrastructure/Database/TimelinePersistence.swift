@@ -84,6 +84,18 @@ struct TimelinePersistence {
         try db.create(effect)
     }
 
+    func createCaptionGroup(_ group: CaptionGroup) throws {
+        try db.create(group)
+    }
+
+    func updateCaptionGroup(_ group: CaptionGroup) throws {
+        try db.update(group)
+    }
+
+    func createCaptionCue(_ cue: CaptionCue) throws {
+        try db.create(cue)
+    }
+
     func updateEffect(_ effect: Effect) throws {
         try db.update(effect)
     }

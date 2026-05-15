@@ -136,6 +136,8 @@ struct RenderCaptionCueInput: Identifiable {
 }
 
 struct RenderCaptionStyle: Equatable {
+    /// PostScript or family name for `UIFont(name:size:)`; falls back to system in the factory.
+    var fontName: String
     var fontSize: CGFloat
     var fontWeight: CGFloat
     var textColor: SIMD4<Float>
@@ -143,6 +145,7 @@ struct RenderCaptionStyle: Equatable {
     var cornerRadius: CGFloat
 
     static let `default` = RenderCaptionStyle(
+        fontName: "",
         fontSize: 24,
         fontWeight: 400,
         textColor: SIMD4<Float>(1, 1, 1, 1),

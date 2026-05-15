@@ -34,6 +34,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let chromeMaxWidth: CGFloat?
     let promptBar: (Bool, Namespace.ID) -> PromptBar
     let spaceExtension: SpaceExtension
+    /// When set and `activeSpace == .edit`, replaces the edit tools row (same chrome as import/export).
+    let captionsEditContent: AnyView?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -64,7 +66,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         bottomReservedSpace: CGFloat = 0,
         chromeMaxWidth: CGFloat? = nil,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
-        @ViewBuilder spaceExtension: () -> SpaceExtension
+        @ViewBuilder spaceExtension: () -> SpaceExtension,
+        captionsEditContent: AnyView? = nil
     ) {
         self._activeSpace = activeSpace
         self.isClipSelected = isClipSelected
@@ -85,6 +88,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.chromeMaxWidth = chromeMaxWidth
         self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
+        self.captionsEditContent = captionsEditContent
     }
 
     private var rowMaxWidth: CGFloat? {
@@ -107,7 +111,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         activeSpace == .edit
             && !isClipToolSliderExpanded
             && (
-                isPromptActionReviewActive
+                captionsEditContent != nil
+                    || isPromptActionReviewActive
                     || (isClipSelected && !promptBarIsTakingOver)
             )
     }
@@ -145,7 +150,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
     private var topChrome: some View {
         Group {
-            if activeSpace == .edit {
+            if activeSpace == .edit, let captionsEditContent {
+                captionsEditContent
+            } else if activeSpace == .edit {
                 toolsRow
             } else {
                 spaceExtension

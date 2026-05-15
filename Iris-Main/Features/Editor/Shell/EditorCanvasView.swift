@@ -6,6 +6,7 @@ struct EditorCanvasView: View {
     let playbackController: PlaybackController?
     let renderBridge: TimelineRenderBridge
     let activeSpace: EditorSpace
+    @ObservedObject var captionsFlow: CaptionsFlowController
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
@@ -119,6 +120,9 @@ struct EditorCanvasView: View {
             addSelection = { _, _ in }
         }
 
+        let highlight = captionsFlow.highlightRangeUs(playheadUs: state.currentTimeAtCenter)
+        let playheadTint = captionsFlow.playheadUsesAccentTint ? Color.ds.accentFg : Color.ds.text
+
         return TimelineSectionView(
             tracks: state.orderedTracks,
             clipsByTrackId: state.clipsByTrackId,
@@ -131,7 +135,8 @@ struct EditorCanvasView: View {
             scrollTargetTimeUs: controller.binding(\.scrollTargetTimeUs),
             selectedClipId: controller.binding(\.selectedClipId),
             playbackState: state.playbackState,
-            onAddSelection: addSelection,
+            onAddSelection: allowsTimelineAdditions ? addSelection : nil,
+            onTapAddCaptions: allowsTimelineAdditions ? { captionsFlow.beginCaptionsFlow() } : nil,
             onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
             onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
             onDropImportedSegmentAtTime: activeSpace == .importMedia ? { item, timeUs in
@@ -148,6 +153,14 @@ struct EditorCanvasView: View {
             promptActionPreview: promptActionPreview,
             onPreviewScrub: { timeUs, velocity in
                 renderBridge.handleScroll(timeUs: timeUs, velocity: velocity)
+            },
+            captionHighlightRangeUs: highlight,
+            playheadTint: playheadTint,
+            captionGroups: state.captionGroups,
+            captionCues: state.captionCues,
+            selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
+            onCaptionCueSelected: { cueId in
+                captionsFlow.openStyleEditor(forCueId: cueId)
             }
         )
         .frame(height: layout.sectionHeight(for: state.orderedTracks))

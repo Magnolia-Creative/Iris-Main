@@ -507,6 +507,65 @@ final class TimelineController: ObservableObject {
         }
     }
 
+    @MainActor
+    func finalizeCaptionGeneration(
+        rangeStartUs: Int64,
+        rangeEndUs: Int64,
+        cues: [CaptionCue],
+        style: CaptionStyle
+    ) throws -> String {
+        let timelineId = state.timelineId
+        if state.tracks.first(where: { $0.kind == .captions }) == nil {
+            let newTrack = Track(timelineId: timelineId, kind: .captions, sortIndex: state.tracks.count)
+            state.tracks.append(newTrack)
+        }
+        persistNewTracks()
+        guard let track = state.tracks.first(where: { $0.kind == .captions }) else {
+            throw NSError(domain: "Captions", code: 1, userInfo: [NSLocalizedDescriptionKey: "No captions track"])
+        }
+
+        let groupId = UUID().uuidString
+        let group = CaptionGroup(
+            groupId: groupId,
+            trackId: track.trackId,
+            timelineId: timelineId,
+            style: style,
+            hasBackground: false,
+            textColor: "#FFFFFF",
+            rangeStartUs: rangeStartUs,
+            rangeEndUs: rangeEndUs
+        )
+        try persistence.createCaptionGroup(group)
+
+        var saved: [CaptionCue] = []
+        for c in cues {
+            let cue = CaptionCue(
+                groupId: groupId,
+                text: c.text,
+                timelineStartUs: c.timelineStartUs,
+                timelineEndUs: c.timelineEndUs
+            )
+            try persistence.createCaptionCue(cue)
+            saved.append(cue)
+        }
+        state.captionGroups.append(group)
+        state.captionCues.append(contentsOf: saved)
+        objectWillChange.send()
+        return groupId
+    }
+
+    func captionGroup(withId groupId: String) -> CaptionGroup? {
+        state.captionGroups.first { $0.groupId == groupId }
+    }
+
+    @MainActor
+    func applyCaptionGroupStyleUpdate(_ group: CaptionGroup) throws {
+        try persistence.updateCaptionGroup(group)
+        guard let idx = state.captionGroups.firstIndex(where: { $0.groupId == group.groupId }) else { return }
+        state.captionGroups[idx] = group
+        objectWillChange.send()
+    }
+
     func moveClip(clipId: String, toStartTimeUs timeUs: Int64, orderedClipIds: [String]) {
         _ = timeUs
         applyActions([

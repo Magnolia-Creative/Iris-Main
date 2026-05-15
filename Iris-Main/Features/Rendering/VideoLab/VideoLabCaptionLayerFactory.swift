@@ -17,7 +17,14 @@ enum VideoLabCaptionLayerFactory {
             textLayer.alignmentMode = .center
             textLayer.isWrapped = true
 
-            let font = UIFont.systemFont(ofSize: cue.style.fontSize, weight: cue.style.fontWeight > 500 ? .semibold : .regular)
+            let baseSize = cue.style.fontSize
+            let font: UIFont = {
+                let name = cue.style.fontName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty, let named = UIFont(name: name, size: baseSize) {
+                    return named
+                }
+                return UIFont.systemFont(ofSize: baseSize, weight: cue.style.fontWeight > 500 ? .semibold : .regular)
+            }()
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = .center
             let fg = cue.style.textColor

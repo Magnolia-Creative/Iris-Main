@@ -90,6 +90,7 @@ private func makeVideo(id: String, name: String, path: String, visualSignature: 
         displayName: name,
         durationSeconds: 4,
         transcriptSentences: [],
+        uploadLocalKey: nil,
         visualContentSignature: visualSignature,
         transcriptContentSignature: "",
         contentSignature: "\(visualSignature)::"

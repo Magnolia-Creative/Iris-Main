@@ -6,6 +6,7 @@ struct EditorContainerView: View {
     let timelineId: String
     let initialImportSeed: ImportedTimelineSeed?
     @StateObject private var controller: TimelineController
+    @StateObject private var captionsFlow = CaptionsFlowController()
     @StateObject private var editorPromptBarViewModel: EditorPromptBarViewModel
     @StateObject private var renderBridge = TimelineRenderBridge()
     @ObservedObject private var agentSessionViewModel: AgentViewModel
@@ -146,7 +147,10 @@ struct EditorContainerView: View {
                             isClipSelected: isClipSelected,
                             micNamespace: micNamespace
                         )
-                    }
+                    },
+                    captionsEditContent: captionsFlow.isCaptionsChromeActive
+                        ? AnyView(CaptionsChromeView(flow: captionsFlow, controller: controller))
+                        : nil
                 ) {
                     ZStack {
                         switch activeSpace {
@@ -188,6 +192,7 @@ struct EditorContainerView: View {
                 playbackController: playbackController,
                 renderBridge: renderBridge,
                 activeSpace: activeSpace,
+                captionsFlow: captionsFlow,
                 onAddSelection: handleEditorAddSelection(kind:source:),
                 reviewFocusedClipIds: reviewFocusedClipIds,
                 isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
@@ -236,6 +241,9 @@ struct EditorContainerView: View {
             }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            captionsFlow.attach(controller)
         }
         .task {
             await MainActor.run {
