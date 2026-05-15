@@ -228,6 +228,37 @@ extension DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v6_captionGroupsAndCues") { db in
+            try db.create(table: "caption_groups") { t in
+                t.column("group_id", .text).primaryKey()
+                t.column("track_id", .text).notNull()
+                    .references("tracks", column: "track_id", onDelete: .cascade)
+                t.column("timeline_id", .text).notNull()
+                    .references("timelines", column: "timeline_id", onDelete: .cascade)
+                t.column("style", .text).notNull()
+                t.column("has_background", .boolean).notNull().defaults(to: false)
+                t.column("text_color", .text).notNull().defaults(to: "#FFFFFF")
+                t.column("range_start_us", .integer)
+                t.column("range_end_us", .integer)
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+            }
+            try db.create(index: "index_caption_groups_on_timeline_id", on: "caption_groups", columns: ["timeline_id"])
+            try db.create(index: "index_caption_groups_on_track_id", on: "caption_groups", columns: ["track_id"])
+
+            try db.create(table: "caption_cues") { t in
+                t.column("cue_id", .text).primaryKey()
+                t.column("group_id", .text).notNull()
+                    .references("caption_groups", column: "group_id", onDelete: .cascade)
+                t.column("text", .text).notNull()
+                t.column("timeline_start_us", .integer).notNull()
+                t.column("timeline_end_us", .integer).notNull()
+                t.column("created_at", .datetime).notNull()
+                t.column("updated_at", .datetime).notNull()
+            }
+            try db.create(index: "index_caption_cues_on_group_id", on: "caption_cues", columns: ["group_id", "timeline_start_us"])
+        }
+
         return migrator
     }
 }
@@ -355,6 +386,31 @@ extension DatabaseManager {
             try Effect.filter(Effect.Columns.timelineId == timelineId)
                 .order(Effect.Columns.createdAt.asc)
                 .fetchAll(db)
+        }
+    }
+
+    func getCaptionGroups(forTimelineId timelineId: String) throws -> [CaptionGroup] {
+        try dbQueue.read { db in
+            try CaptionGroup
+                .filter(CaptionGroup.Columns.timelineId == timelineId)
+                .order(CaptionGroup.Columns.createdAt.asc)
+                .fetchAll(db)
+        }
+    }
+
+    func getCaptionCues(forTimelineId timelineId: String) throws -> [CaptionCue] {
+        try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT c.*
+                FROM caption_cues c
+                INNER JOIN caption_groups g ON c.group_id = g.group_id
+                WHERE g.timeline_id = ?
+                ORDER BY c.timeline_start_us ASC
+                """,
+                arguments: [timelineId]
+            ).map(CaptionCue.init(row:))
         }
     }
 
