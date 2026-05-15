@@ -219,6 +219,11 @@ final class VideoLabRenderEngine: NSObject {
         playerLayer?.player = player
 
 #if DEBUG
+        VideoLabPreviewDiagnostics.logBuiltVideoLabPreview(
+            renderComposition: videoLab.renderComposition,
+            item: item,
+            frameRate: fps
+        )
         VideoLabPreviewDiagnostics.logPlayerItemWired(item, timelineDuration: prepared.duration)
 #endif
 

@@ -1,7 +1,9 @@
 import AVFoundation
 import Foundation
 #if DEBUG
+import CoreMedia
 import os
+import VideoLab
 #endif
 
 extension RenderTimelineInput {
@@ -242,10 +244,45 @@ enum VideoLabPreviewDiagnostics {
                 let avTracks = try await asset.load(.tracks)
                 let videoCount = avTracks.filter { $0.mediaType == .video }.count
                 let audioCount = avTracks.filter { $0.mediaType == .audio }.count
-                logger.debug("asset \(url.lastPathComponent, privacy: .public) videoTracks=\(videoCount) audioTracks=\(audioCount)")
+                var formatHint = ""
+                if let videoTrack = avTracks.first(where: { $0.mediaType == .video }) {
+                    let formats = try await videoTrack.load(.formatDescriptions)
+                    let subtypes = formats.map { CMFormatDescriptionGetMediaSubType($0) }
+                    let hex = subtypes.map { String(format: "0x%08X", $0) }.joined(separator: ",")
+                    if !subtypes.isEmpty {
+                        formatHint = " codecTypes=\(hex)"
+                    }
+                }
+                logger.debug("asset \(url.lastPathComponent, privacy: .public) videoTracks=\(videoCount) audioTracks=\(audioCount)\(formatHint, privacy: .public)")
             } catch {
                 logger.warning("asset load failed \(url.lastPathComponent, privacy: .public) error=\(String(describing: error), privacy: .public)")
             }
+        }
+    }
+
+    /// Logs `RenderComposition` vs `AVPlayerItem.videoComposition` after `VideoLab.makePlayerItem()`.
+    static func logBuiltVideoLabPreview(
+        renderComposition: RenderComposition,
+        item: AVPlayerItem,
+        frameRate: Int
+    ) {
+        let layerCount = renderComposition.layers.count
+        let rs = renderComposition.renderSize
+        let fdSeconds = renderComposition.frameDuration.seconds
+        let fdStr = fdSeconds.isFinite ? String(format: "%.4f", fdSeconds) : "non-finite"
+        let vc = item.videoComposition
+        let instructionCount = vc.map { $0.instructions.count } ?? 0
+        let vcRenderSize = vc.map { $0.renderSize } ?? .zero
+        let compositionTrackCount = item.asset.tracks.count
+        let hasAnim = renderComposition.animationLayer != nil
+        logger.debug(
+            "VideoLab built preview renderSize=\(Int(rs.width))x\(Int(rs.height), privacy: .public) frameDuration=\(fdStr, privacy: .public)s layers=\(layerCount) animationLayer=\(hasAnim) itemInstructions=\(instructionCount) vcRenderSize=\(Int(vcRenderSize.width))x\(Int(vcRenderSize.height), privacy: .public) compositionAssetTracks=\(compositionTrackCount) fps=\(frameRate)"
+        )
+        if layerCount == 0 {
+            logger.warning("VideoLab built preview has zero render layers; playback will be blank.")
+        }
+        if instructionCount == 0, vc != nil {
+            logger.warning("VideoLab playerItem has videoComposition but zero instructions.")
         }
     }
 }
