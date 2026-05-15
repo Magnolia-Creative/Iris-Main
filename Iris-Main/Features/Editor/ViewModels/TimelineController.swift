@@ -68,6 +68,8 @@ final class TimelineController: ObservableObject {
     internal func replaceTimelineContentForTesting(tracks: [Track], clips: [Clip]) {
         state.tracks = tracks
         state.clips = clips
+        state.captionGroups = []
+        state.captionCues = []
     }
 
     func loadTimelineData() async {
@@ -81,7 +83,9 @@ final class TimelineController: ObservableObject {
                     effects: loaded.effects,
                     mediaLibrary: loaded.mediaLibrary,
                     mediaById: loaded.mediaById,
-                    projectTitle: loaded.projectTitle
+                    projectTitle: loaded.projectTitle,
+                    captionGroups: loaded.captionGroups,
+                    captionCues: loaded.captionCues
                 )
                 persistedTrackIds = Set(loaded.tracks.map(\.trackId))
             }

@@ -23,6 +23,10 @@ struct TimelineState {
     var selectedClipId: String?
     var playbackState: TimelinePlaybackState
 
+    /// Loaded from `caption_groups` / `caption_cues` for this timeline.
+    var captionGroups: [CaptionGroup]
+    var captionCues: [CaptionCue]
+
     let defaultClipDurationUs: Int64
     let scrollBufferUs: Int64
 
@@ -44,12 +48,18 @@ struct TimelineState {
         self.scrollTargetTimeUs = nil
         self.selectedClipId = nil
         self.playbackState = .idle
+        self.captionGroups = []
+        self.captionCues = []
         self.defaultClipDurationUs = 2_000_000
         self.scrollBufferUs = 1_000_000
     }
 
     var clipsByTrackId: [String: [Clip]] {
         Dictionary(grouping: clips, by: { $0.trackId })
+    }
+
+    var cuesByGroupId: [String: [CaptionCue]] {
+        Dictionary(grouping: captionCues, by: { $0.groupId })
     }
 
     var orderedTracks: [Track] {
@@ -83,7 +93,9 @@ struct TimelineState {
         effects: [Effect],
         mediaLibrary: MediaLibrary?,
         mediaById: [String: Media],
-        projectTitle: String
+        projectTitle: String,
+        captionGroups: [CaptionGroup] = [],
+        captionCues: [CaptionCue] = []
     ) {
         self.timeline = timeline
         self.tracks = tracks
@@ -92,6 +104,8 @@ struct TimelineState {
         self.mediaLibrary = mediaLibrary
         self.mediaById = mediaById
         self.projectTitle = projectTitle
+        self.captionGroups = captionGroups
+        self.captionCues = captionCues
     }
 
     mutating func ingestImportedMedia(

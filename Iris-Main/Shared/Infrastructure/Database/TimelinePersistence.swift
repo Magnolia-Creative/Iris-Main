@@ -15,6 +15,8 @@ struct TimelinePersistence {
         let mediaLibrary: MediaLibrary?
         let mediaById: [String: Media]
         let projectTitle: String
+        let captionGroups: [CaptionGroup]
+        let captionCues: [CaptionCue]
     }
 
     enum PersistenceError: Error {
@@ -29,6 +31,8 @@ struct TimelinePersistence {
         let tracks = try db.ensureCoreTracks(forTimelineId: timeline.timelineId)
         let clips = try db.getClips(forTimelineId: timeline.timelineId)
         let effects = try db.getEffects(forTimelineId: timeline.timelineId)
+        let captionGroups = try db.getCaptionGroups(forTimelineId: timeline.timelineId)
+        let captionCues = try db.getCaptionCues(forTimelineId: timeline.timelineId)
         let mediaLibrary = try db.getMediaLibrary(forProjectId: timeline.projectId)
         let project = try db.get(Project.self, id: timeline.projectId, keyColumn: "project_id")
 
@@ -44,7 +48,9 @@ struct TimelinePersistence {
             effects: effects,
             mediaLibrary: mediaLibrary,
             mediaById: Dictionary(uniqueKeysWithValues: media.map { ($0.mediaId, $0) }),
-            projectTitle: project?.name ?? "Project"
+            projectTitle: project?.name ?? "Project",
+            captionGroups: captionGroups,
+            captionCues: captionCues
         )
     }
 
