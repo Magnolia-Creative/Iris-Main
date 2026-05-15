@@ -174,6 +174,15 @@ enum VideoLabTimelineAdapter {
         if let op = colorOperation(from: clip.colorAdjustments) {
             layer.operations = [op]
         }
+        if abs(clip.audio.volume - 1.0) > .ulpOfOne {
+            let duration = layer.timeRange.duration
+            let ramp = VolumeRamp(
+                startVolume: clip.audio.volume,
+                endVolume: clip.audio.volume,
+                timeRange: CMTimeRange(start: .zero, duration: duration)
+            )
+            layer.audioConfiguration.volumeRamps = [ramp]
+        }
     }
 
     private static func transform(from t: RenderTransformInput) -> Transform {
