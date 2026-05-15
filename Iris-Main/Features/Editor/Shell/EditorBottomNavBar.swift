@@ -48,9 +48,10 @@ struct EditorBottomNavBar: View {
     private var navCard: some View {
         navigationRow
             .frame(width: Self.navWidth)
-            .glassEffect(
-                .regular.tint(navTint).interactive(),
-                in: RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
+            .editorRegularGlassEffect(
+                tint: navTint,
+                in: RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous),
+                interactive: true
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)

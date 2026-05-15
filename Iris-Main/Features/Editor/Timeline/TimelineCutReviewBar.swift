@@ -12,38 +12,44 @@ struct TimelineCutReviewBar: View {
     let onSubmitReprompt: () -> Void
     @Environment(\.colorScheme) private var colorScheme
 
-    var body: some View {
-        GlassEffectContainer(spacing: 20) {
-            VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-                if review.isRepromptComposerPresented {
-                    repromptComposer
-                } else {
-                    actionButtons
-                }
+    private var shellCornerRadius: CGFloat { 24 }
 
-                Button(action: onApproveAll) {
-                    Text(isSending ? "Submitting..." : "Approve All")
-                        .typography(.action)
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, .spacing(.sp3))
-                        .padding(.horizontal, .spacing(.sp3))
-                        .background(Color.ds.accentBg)
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(isSending)
-                .opacity(isSending ? 0.75 : 1)
-            }
-            .padding(.horizontal, .spacing(.sp4))
-            .padding(.top, .spacing(.sp4))
-            .padding(.bottom, .spacing(.sp3))
-            .glassEffect(
-                .regular.tint(shellTint),
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
-            .shadow(color: outerShadowColor, radius: 20, x: 0, y: 14)
+    var body: some View {
+        EditorGlassEffectContainer(spacing: 20) {
+            paddedReviewContent
+                .editorRegularGlassEffect(
+                    tint: shellTint,
+                    in: RoundedRectangle(cornerRadius: shellCornerRadius, style: .continuous)
+                )
+                .shadow(color: outerShadowColor, radius: 20, x: 0, y: 14)
         }
+    }
+
+    private var paddedReviewContent: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp3)) {
+            if review.isRepromptComposerPresented {
+                repromptComposer
+            } else {
+                actionButtons
+            }
+
+            Button(action: onApproveAll) {
+                Text(isSending ? "Submitting..." : "Approve All")
+                    .typography(.action)
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, .spacing(.sp3))
+                    .padding(.horizontal, .spacing(.sp3))
+                    .background(Color.ds.accentBg)
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2), style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isSending)
+            .opacity(isSending ? 0.75 : 1)
+        }
+        .padding(.horizontal, .spacing(.sp4))
+        .padding(.top, .spacing(.sp4))
+        .padding(.bottom, .spacing(.sp3))
     }
 
     private var actionButtons: some View {

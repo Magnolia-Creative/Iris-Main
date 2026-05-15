@@ -85,7 +85,7 @@ struct EditorContainerView: View {
 
     @ViewBuilder
     private var editorTabBarChrome: some View {
-        GlassEffectContainer(spacing: 20) {
+        EditorGlassEffectContainer(spacing: 20) {
             ZStack(alignment: .bottom) {
                 EditorTabBar(
                     activeSpace: $activeSpace,

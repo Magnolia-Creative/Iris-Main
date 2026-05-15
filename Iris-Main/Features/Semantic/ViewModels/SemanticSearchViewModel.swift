@@ -633,7 +633,14 @@ final class SemanticSearchViewModel: ObservableObject {
         var visualPool: [SemanticRangeCandidate] = []
         var audioPool: [SemanticRangeCandidate] = []
         for row in semanticRows {
-            guard let candidate = mapProjectSearchMatch(row, videos: videos) else { continue }
+            guard let candidate = mapProjectSearchMatch(row, videos: videos) else {
+                let clipNote = row.clipId.map { " clip_id=\($0)" } ?? ""
+                print(
+                    "[SemanticCloudSearch] semantic row not mapped to timeline media" + clipNote +
+                    " backend_local_key=\"\(row.localKey)\" timeline_videos=\(videos.count)"
+                )
+                continue
+            }
             if candidate.source == .audio {
                 audioPool.append(candidate)
             } else {
@@ -641,7 +648,14 @@ final class SemanticSearchViewModel: ObservableObject {
             }
         }
         for row in transcriptRows {
-            guard let candidate = mapProjectSearchMatch(row, videos: videos) else { continue }
+            guard let candidate = mapProjectSearchMatch(row, videos: videos) else {
+                let clipNote = row.clipId.map { " clip_id=\($0)" } ?? ""
+                print(
+                    "[SemanticCloudSearch] transcript row not mapped to timeline media" + clipNote +
+                    " backend_local_key=\"\(row.localKey)\" timeline_videos=\(videos.count)"
+                )
+                continue
+            }
             audioPool.append(candidate)
         }
 
@@ -693,7 +707,7 @@ final class SemanticSearchViewModel: ObservableObject {
             return nil
         }
         let rawSource = (match.source ?? "").lowercased()
-        let source: SemanticSearchResultSource = (rawSource == "audio") ? .audio : .visual
+        let source: SemanticSearchResultSource = rawSource.hasPrefix("audio") ? .audio : .visual
         return SemanticRangeCandidate(
             videoID: videoID,
             videoName: displayName,
@@ -709,10 +723,17 @@ final class SemanticSearchViewModel: ObservableObject {
         _ backendKey: String,
         in videos: [SemanticImportedVideo]
     ) -> (String, String)? {
-        if let hit = videos.first(where: { $0.uploadLocalKey == backendKey }) {
-            return (hit.localKey, hit.displayName)
-        }
-        if let hit = videos.first(where: { $0.localKey == backendKey }) {
+        let needle = backendKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return nil }
+
+        if let hit = videos.first(where: { video in
+            if let upload = video.uploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines), !upload.isEmpty,
+               upload.caseInsensitiveCompare(needle) == .orderedSame {
+                return true
+            }
+            return video.localKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(needle) == .orderedSame
+        }) {
             return (hit.localKey, hit.displayName)
         }
         return nil

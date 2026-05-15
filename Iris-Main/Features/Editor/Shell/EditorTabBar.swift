@@ -112,8 +112,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             .modifier(ChromeMaxWidthModifier(
                 maxWidth: (hugChromeToContent || isColorToolExpanded) ? nil : chromeMaxWidth
             ))
-            .glassEffect(
-                .regular.tint(shellTint),
+            .editorRegularGlassEffect(
+                tint: shellTint,
                 in: RoundedRectangle(cornerRadius: outerCornerRadius, style: .continuous)
             )
             .shadow(color: outerShadowColor, radius: 20, x: 0, y: 14)
