@@ -572,6 +572,49 @@ final class TimelineController: ObservableObject {
         persistEffectChanges(created: [], updated: [], deletedIds: deletedIds)
     }
 
+    func clipVolume(for clipId: String) -> ClipVolume {
+        latestClipVolumeEffect(for: clipId)?.clipVolume ?? .neutral
+    }
+
+    func setClipVolume(clipId: String, volume: ClipVolume) {
+        guard state.clips.contains(where: { $0.clipId == clipId }) else { return }
+
+        if volume.isNeutral {
+            resetClipVolume(clipId: clipId)
+            return
+        }
+
+        let matchingEffects = clipVolumeEffects(for: clipId)
+        let existingEffect = matchingEffects.max { $0.updatedAt < $1.updatedAt }
+        let updatedEffect = Effect.clipVolume(
+            timelineId: state.timelineId,
+            clipId: clipId,
+            volume: volume,
+            effectId: existingEffect?.effectId ?? UUID().uuidString,
+            createdAt: existingEffect?.createdAt ?? Date()
+        )
+
+        let duplicateEffectIds = Set(matchingEffects.map(\.effectId)).subtracting([updatedEffect.effectId])
+        state.effects.removeAll { duplicateEffectIds.contains($0.effectId) }
+
+        if let index = state.effects.firstIndex(where: { $0.effectId == updatedEffect.effectId }) {
+            state.effects[index] = updatedEffect
+            persistEffectChanges(created: [], updated: [updatedEffect], deletedIds: Array(duplicateEffectIds))
+        } else {
+            state.effects.append(updatedEffect)
+            persistEffectChanges(created: [updatedEffect], updated: [], deletedIds: Array(duplicateEffectIds))
+        }
+    }
+
+    func resetClipVolume(clipId: String) {
+        let matchingEffects = clipVolumeEffects(for: clipId)
+        guard !matchingEffects.isEmpty else { return }
+
+        let deletedIds = matchingEffects.map(\.effectId)
+        state.effects.removeAll { deletedIds.contains($0.effectId) }
+        persistEffectChanges(created: [], updated: [], deletedIds: deletedIds)
+    }
+
     func deleteSelectedClip() {
         guard let clipId = state.selectedClipId else { return }
         applyActions([Action.removeClip(timelineId: state.timelineId, clipId: clipId)])
@@ -801,6 +844,18 @@ final class TimelineController: ObservableObject {
 
     private func latestClipColorFilterEffect(for clipId: String) -> Effect? {
         clipColorFilterEffects(for: clipId).max { $0.updatedAt < $1.updatedAt }
+    }
+
+    private func clipVolumeEffects(for clipId: String) -> [Effect] {
+        state.effects.filter {
+            $0.targetId == clipId
+                && $0.appliesTo == .clip
+                && $0.type == ClipVolume.effectType
+        }
+    }
+
+    private func latestClipVolumeEffect(for clipId: String) -> Effect? {
+        clipVolumeEffects(for: clipId).max { $0.updatedAt < $1.updatedAt }
     }
 
     private func persistNewTracks() {

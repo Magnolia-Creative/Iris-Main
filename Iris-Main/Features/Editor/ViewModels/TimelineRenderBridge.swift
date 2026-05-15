@@ -23,6 +23,7 @@ final class TimelineRenderBridge: ObservableObject {
                     && old.clips.map(\.sourceRange.start) == new.clips.map(\.sourceRange.start)
                     && old.clips.map(\.sourceRange.end) == new.clips.map(\.sourceRange.end)
                     && Self.clipColorFiltersByClipId(from: old.effects) == Self.clipColorFiltersByClipId(from: new.effects)
+                    && Self.clipVolumesByClipId(from: old.effects) == Self.clipVolumesByClipId(from: new.effects)
             }
             .sink { [weak self] state in
                 self?.syncTimeline(from: state)
@@ -152,5 +153,17 @@ final class TimelineRenderBridge: ObservableObject {
         }
 
         return latestFilters.mapValues(\.filter)
+    }
+
+    private static func clipVolumesByClipId(from effects: [Effect]) -> [String: ClipVolume] {
+        let latestVolumes = effects.reduce(into: [String: (updatedAt: Date, volume: ClipVolume)]()) { result, effect in
+            guard let volume = effect.clipVolume else { return }
+            if let existing = result[effect.targetId], existing.updatedAt > effect.updatedAt {
+                return
+            }
+            result[effect.targetId] = (effect.updatedAt, volume)
+        }
+
+        return latestVolumes.mapValues(\.volume)
     }
 }
