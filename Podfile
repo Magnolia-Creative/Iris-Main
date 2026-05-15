@@ -139,6 +139,98 @@ post_install do |installer|
     ]
   )
 
+  # VideoLab 0.0.1: LookupFilter used framebuffer fetch [[color(0)]]; sample the
+  # cloned source texture at texture(0) and the LUT at texture(1) instead.
+  lookup_filter_swift = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Render/Operations/LookupFilter.swift')
+  patch_file(
+    lookup_filter_swift,
+    [
+      [
+        "    public init() {\n        super.init(fragmentFunctionName: \"lookupFragment\", numberOfInputs: 1)\n        \n        ({ intensity = 1.0 })()\n    }\n",
+        "    public init() {\n        super.init(fragmentFunctionName: \"lookupFragment\", numberOfInputs: 2)\n        shouldInputSourceTexture = true\n        enableOutputTextureRead = false\n\n        ({ intensity = 1.0 })()\n    }\n",
+      ],
+    ]
+  )
+
+  lookup_filter_metal = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Render/Operations/LookupFilter.metal')
+  lookup_metal_old = <<~METAL_OLD.chomp
+    fragment half4 lookupFragment(SingleInputVertexIO fragmentInput [[stage_in]],
+                                  texture2d<half> inputTexture [[texture(0)]],
+                                  half4 sourceColor [[color(0)]],
+                                  constant float& intensity [[ buffer(1) ]])
+    {
+        half4 base = sourceColor;
+
+        half blueColor = base.b * 63.0h;
+
+        half2 quad1;
+        quad1.y = floor(floor(blueColor) / 8.0h);
+        quad1.x = floor(blueColor) - (quad1.y * 8.0h);
+
+        half2 quad2;
+        quad2.y = floor(ceil(blueColor) / 8.0h);
+        quad2.x = ceil(blueColor) - (quad2.y * 8.0h);
+
+        float2 texPos1;
+        texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.r);
+        texPos1.y = (quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.g);
+
+        float2 texPos2;
+        texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.r);
+        texPos2.y = (quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.g);
+
+        constexpr sampler quadSampler3;
+        half4 newColor1 = inputTexture.sample(quadSampler3, texPos1);
+        constexpr sampler quadSampler4;
+        half4 newColor2 = inputTexture.sample(quadSampler4, texPos2);
+
+        half4 newColor = mix(newColor1, newColor2, fract(blueColor));
+        return half4(mix(base, half4(newColor.rgb, base.w), half(intensity)));
+    }
+  METAL_OLD
+  lookup_metal_new = <<~METAL_NEW.chomp
+    fragment half4 lookupFragment(TwoInputVertexIO fragmentInput [[stage_in]],
+                                  texture2d<half> sourceTexture [[texture(0)]],
+                                  texture2d<half> lutTexture [[texture(1)]],
+                                  constant float& intensity [[ buffer(1) ]])
+    {
+        constexpr sampler quadSamplerSource;
+        half4 base = sourceTexture.sample(quadSamplerSource, fragmentInput.textureCoordinate);
+
+        half blueColor = base.b * 63.0h;
+
+        half2 quad1;
+        quad1.y = floor(floor(blueColor) / 8.0h);
+        quad1.x = floor(blueColor) - (quad1.y * 8.0h);
+
+        half2 quad2;
+        quad2.y = floor(ceil(blueColor) / 8.0h);
+        quad2.x = ceil(blueColor) - (quad2.y * 8.0h);
+
+        float2 texPos1;
+        texPos1.x = (quad1.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.r);
+        texPos1.y = (quad1.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.g);
+
+        float2 texPos2;
+        texPos2.x = (quad2.x * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.r);
+        texPos2.y = (quad2.y * 0.125) + 0.5/512.0 + ((0.125 - 1.0/512.0) * base.g);
+
+        constexpr sampler quadSampler3;
+        half4 newColor1 = lutTexture.sample(quadSampler3, texPos1);
+        constexpr sampler quadSampler4;
+        half4 newColor2 = lutTexture.sample(quadSampler4, texPos2);
+
+        half4 newColor = mix(newColor1, newColor2, fract(blueColor));
+        return half4(mix(base, half4(newColor.rgb, base.w), half(intensity)));
+    }
+  METAL_NEW
+  patch_file(
+    lookup_filter_metal,
+    [
+      [lookup_metal_old, lookup_metal_new],
+    ]
+  )
+
   layer_compositor = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Video/LayerCompositor.swift')
   layer_compositor_blend_body = "        \n" + <<'SWIFT'.chomp
         // Render. Avoid framebuffer fetch in BlendOperation by passing the
