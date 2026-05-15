@@ -14,6 +14,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let onDeleteClip: () -> Void
     let onSetClipColorFilter: (ClipColorFilter) -> Void
     let onResetClipColorFilter: () -> Void
+    let selectedClipVolume: ClipVolume
+    let onSetClipVolume: (ClipVolume) -> Void
+    let onResetClipVolume: () -> Void
     let onDeselectClip: () -> Void
     /// When true, `promptActionReviewReplacement` is shown instead of the normal prompt bar.
     let isPromptActionReviewActive: Bool
@@ -51,6 +54,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         onDeleteClip: @escaping () -> Void,
         onSetClipColorFilter: @escaping (ClipColorFilter) -> Void = { _ in },
         onResetClipColorFilter: @escaping () -> Void = {},
+        selectedClipVolume: ClipVolume = .neutral,
+        onSetClipVolume: @escaping (ClipVolume) -> Void = { _ in },
+        onResetClipVolume: @escaping () -> Void = {},
         onDeselectClip: @escaping () -> Void = {},
         isPromptActionReviewActive: Bool = false,
         promptActionReviewReplacement: AnyView? = nil,
@@ -68,6 +74,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.onDeleteClip = onDeleteClip
         self.onSetClipColorFilter = onSetClipColorFilter
         self.onResetClipColorFilter = onResetClipColorFilter
+        self.selectedClipVolume = selectedClipVolume
+        self.onSetClipVolume = onSetClipVolume
+        self.onResetClipVolume = onResetClipVolume
         self.onDeselectClip = onDeselectClip
         self.isPromptActionReviewActive = isPromptActionReviewActive
         self.promptActionReviewReplacement = promptActionReviewReplacement
@@ -96,21 +105,21 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     /// nav bar below is unaffected by this hug.
     private var hugChromeToContent: Bool {
         activeSpace == .edit
-            && expandedToolId != 3
+            && !isClipToolSliderExpanded
             && (
                 isPromptActionReviewActive
                     || (isClipSelected && !promptBarIsTakingOver)
             )
     }
 
-    private var isColorToolExpanded: Bool {
-        expandedToolId == 3
+    private var isClipToolSliderExpanded: Bool {
+        expandedToolId == 3 || expandedToolId == 4
     }
 
     var body: some View {
         topChrome
             .modifier(ChromeMaxWidthModifier(
-                maxWidth: (hugChromeToContent || isColorToolExpanded) ? nil : chromeMaxWidth
+                maxWidth: (hugChromeToContent || isClipToolSliderExpanded) ? nil : chromeMaxWidth
             ))
             .editorRegularGlassEffect(
                 tint: shellTint,
@@ -167,7 +176,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         let clipIdle = isClipSelected && !promptBarIsTakingOver && !isPromptActionReviewActive
         let leadingCompact = clipIdle || isPromptActionReviewActive
         HStack(spacing: .spacing(.sp2)) {
-            if !isColorToolExpanded {
+            if !isClipToolSliderExpanded {
                 ZStack(alignment: .leading) {
                     if let promptActionReviewReplacement {
                         promptActionReviewReplacement
@@ -192,7 +201,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             }
 
             if clipIdle {
-                if !isColorToolExpanded {
+                if !isClipToolSliderExpanded {
                     promptDivider
                         .transition(.opacity)
                 }
@@ -273,6 +282,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         switch selected.kind {
         case .colorFilters:
             colorFilterControls
+        case .volume:
+            volumeControls
         case let .expandable(subItems):
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: .spacing(.sp2)) {
@@ -360,6 +371,47 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         }
         .frame(maxWidth: .infinity)
         .transition(.opacity)
+    }
+
+    private var volumeControls: some View {
+        HStack(spacing: .spacing(.sp2)) {
+            backToToolsButton
+            Slider(value: volumeBinding, in: 0.0...2.0)
+                .tint(Color.ds.accentFg)
+                .frame(maxWidth: .infinity)
+            Text("\(Int((selectedClipVolume.gain * 100).rounded()))%")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+                .frame(minWidth: 44, alignment: .trailing)
+                .monospacedDigit()
+            resetVolumeButton
+        }
+        .frame(maxWidth: .infinity)
+        .transition(.opacity)
+    }
+
+    private var volumeBinding: Binding<Double> {
+        Binding(
+            get: { Double(selectedClipVolume.gain) },
+            set: { newValue in
+                onSetClipVolume(ClipVolume(gain: Float(newValue)))
+            }
+        )
+    }
+
+    private var resetVolumeButton: some View {
+        Button {
+            onResetClipVolume()
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Color.ds.textMuted)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Reset volume to 100%"))
     }
 
     private var backToToolsButton: some View {
@@ -571,6 +623,7 @@ private struct SubItem: Identifiable {
 private enum ToolKind {
     case expandable(subItems: [SubItem])
     case colorFilters
+    case volume
     case action(action: () -> Void)
 }
 
@@ -583,7 +636,8 @@ private extension EditorTabBar {
                 kind: .action(action: { [onSplitClip] in
                     onSplitClip()
                 })),
-            ToolItem(id: 3, systemImage: "camera.filters", title: "Color", kind: .colorFilters)
+            ToolItem(id: 3, systemImage: "camera.filters", title: "Color", kind: .colorFilters),
+            ToolItem(id: 4, systemImage: "speaker.wave.2", title: "Volume", kind: .volume)
         ]
     }
 }
