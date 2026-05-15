@@ -219,8 +219,13 @@ final class VideoLabRenderEngine: NSObject {
         playerLayer?.player = player
 
 #if DEBUG
+        let rc = videoLab.renderComposition
         VideoLabPreviewDiagnostics.logBuiltVideoLabPreview(
-            renderComposition: videoLab.renderComposition,
+            layerCount: rc.layers.count,
+            renderWidth: Int(rc.renderSize.width),
+            renderHeight: Int(rc.renderSize.height),
+            frameDurationSeconds: rc.frameDuration.seconds,
+            hasAnimationLayer: rc.animationLayer != nil,
             item: item,
             frameRate: fps
         )

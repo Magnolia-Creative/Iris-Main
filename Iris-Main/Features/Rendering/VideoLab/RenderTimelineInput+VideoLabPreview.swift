@@ -3,7 +3,6 @@ import Foundation
 #if DEBUG
 import CoreMedia
 import os
-import VideoLab
 #endif
 
 extension RenderTimelineInput {
@@ -262,21 +261,21 @@ enum VideoLabPreviewDiagnostics {
 
     /// Logs `RenderComposition` vs `AVPlayerItem.videoComposition` after `VideoLab.makePlayerItem()`.
     static func logBuiltVideoLabPreview(
-        renderComposition: RenderComposition,
+        layerCount: Int,
+        renderWidth: Int,
+        renderHeight: Int,
+        frameDurationSeconds: Double,
+        hasAnimationLayer: Bool,
         item: AVPlayerItem,
         frameRate: Int
     ) {
-        let layerCount = renderComposition.layers.count
-        let rs = renderComposition.renderSize
-        let fdSeconds = renderComposition.frameDuration.seconds
-        let fdStr = fdSeconds.isFinite ? String(format: "%.4f", fdSeconds) : "non-finite"
+        let fdStr = frameDurationSeconds.isFinite ? String(format: "%.4f", frameDurationSeconds) : "non-finite"
         let vc = item.videoComposition
         let instructionCount = vc.map { $0.instructions.count } ?? 0
         let vcRenderSize = vc.map { $0.renderSize } ?? .zero
         let compositionTrackCount = item.asset.tracks.count
-        let hasAnim = renderComposition.animationLayer != nil
         logger.debug(
-            "VideoLab built preview renderSize=\(Int(rs.width))x\(Int(rs.height), privacy: .public) frameDuration=\(fdStr, privacy: .public)s layers=\(layerCount) animationLayer=\(hasAnim) itemInstructions=\(instructionCount) vcRenderSize=\(Int(vcRenderSize.width))x\(Int(vcRenderSize.height), privacy: .public) compositionAssetTracks=\(compositionTrackCount) fps=\(frameRate)"
+            "VideoLab built preview renderSize=\(renderWidth)x\(renderHeight, privacy: .public) frameDuration=\(fdStr, privacy: .public)s layers=\(layerCount) animationLayer=\(hasAnimationLayer) itemInstructions=\(instructionCount) vcRenderSize=\(Int(vcRenderSize.width))x\(Int(vcRenderSize.height), privacy: .public) compositionAssetTracks=\(compositionTrackCount) fps=\(frameRate)"
         )
         if layerCount == 0 {
             logger.warning("VideoLab built preview has zero render layers; playback will be blank.")
