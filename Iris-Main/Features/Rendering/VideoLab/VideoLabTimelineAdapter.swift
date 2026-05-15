@@ -196,11 +196,10 @@ enum VideoLabTimelineAdapter {
 
     private static func colorOperation(from adjustments: RenderColorAdjustmentsInput) -> BasicOperation? {
         guard !adjustments.isNeutralForVideoLab else { return nil }
-        let op = BrightnessAdjustment()
-        let combined = adjustments.brightness + adjustments.exposure * 0.12
-            + adjustments.contrast * 0.08
-            + adjustments.saturation * 0.05
-        op.brightness = max(-1, min(1, combined))
+        guard let lutTexture = VideoLabColorAdjustmentLUT.texture(for: adjustments) else { return nil }
+        let op = LookupFilter()
+        op.addTexture(lutTexture, at: 1)
+        op.intensity = 1.0
         return op
     }
 }
