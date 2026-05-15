@@ -103,9 +103,9 @@ final class CaptionsFlowController: ObservableObject {
             return
         }
 
-        let backendProjectId = controller.state.timeline?.projectId.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let backendProjectId = controller.state.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !backendProjectId.isEmpty else {
-            failToIdle("Project is not linked for transcripts yet.")
+            failToIdle("This project is not linked to the cloud yet. Open it from import or wait until processing finishes so captions can load.")
             return
         }
 
@@ -121,8 +121,24 @@ final class CaptionsFlowController: ObservableObject {
             return (clip, media)
         }
 
+        guard !overlapping.isEmpty else {
+            failToIdle("No video clips in this range.")
+            return
+        }
+
+        let clipsWithUploadKeys = overlapping.filter { pair in
+            guard let key = pair.1.spec.clipUploadLocalKey else { return false }
+            return !key.isEmpty
+        }
+        guard !clipsWithUploadKeys.isEmpty else {
+            failToIdle("These clips are not linked to processed uploads yet. Re-import the video or finish backend processing before adding captions.")
+            return
+        }
+
         var inputs: [CaptionsStitcher.ClipTranscriptInput] = []
         var seenKeys = Set<String>()
+        var sawTranscriptNotReady = false
+        var hadFetchFailure = false
 
         for (clip, media) in overlapping {
             guard let key = media.spec.clipUploadLocalKey, !key.isEmpty else { continue }
@@ -130,14 +146,27 @@ final class CaptionsFlowController: ObservableObject {
             do {
                 let remote = try await captionsService.fetchCaptions(projectId: backendProjectId, localKey: key)
                 inputs.append(CaptionsStitcher.ClipTranscriptInput(clip: clip, media: media, captions: remote))
+            } catch let captionsError as CaptionsServiceError {
+                hadFetchFailure = true
+                if case .transcriptNotReady = captionsError {
+                    sawTranscriptNotReady = true
+                }
+                print("[CaptionsFlow] skip local_key=\(key) error=\(captionsError)")
             } catch {
+                hadFetchFailure = true
                 print("[CaptionsFlow] skip local_key=\(key) error=\(error)")
             }
         }
 
         let cues = CaptionsStitcher.stitch(inputs: inputs, rangeStartUs: start, rangeEndUs: end)
         guard !cues.isEmpty else {
-            failToIdle("No captions found for this range.")
+            if sawTranscriptNotReady {
+                failToIdle("Transcript is still processing. Try adding captions again in a few moments.")
+            } else if hadFetchFailure {
+                failToIdle("Could not load transcripts for your clips. Check that the project is linked and clips finished processing, then try again.")
+            } else {
+                failToIdle("No captions found for this range.")
+            }
             return
         }
 
