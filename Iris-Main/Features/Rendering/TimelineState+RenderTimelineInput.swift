@@ -46,6 +46,9 @@ extension TimelineState {
                 case .video: return 0
                 case .overlay: return 1
                 case .audio: return -1
+                case .captions:
+                    // `orderedTracks` loop excludes captions; keep exhaustiveness for `TrackKind`.
+                    return 0
                 }
             }()
 
@@ -58,10 +61,36 @@ extension TimelineState {
 
         return RenderTimelineInput(
             tracks: renderTracks,
-            captions: [],
+            captions: makeRenderCaptionInputs(),
             outputSize: CGSize(width: 1920, height: 1080),
             duration: timelineDurationSeconds
         )
+    }
+
+    private func makeRenderCaptionInputs() -> [RenderCaptionCueInput] {
+        var result: [RenderCaptionCueInput] = []
+        for group in captionGroups {
+            let style = group.style.renderCaptionStyle(textColorHex: group.textColor, hasBackground: group.hasBackground)
+            let groupCues = captionCues.filter { $0.groupId == group.groupId }
+            for cue in groupCues {
+                let start = Double(cue.timelineStartUs) / 1_000_000.0
+                let end = Double(cue.timelineEndUs) / 1_000_000.0
+                guard end > start else { continue }
+                result.append(
+                    RenderCaptionCueInput(
+                        id: UUID(uuidString: cue.cueId) ?? UUID(),
+                        startTime: start,
+                        endTime: end,
+                        text: cue.text,
+                        style: style,
+                        position: SIMD2<Float>(0.5, 0.88),
+                        opacity: 1.0
+                    )
+                )
+            }
+        }
+        result.sort { $0.startTime < $1.startTime }
+        return result
     }
 
     private static func clipColorFiltersByClipId(from effects: [Effect]) -> [String: ClipColorFilter] {
