@@ -17,9 +17,10 @@ enum VideoLabTimelineAdapter {
     }
 
     static func makeRenderComposition(from input: RenderTimelineInput, frameRate: Int = 30) -> RenderComposition {
+        let input = input.sanitizedForVideoLabRendering()
         let composition = RenderComposition()
         composition.renderSize = input.outputSize
-        let timescale = max(1, Int32(frameRate))
+        let timescale = max(1, min(Int32(frameRate), 120))
         composition.frameDuration = CMTime(value: 1, timescale: timescale)
         composition.backgroundColor = .black
 
@@ -60,9 +61,10 @@ enum VideoLabTimelineAdapter {
     }
 
     static func makeRenderCompositionAsync(from input: RenderTimelineInput, frameRate: Int = 30) async -> RenderComposition {
+        let input = input.sanitizedForVideoLabRendering()
         let composition = RenderComposition()
         composition.renderSize = input.outputSize
-        let timescale = max(1, Int32(frameRate))
+        let timescale = max(1, min(Int32(frameRate), 120))
         composition.frameDuration = CMTime(value: 1, timescale: timescale)
         composition.backgroundColor = .black
 

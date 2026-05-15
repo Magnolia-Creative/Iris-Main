@@ -285,5 +285,11 @@ enum VideoLabPreviewDiagnostics {
             logger.warning("VideoLab playerItem has videoComposition but zero instructions.")
         }
     }
+
+    static func logOutputSizeSanitized(from requested: CGSize, to applied: CGSize) {
+        logger.warning(
+            "render outputSize sanitized from \(Int(requested.width))x\(Int(requested.height), privacy: .public) to \(Int(applied.width))x\(Int(applied.height), privacy: .public)"
+        )
+    }
 }
 #endif
