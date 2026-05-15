@@ -37,8 +37,9 @@ struct TimelineState {
 
     // MARK: - Undo / redo (action history)
 
-    private(set) var undoActionStack: [TimelineActionHistoryGroup] = []
-    private(set) var redoActionStack: [TimelineActionHistoryGroup] = []
+    /// `internal(set)` so timeline action extensions in other files can mutate stacks.
+    internal(set) var undoActionStack: [TimelineActionHistoryGroup] = []
+    internal(set) var redoActionStack: [TimelineActionHistoryGroup] = []
 
     var canUndo: Bool { !undoActionStack.isEmpty }
     var canRedo: Bool { !redoActionStack.isEmpty }
