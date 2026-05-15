@@ -1,19 +1,25 @@
 import SwiftUI
 
 struct PlaybackSectionView: View {
-    let controller: PlaybackController
+    @ObservedObject var playback: PlaybackController
+    @ObservedObject var timeline: TimelineController
     let renderBridge: TimelineRenderBridge?
 
-    init(controller: PlaybackController, renderBridge: TimelineRenderBridge? = nil) {
-        self.controller = controller
+    init(
+        playback: PlaybackController,
+        timeline: TimelineController,
+        renderBridge: TimelineRenderBridge? = nil
+    ) {
+        self.playback = playback
+        self.timeline = timeline
         self.renderBridge = renderBridge
     }
 
     var body: some View {
         VStack(spacing: .spacing(.sp4)) {
-            PreviewSection(controller: controller, renderBridge: renderBridge)
+            PreviewSection(controller: playback, renderBridge: renderBridge)
                 .padding(.horizontal, .sp3)
-            PlaybackControls(controller: controller)
+            PlaybackControls(playback: playback, timeline: timeline)
                 .padding(.horizontal, .sp2)
         }
     }

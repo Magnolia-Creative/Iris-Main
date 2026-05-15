@@ -1200,6 +1200,16 @@ private struct SeedMediaResolution {
 }
 
 @MainActor
+protocol TimelineUndoRedoControlling: AnyObject {
+    var canUndo: Bool { get }
+    var canRedo: Bool { get }
+    func undoLastActionGroup()
+    func redoLastActionGroup()
+}
+
+extension TimelineController: TimelineUndoRedoControlling {}
+
+@MainActor
 protocol TimelineStateMutating: AnyObject {
     func setPlaybackState(_ playbackState: TimelinePlaybackState)
     func jumpToStart()

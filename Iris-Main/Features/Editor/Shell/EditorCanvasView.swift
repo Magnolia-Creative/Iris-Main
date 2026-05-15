@@ -106,7 +106,7 @@ struct EditorCanvasView: View {
                 .padding(.bottom, previewBottomSpacing)
 
             if showsPlaybackControls {
-                PlaybackControls(controller: playback)
+                PlaybackControls(playback: playback, timeline: controller)
                     .padding(.horizontal, .sp4)
             }
         }

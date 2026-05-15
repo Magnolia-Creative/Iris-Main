@@ -1,31 +1,46 @@
 import SwiftUI
 
 struct PlaybackControls: View {
-    @ObservedObject var controller: PlaybackController
+    @ObservedObject var playback: PlaybackController
+    @ObservedObject var timeline: TimelineController
 
     var body: some View {
         ZStack {
             HStack {
+                Button {} label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.ds.text)
+                        .padding(.spacing(.sp1))
+                }
+
                 Spacer()
 
                 HStack(spacing: 0) {
-                    Button {} label: {
+                    Button {
+                        timeline.undoLastActionGroup()
+                    } label: {
                         Image(systemName: "arrow.uturn.backward")
                             .font(.system(size: 16))
-                            .foregroundColor(Color.ds.text)
+                            .foregroundColor(timeline.canUndo ? Color.ds.text : Color.ds.textMuted)
                             .padding(.spacing(.sp1))
                     }
-                    Button {} label: {
+                    .disabled(!timeline.canUndo)
+
+                    Button {
+                        timeline.redoLastActionGroup()
+                    } label: {
                         Image(systemName: "arrow.uturn.forward")
                             .font(.system(size: 16))
-                            .foregroundColor(Color.ds.text)
+                            .foregroundColor(timeline.canRedo ? Color.ds.text : Color.ds.textMuted)
                             .padding(.spacing(.sp1))
                     }
+                    .disabled(!timeline.canRedo)
                 }
             }
 
             HStack(spacing: .spacing(.sp2)) {
-                Button { controller.jumpToStart() } label: {
+                Button { playback.jumpToStart() } label: {
                     Image(systemName: "backward")
                         .font(.system(size: 16))
                         .foregroundColor(Color.ds.text)
@@ -33,16 +48,16 @@ struct PlaybackControls: View {
                 }
 
                 Button {
-                    if controller.isPlaying() { controller.pause() }
-                    else { controller.play() }
+                    if playback.isPlaying() { playback.pause() }
+                    else { playback.play() }
                 } label: {
-                    Image(systemName: controller.isPlaying() ? "pause" : "play")
+                    Image(systemName: playback.isPlaying() ? "pause" : "play")
                         .font(.system(size: 16))
                         .foregroundColor(Color.ds.text)
                         .padding(.spacing(.sp1))
                 }
 
-                Button { controller.jumpToEnd() } label: {
+                Button { playback.jumpToEnd() } label: {
                     Image(systemName: "forward")
                         .font(.system(size: 16))
                         .foregroundColor(Color.ds.text)
