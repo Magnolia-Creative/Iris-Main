@@ -142,6 +142,7 @@ enum TrackKind: String, Codable {
     case video
     case audio
     case overlay
+    case captions
 }
 
 extension TrackKind: DatabaseValueConvertible {}

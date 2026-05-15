@@ -7,7 +7,7 @@ extension TimelineState {
         let colorFiltersByClipId = Self.clipColorFiltersByClipId(from: effects)
         let volumesByClipId = Self.clipVolumesByClipId(from: effects)
 
-        for track in orderedTracks {
+        for track in orderedTracks where track.kind != .captions {
             let trackClips = clips.filter { $0.trackId == track.trackId }
             let renderClips = trackClips.compactMap { clip -> RenderClipInput? in
                 guard let media = mediaById[clip.mediaId] else { return nil }

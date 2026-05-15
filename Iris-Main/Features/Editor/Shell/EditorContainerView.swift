@@ -479,6 +479,7 @@ struct EditorContainerView: View {
     private func photosFilter(for kind: TrackKind?) -> PHPickerFilter {
         switch kind {
         case .audio: return .videos
+        case .captions: return .any(of: [.videos, .images])
         default: return .any(of: [.videos, .images])
         }
     }

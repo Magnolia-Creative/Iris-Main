@@ -340,6 +340,7 @@ struct TimelineSectionView: View {
         case .video: return "video.fill"
         case .audio: return "waveform"
         case .overlay: return "textformat"
+        case .captions: return "captions.bubble"
         }
     }
 

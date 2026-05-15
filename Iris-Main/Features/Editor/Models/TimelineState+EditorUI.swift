@@ -45,6 +45,7 @@ extension TimelineState {
         case .video: return [.movie]
         case .audio: return [.audio]
         case .overlay: return [.data]
+        case .captions: return [.data]
         }
     }
 }

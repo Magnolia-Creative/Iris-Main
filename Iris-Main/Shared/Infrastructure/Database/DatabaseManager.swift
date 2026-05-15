@@ -402,6 +402,7 @@ extension DatabaseManager {
         case .overlay: return 0
         case .video: return 1
         case .audio: return 2
+        case .captions: return 3
         }
     }
 }

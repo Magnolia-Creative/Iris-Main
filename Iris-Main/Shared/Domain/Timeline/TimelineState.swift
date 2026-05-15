@@ -501,6 +501,7 @@ struct TimelineState {
         case .video: return [.video, .photo]
         case .audio: return [.video]
         case .overlay: return []
+        case .captions: return []
         }
     }
 
@@ -509,6 +510,7 @@ struct TimelineState {
         case .video: return .video
         case .audio: return .audio
         case .overlay: return .photo
+        case .captions: return .video
         }
     }
 
@@ -517,6 +519,7 @@ struct TimelineState {
         case .overlay: return 0
         case .video: return 1
         case .audio: return 2
+        case .captions: return 3
         }
     }
 

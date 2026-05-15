@@ -8,6 +8,7 @@ struct TimelineLayout: Equatable {
     let videoTrackHeight: CGFloat
     let audioTrackHeight: CGFloat
     let overlayTrackHeight: CGFloat
+    let captionsTrackHeight: CGFloat
 
     static let expanded = TimelineLayout(
         rulerHeight: 32,
@@ -16,7 +17,8 @@ struct TimelineLayout: Equatable {
         trackSpacing: .spacing(.sp2),
         videoTrackHeight: .spacing(.sp10),
         audioTrackHeight: .spacing(.sp8),
-        overlayTrackHeight: .spacing(.sp8)
+        overlayTrackHeight: .spacing(.sp8),
+        captionsTrackHeight: .spacing(.sp7)
     )
 
     static let compressed = TimelineLayout(
@@ -26,7 +28,8 @@ struct TimelineLayout: Equatable {
         trackSpacing: .spacing(.sp1),
         videoTrackHeight: .spacing(.sp7),
         audioTrackHeight: .spacing(.sp4),
-        overlayTrackHeight: .spacing(.sp4)
+        overlayTrackHeight: .spacing(.sp4),
+        captionsTrackHeight: .spacing(.sp4)
     )
 
     func trackHeight(for kind: TrackKind) -> CGFloat {
@@ -37,6 +40,8 @@ struct TimelineLayout: Equatable {
             audioTrackHeight
         case .overlay:
             overlayTrackHeight
+        case .captions:
+            captionsTrackHeight
         }
     }
 
