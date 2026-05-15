@@ -83,6 +83,11 @@ struct EditorContainerView: View {
         return controller.clipColorFilter(for: clipId)
     }
 
+    private var selectedClipVolume: ClipVolume {
+        guard let clipId = controller.state.selectedClipId else { return .neutral }
+        return controller.clipVolume(for: clipId)
+    }
+
     @ViewBuilder
     private var editorTabBarChrome: some View {
         EditorGlassEffectContainer(spacing: 20) {
@@ -115,6 +120,15 @@ struct EditorContainerView: View {
                     onResetClipColorFilter: {
                         guard let clipId = controller.state.selectedClipId else { return }
                         controller.resetClipColorFilter(clipId: clipId)
+                    },
+                    selectedClipVolume: selectedClipVolume,
+                    onSetClipVolume: { volume in
+                        guard let clipId = controller.state.selectedClipId else { return }
+                        controller.setClipVolume(clipId: clipId, volume: volume)
+                    },
+                    onResetClipVolume: {
+                        guard let clipId = controller.state.selectedClipId else { return }
+                        controller.resetClipVolume(clipId: clipId)
                     },
                     onDeselectClip: {
                         controller.clearSelection()
