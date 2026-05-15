@@ -113,6 +113,7 @@ struct TimelineSectionView: View {
                         }
                         .frame(minWidth: geometry.size.width)
                     }
+                    .background(Color.ds.bg)
                     .coordinateSpace(name: "timelineScroll")
                     .onScrollGeometryChange(for: CGFloat.self) { geo in
                         geo.contentOffset.x
@@ -243,8 +244,9 @@ struct TimelineSectionView: View {
                         ]),
                         startPoint: .leading, endPoint: .trailing
                     )
-                    .frame(width: .spacing(.sp5), height: 64)
+                    .frame(width: .spacing(.sp5), height: layout.rulerHeight)
                 }
+                .frame(height: layout.rulerHeight, alignment: .top)
                 .offset(y: rulerVerticalOffset)
 
                 PlayheadView(tint: playheadTint)
