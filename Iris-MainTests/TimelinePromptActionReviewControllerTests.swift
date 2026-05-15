@@ -146,6 +146,42 @@ struct TimelinePromptActionReviewControllerTests {
         #expect(controller.promptActionReview == nil)
     }
 
+    @Test func promptApprovedSplitRecordsUndoAndRedo() async {
+        let controller = TimelineController(timelineId: "t1")
+        let clip = Clip(
+            clipId: "c1",
+            trackId: "track-v",
+            mediaId: "m1",
+            sourceRange: TimeRange(start: 0, end: 10_000_000),
+            timelineRange: TimeRange(start: 0, end: 10_000_000)
+        )
+        controller.replaceTimelineContentForTesting(
+            tracks: [Track(trackId: "track-v", timelineId: "t1", kind: .video)],
+            clips: [clip]
+        )
+
+        let actions = [
+            Action.splitClip(timelineId: "t1", clipId: "c1", atTimeUs: 5_000_000)
+        ]
+        _ = controller.startPromptActionReview(actions: actions, prompt: "split")
+        #expect(controller.canUndo == false)
+
+        controller.approveCurrentPromptAction()
+        #expect(controller.state.clips.count == 2)
+        #expect(controller.canUndo == true)
+        #expect(controller.canRedo == false)
+
+        controller.undoLastActionGroup()
+        #expect(controller.state.clips.count == 1)
+        #expect(controller.canUndo == false)
+        #expect(controller.canRedo == true)
+
+        controller.redoLastActionGroup()
+        #expect(controller.state.clips.count == 2)
+        #expect(controller.canUndo == true)
+        #expect(controller.canRedo == false)
+    }
+
     @Test func multiFieldColorPatchWalksSubsteps() async {
         let controller = TimelineController(timelineId: "t1")
         let clip = Clip(

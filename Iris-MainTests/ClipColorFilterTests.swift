@@ -62,6 +62,41 @@ struct ClipColorFilterTests {
         await resetController.loadTimelineData()
         #expect(resetController.clipColorFilter(for: ids.clipId) == .neutral)
     }
+
+    @Test @MainActor func undoRedoRoundTripsClipColorFilter() async throws {
+        let db = try DatabaseManager.makeInMemory()
+        let ids = try seedTimeline(in: db)
+        let controller = TimelineController(timelineId: ids.timelineId, db: db)
+        await controller.loadTimelineData()
+
+        let filter = ClipColorFilter(
+            temperature: 0.3,
+            tint: -0.2,
+            exposure: 1.25,
+            brightness: 0.1,
+            saturation: 0.4
+        )
+
+        #expect(controller.canUndo == false)
+        #expect(controller.canRedo == false)
+
+        controller.setClipColorFilter(clipId: ids.clipId, filter: filter)
+        #expect(controller.clipColorFilter(for: ids.clipId) == filter)
+        #expect(controller.canUndo == true)
+        #expect(controller.canRedo == false)
+
+        controller.undoLastActionGroup()
+        #expect(controller.clipColorFilter(for: ids.clipId) == .neutral)
+        #expect(controller.state.effects.isEmpty)
+        #expect(controller.canUndo == false)
+        #expect(controller.canRedo == true)
+
+        controller.redoLastActionGroup()
+        #expect(controller.clipColorFilter(for: ids.clipId) == filter)
+        #expect(controller.state.effects.count == 1)
+        #expect(controller.canUndo == true)
+        #expect(controller.canRedo == false)
+    }
 }
 
 private struct SeededTimelineIds {
