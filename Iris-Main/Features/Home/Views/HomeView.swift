@@ -1,3 +1,4 @@
+import ClerkKitUI
 import SwiftUI
 
 struct HomeView: View {
@@ -5,57 +6,30 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { proxy in
-                ZStack {
-                    Color.ds.bg.ignoresSafeArea()
+            ZStack {
+                Color.ds.bg.ignoresSafeArea()
 
-                    ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: .spacing(.sp7)) {
-                            heroBanner
-                            recentsSection
-                            allProjectsSection
-                        }
-                        .padding(.horizontal, .sp6)
-                        .padding(.top, .sp7)
-                        .padding(.bottom, .sp7)
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: .spacing(.sp7)) {
+                        heroBanner
+                        recentsSection
+                        allProjectsSection
                     }
+                    .padding(.horizontal, .sp6)
+                    .padding(.top, .sp7)
+                    .padding(.bottom, .sp7)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $viewModel.isPresentingProjectSetup) {
                 ProjectSetupView()
             }
-            .navigationDestination(isPresented: $viewModel.isPresentingIntentCompilerTest) {
-                IntentCompilerTestView()
-            }
             .navigationDestination(item: $viewModel.selectedProject) { project in
                 editorDestination(for: project)
             }
-            .sheet(isPresented: $viewModel.isPresentingRealtimeTranscription) {
-                NavigationStack {
-                    RealtimeTranscriptionView()
-                        .navigationTitle("Live transcription")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Done") {
-                                    viewModel.dismissRealtimeTranscription()
-                                }
-                            }
-                        }
-                }
-            }
-            .sheet(isPresented: $viewModel.isPresentingVoiceIntentCompiler) {
-                NavigationStack {
-                    VoiceIntentCompilerView()
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("Done") {
-                                    viewModel.dismissVoiceIntentCompiler()
-                                }
-                            }
-                        }
-                }
+            .sheet(isPresented: $viewModel.isPresentingProfile) {
+                UserProfileView()
+                    .environment(\.clerkTheme, .iris)
             }
             .onAppear { viewModel.loadProjects() }
         }
@@ -90,6 +64,11 @@ struct HomeView: View {
                 .padding(.trailing, .sp5)
                 .frame(maxWidth: .infinity, alignment: .topTrailing)
 
+            profileButton
+                .padding(.top, .sp5)
+                .padding(.trailing, .sp5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+
             VStack(alignment: .leading, spacing: .spacing(.sp4)) {
                 Text("What will you\ncreate today?")
                     .typography(.heading)
@@ -103,96 +82,47 @@ struct HomeView: View {
                     .frame(maxWidth: 320, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: .spacing(.sp3)) {
-                    Button {
-                        viewModel.presentProjectSetup()
-                    } label: {
-                        HStack(spacing: .spacing(.sp2)) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .semibold))
+                Button {
+                    viewModel.presentProjectSetup()
+                } label: {
+                    HStack(spacing: .spacing(.sp2)) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .semibold))
 
-                            Text("New Project")
-                                .typography(.action)
-                        }
-                        .foregroundStyle(Color.ds.accentBg)
-                        .padding(.horizontal, .sp4)
-                        .padding(.vertical, .sp3)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+                        Text("New Project")
+                            .typography(.action)
                     }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        viewModel.presentVoiceIntentCompiler()
-                    } label: {
-                        HStack(spacing: .spacing(.sp2)) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 14, weight: .semibold))
-
-                            Text("Test voice effects")
-                                .typography(.action)
-                        }
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, .sp4)
-                        .padding(.vertical, .sp3)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        viewModel.presentRealtimeTranscription()
-                    } label: {
-                        HStack(spacing: .spacing(.sp2)) {
-                            Image(systemName: "waveform.and.mic")
-                                .font(.system(size: 14, weight: .semibold))
-
-                            Text("Test live transcription")
-                                .typography(.action)
-                        }
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, .sp4)
-                        .padding(.vertical, .sp3)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        viewModel.presentIntentCompilerTest()
-                    } label: {
-                        HStack(spacing: .spacing(.sp2)) {
-                            Image(systemName: "arrow.triangle.branch")
-                                .font(.system(size: 14, weight: .semibold))
-
-                            Text("Test intent compiler")
-                                .typography(.action)
-                        }
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, .sp4)
-                        .padding(.vertical, .sp3)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: .spacing(.sp3))
-                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.ds.accentBg)
+                    .padding(.horizontal, .sp4)
+                    .padding(.vertical, .sp3)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
                 }
+                .buttonStyle(.plain)
             }
             .padding(.sp6)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 276)
+    }
+
+    private var profileButton: some View {
+        Button {
+            viewModel.presentProfile()
+        } label: {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(0.16))
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.32), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Profile")
     }
 
     private var recentsSection: some View {
@@ -338,10 +268,6 @@ struct HomeView: View {
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
         }
-    }
-
-    private func heroTopInset(for availableHeight: CGFloat) -> CGFloat {
-        max(.spacing(.sp6), availableHeight * 0.22)
     }
 
     private func projectDetailText(for project: Project) -> String {
