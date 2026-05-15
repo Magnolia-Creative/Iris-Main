@@ -36,7 +36,79 @@ struct HomeView: View {
     }
 
     private var heroBanner: some View {
-        ZStack(alignment: .topLeading) {
+        VStack(alignment: .leading, spacing: .spacing(.sp5)) {
+            homeHeroHeaderRow
+            heroCallToActionCard
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var homeHeroHeaderRow: some View {
+        HStack(alignment: .center, spacing: .spacing(.sp3)) {
+            Image("Iris_Outline")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .foregroundStyle(Color.ds.accentBg)
+                .frame(width: 36, height: 36)
+
+            Text("Iris")
+                .typography(.heading)
+                .foregroundStyle(Color.ds.text)
+
+            Text("by Magnolia Creative")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+                .padding(.horizontal, .sp3)
+                .padding(.vertical, .sp1)
+                .background(Color.ds.surface)
+                .clipShape(Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(Color.ds.border, lineWidth: 1)
+                }
+
+            Spacer(minLength: 0)
+
+            profileButton
+        }
+    }
+
+    private var heroCallToActionCard: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+            Text("What will you\ncreate today?")
+                .typography(.heading)
+                .foregroundStyle(Color.white)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Start a fresh project below.")
+                .typography(.body)
+                .foregroundStyle(Color.white.opacity(0.82))
+                .frame(maxWidth: 320, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                viewModel.presentProjectSetup()
+            } label: {
+                HStack(spacing: .spacing(.sp2)) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+
+                    Text("New Project")
+                        .typography(.action)
+                }
+                .foregroundStyle(Color.ds.accentBg)
+                .padding(.horizontal, .sp4)
+                .padding(.vertical, .sp3)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.sp6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
             RoundedRectangle(cornerRadius: .spacing(.sp5))
                 .fill(
                     LinearGradient(
@@ -48,62 +120,12 @@ struct HomeView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .overlay {
-                    RoundedRectangle(cornerRadius: .spacing(.sp5))
-                        .stroke(Color.ds.accentFg.opacity(0.38), lineWidth: 1)
-                }
-
-            Image("Iris_Outline")
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .foregroundStyle(Color.white)
-                .frame(width: 112, height: 112)
-                .opacity(0.22)
-                .padding(.top, .sp5)
-                .padding(.trailing, .sp5)
-                .frame(maxWidth: .infinity, alignment: .topTrailing)
-
-            profileButton
-                .padding(.top, .sp5)
-                .padding(.trailing, .sp5)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-
-            VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-                Text("What will you\ncreate today?")
-                    .typography(.heading)
-                    .foregroundStyle(Color.white)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Start a fresh project below.")
-                    .typography(.body)
-                    .foregroundStyle(Color.white.opacity(0.82))
-                    .frame(maxWidth: 320, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button {
-                    viewModel.presentProjectSetup()
-                } label: {
-                    HStack(spacing: .spacing(.sp2)) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .semibold))
-
-                        Text("New Project")
-                            .typography(.action)
-                    }
-                    .foregroundStyle(Color.ds.accentBg)
-                    .padding(.horizontal, .sp4)
-                    .padding(.vertical, .sp3)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.sp6)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 276)
+        .overlay {
+            RoundedRectangle(cornerRadius: .spacing(.sp5))
+                .stroke(Color.ds.accentFg.opacity(0.38), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp5)))
     }
 
     private var profileButton: some View {
@@ -112,13 +134,13 @@ struct HomeView: View {
         } label: {
             Image(systemName: "person.crop.circle")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.ds.text)
                 .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.16))
+                .background(Color.ds.surface)
                 .clipShape(Circle())
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(0.32), lineWidth: 1)
+                        .stroke(Color.ds.border, lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)
