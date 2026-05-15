@@ -15,6 +15,7 @@ struct TimelinePersistence {
         let mediaLibrary: MediaLibrary?
         let mediaById: [String: Media]
         let projectTitle: String
+        let backendProjectId: String?
         let captionGroups: [CaptionGroup]
         let captionCues: [CaptionCue]
     }
@@ -41,6 +42,9 @@ struct TimelinePersistence {
             media = try db.getAllMedia(forLibraryId: library.id)
         }
 
+        let trimmedBackendId = project?.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let backendProjectId: String? = trimmedBackendId.isEmpty ? nil : trimmedBackendId
+
         return LoadedData(
             timeline: timeline,
             tracks: tracks,
@@ -49,6 +53,7 @@ struct TimelinePersistence {
             mediaLibrary: mediaLibrary,
             mediaById: Dictionary(uniqueKeysWithValues: media.map { ($0.mediaId, $0) }),
             projectTitle: project?.name ?? "Project",
+            backendProjectId: backendProjectId,
             captionGroups: captionGroups,
             captionCues: captionCues
         )

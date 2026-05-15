@@ -12,6 +12,8 @@ struct TimelineState {
     var mediaLibrary: MediaLibrary?
     var mediaById: [String: Media]
     var projectTitle: String
+    /// Numeric Iris backend project id when this local project is linked (for transcript/caption APIs).
+    var backendProjectId: String?
 
     var pixelsPerSecond: CGFloat
     var currentTimeAtCenter: Int64
@@ -39,6 +41,7 @@ struct TimelineState {
         self.mediaLibrary = nil
         self.mediaById = [:]
         self.projectTitle = "Project"
+        self.backendProjectId = nil
         self.pixelsPerSecond = 100
         self.currentTimeAtCenter = 0
         self.pendingImport = nil
@@ -94,6 +97,7 @@ struct TimelineState {
         mediaLibrary: MediaLibrary?,
         mediaById: [String: Media],
         projectTitle: String,
+        backendProjectId: String? = nil,
         captionGroups: [CaptionGroup] = [],
         captionCues: [CaptionCue] = []
     ) {
@@ -104,6 +108,7 @@ struct TimelineState {
         self.mediaLibrary = mediaLibrary
         self.mediaById = mediaById
         self.projectTitle = projectTitle
+        self.backendProjectId = backendProjectId
         self.captionGroups = captionGroups
         self.captionCues = captionCues
     }

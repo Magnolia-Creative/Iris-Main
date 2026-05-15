@@ -84,6 +84,7 @@ final class TimelineController: ObservableObject {
                     mediaLibrary: loaded.mediaLibrary,
                     mediaById: loaded.mediaById,
                     projectTitle: loaded.projectTitle,
+                    backendProjectId: loaded.backendProjectId,
                     captionGroups: loaded.captionGroups,
                     captionCues: loaded.captionCues
                 )
