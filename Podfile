@@ -4,6 +4,10 @@ use_frameworks!
 
 target 'Iris-Main' do
   pod 'VideoLab'
+
+  target 'Iris-MainTests' do
+    inherit! :search_paths
+  end
 end
 
 post_install do |installer|

@@ -13,6 +13,7 @@
 		1FCBE5392FB3BF30006A178E /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 1FCBE5382FB3BF30006A178E /* Inject */; };
 		4FD6FA6C9C07709570241299 /* Pods_Iris_Main.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F7129C98E42C8E0F06CF8A6 /* Pods_Iris_Main.framework */; };
 		9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */ = {isa = PBXBuildFile; productRef = 9A1B2C3D4E5F60718293A002 /* MobileCLIP */; };
+		E9DA127A51B1C2556EA0885F /* Pods_Iris_MainTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED3E2B1B7051463B139B8555 /* Pods_Iris_MainTests.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,6 +40,9 @@
 		1F77B7B02F64B22F00C813F6 /* Iris-MainUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Iris-MainUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2455B6084411583C119C3849 /* Pods-Iris-Main.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Iris-Main.debug.xcconfig"; path = "Target Support Files/Pods-Iris-Main/Pods-Iris-Main.debug.xcconfig"; sourceTree = "<group>"; };
 		7F7129C98E42C8E0F06CF8A6 /* Pods_Iris_Main.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Iris_Main.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1992887094504B3D5DDA332 /* Pods-Iris-MainTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Iris-MainTests.debug.xcconfig"; path = "Target Support Files/Pods-Iris-MainTests/Pods-Iris-MainTests.debug.xcconfig"; sourceTree = "<group>"; };
+		AA20C0FEF34DED2F907B5BBE /* Pods-Iris-MainTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Iris-MainTests.release.xcconfig"; path = "Target Support Files/Pods-Iris-MainTests/Pods-Iris-MainTests.release.xcconfig"; sourceTree = "<group>"; };
+		ED3E2B1B7051463B139B8555 /* Pods_Iris_MainTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Iris_MainTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -62,11 +66,15 @@
 		};
 		1F77B7A92F64B22F00C813F6 /* Iris-MainTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "Iris-MainTests";
 			sourceTree = "<group>";
 		};
 		1F77B7B32F64B22F00C813F6 /* Iris-MainUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = "Iris-MainUITests";
 			sourceTree = "<group>";
 		};
@@ -90,6 +98,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E9DA127A51B1C2556EA0885F /* Pods_Iris_MainTests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -129,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				7F7129C98E42C8E0F06CF8A6 /* Pods_Iris_Main.framework */,
+				ED3E2B1B7051463B139B8555 /* Pods_Iris_MainTests.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -138,6 +148,8 @@
 			children = (
 				2455B6084411583C119C3849 /* Pods-Iris-Main.debug.xcconfig */,
 				0E0A1BBAD4B18F155FA99BDB /* Pods-Iris-Main.release.xcconfig */,
+				A1992887094504B3D5DDA332 /* Pods-Iris-MainTests.debug.xcconfig */,
+				AA20C0FEF34DED2F907B5BBE /* Pods-Iris-MainTests.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -179,6 +191,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 1F77B7BD2F64B22F00C813F6 /* Build configuration list for PBXNativeTarget "Iris-MainTests" */;
 			buildPhases = (
+				C775ABFD167FAD3AA0F0A584 /* [CP] Check Pods Manifest.lock */,
 				1F77B7A22F64B22F00C813F6 /* Sources */,
 				1F77B7A32F64B22F00C813F6 /* Frameworks */,
 				1F77B7A42F64B22F00C813F6 /* Resources */,
@@ -251,7 +264,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
-				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
+				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 				1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */,
 				1F4172462FB67DCE00B40996 /* XCRemoteSwiftPackageReference "clerk-ios" */,
 			);
@@ -344,17 +357,35 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Iris-Main/Pods-Iris-Main-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Iris-Main/Pods-Iris-Main-frameworks-${CONFIGURATION}-output-files.xcfilelist",
 			);
-			outputPaths = (
-			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Iris-Main/Pods-Iris-Main-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		C775ABFD167FAD3AA0F0A584 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Iris-MainTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -619,6 +650,7 @@
 		};
 		1F77B7BE2F64B22F00C813F6 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1992887094504B3D5DDA332 /* Pods-Iris-MainTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -641,6 +673,7 @@
 		};
 		1F77B7BF2F64B22F00C813F6 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA20C0FEF34DED2F907B5BBE /* Pods-Iris-MainTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -751,7 +784,7 @@
 				minimumVersion = 1.1.3;
 			};
 		};
-		1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+		1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift";
 			requirement = {
@@ -790,7 +823,7 @@
 		};
 		1FBF36962F80DBC200086810 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */;
+			package = 1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
 		};
 		1FCBE5382FB3BF30006A178E /* Inject */ = {
