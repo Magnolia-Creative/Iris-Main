@@ -5,13 +5,6 @@ import PhotosUI
 import SwiftUI
 internal import Combine
 
-private struct TimelineActionGroup {
-    /// What was applied in this step (for redo).
-    let forwardActions: [Action]
-    /// Apply these in order to undo `forwardActions`.
-    let inverseActions: [Action]
-}
-
 final class TimelineController: ObservableObject {
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
@@ -31,11 +24,8 @@ final class TimelineController: ObservableObject {
     private var debouncedSaveTask: Task<Void, Never>?
     private var importedMediaBySeedLocalKey: [String: Media] = [:]
 
-    private var undoStack: [TimelineActionGroup] = []
-    private var redoStack: [TimelineActionGroup] = []
-
-    var canUndo: Bool { !undoStack.isEmpty }
-    var canRedo: Bool { !redoStack.isEmpty }
+    var canUndo: Bool { state.canUndo }
+    var canRedo: Bool { state.canRedo }
 
     /// Preview geometry and focus for the current pending prompt action, if any.
     var promptActionPreview: TimelinePromptActionPreview? {
@@ -70,6 +60,7 @@ final class TimelineController: ObservableObject {
         state.clips = clips
         state.captionGroups = []
         state.captionCues = []
+        state.clearActionHistory()
     }
 
     func loadTimelineData() async {
@@ -419,7 +410,7 @@ final class TimelineController: ObservableObject {
             "[TimelineActions] Applying count=\(actions.count, privacy: .public) timeline=\(self.state.timelineId, privacy: .public) selectedClip=\(self.state.selectedClipId ?? "nil", privacy: .public) currentTimeUs=\(self.state.currentTimeAtCenter, privacy: .public) clipCount=\(beforeClips.count, privacy: .public)"
         )
 
-        let inverseActions = state.apply(actions)
+        let inverseActions = state.applyRecordingUndo(forward: actions, recordUndo: recordUndo)
         let diff = clipDiff(before: beforeClips, after: state.clips)
         let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
         let didChangeClips = !diff.added.isEmpty || !diff.updated.isEmpty || !diff.deletedIds.isEmpty
@@ -445,48 +436,34 @@ final class TimelineController: ObservableObject {
             deletedIds: effectDiffResult.deletedIds
         )
 
-        if recordUndo, !inverseActions.isEmpty {
-            undoStack.append(
-                TimelineActionGroup(forwardActions: actions, inverseActions: inverseActions)
-            )
-            redoStack.removeAll()
-        }
         objectWillChange.send()
         return didChange
     }
 
     func undoLastActionGroup() {
-        guard let group = undoStack.popLast() else { return }
         let beforeClips = state.clips
         let beforeEffects = state.effects
-        let redoForward = state.apply(group.inverseActions)
+        guard state.undoLastActionGroupFromHistory() else { return }
         persistClipChanges(before: beforeClips, after: state.clips)
         let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
         persistEffectChanges(
             created: effectDiffResult.created,
             updated: effectDiffResult.updated,
             deletedIds: effectDiffResult.deletedIds
-        )
-        redoStack.append(
-            TimelineActionGroup(forwardActions: redoForward, inverseActions: group.inverseActions)
         )
         objectWillChange.send()
     }
 
     func redoLastActionGroup() {
-        guard let group = redoStack.popLast() else { return }
         let beforeClips = state.clips
         let beforeEffects = state.effects
-        let undoInverse = state.apply(group.forwardActions)
+        guard state.redoLastActionGroupFromHistory() else { return }
         persistClipChanges(before: beforeClips, after: state.clips)
         let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
         persistEffectChanges(
             created: effectDiffResult.created,
             updated: effectDiffResult.updated,
             deletedIds: effectDiffResult.deletedIds
-        )
-        undoStack.append(
-            TimelineActionGroup(forwardActions: group.forwardActions, inverseActions: undoInverse)
         )
         objectWillChange.send()
     }
@@ -605,35 +582,19 @@ final class TimelineController: ObservableObject {
             return
         }
 
-        let matchingEffects = clipColorFilterEffects(for: clipId)
-        let existingEffect = matchingEffects.max { $0.updatedAt < $1.updatedAt }
-        let updatedEffect = Effect.clipColorFilter(
-            timelineId: state.timelineId,
-            clipId: clipId,
-            filter: filter,
-            effectId: existingEffect?.effectId ?? UUID().uuidString,
-            createdAt: existingEffect?.createdAt ?? Date()
-        )
-
-        let duplicateEffectIds = Set(matchingEffects.map(\.effectId)).subtracting([updatedEffect.effectId])
-        state.effects.removeAll { duplicateEffectIds.contains($0.effectId) }
-
-        if let index = state.effects.firstIndex(where: { $0.effectId == updatedEffect.effectId }) {
-            state.effects[index] = updatedEffect
-            persistEffectChanges(created: [], updated: [updatedEffect], deletedIds: Array(duplicateEffectIds))
-        } else {
-            state.effects.append(updatedEffect)
-            persistEffectChanges(created: [updatedEffect], updated: [], deletedIds: Array(duplicateEffectIds))
-        }
+        applyActions([
+            Action.setClipColorFilter(
+                timelineId: state.timelineId,
+                clipId: clipId,
+                filter: filter
+            )
+        ])
     }
 
     func resetClipColorFilter(clipId: String) {
-        let matchingEffects = clipColorFilterEffects(for: clipId)
-        guard !matchingEffects.isEmpty else { return }
-
-        let deletedIds = matchingEffects.map(\.effectId)
-        state.effects.removeAll { deletedIds.contains($0.effectId) }
-        persistEffectChanges(created: [], updated: [], deletedIds: deletedIds)
+        applyActions([
+            Action.resetClipColorFilter(timelineId: state.timelineId, clipId: clipId)
+        ])
     }
 
     func clipVolume(for clipId: String) -> ClipVolume {
