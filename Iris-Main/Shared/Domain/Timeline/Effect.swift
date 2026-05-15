@@ -212,10 +212,46 @@ extension ClipColorFilter {
     }
 }
 
+struct ClipVolume: Codable, Equatable {
+    /// Linear gain: `1.0` is unity, `2.0` is +100%, `0` is silence.
+    var gain: Float
+
+    static let neutral = ClipVolume(gain: 1.0)
+    static let gainRange: ClosedRange<Float> = 0...2
+
+    var isNeutral: Bool {
+        abs(gain - 1.0) < .ulpOfOne
+    }
+
+    init(gain: Float = 1.0) {
+        self.gain = Self.clamp(gain, to: Self.gainRange)
+    }
+
+    static let effectType = "clip_volume"
+
+    var effectParameters: [String: EffectParameterValue] {
+        ["gain": .number(Double(gain))]
+    }
+
+    init(parameters: [String: EffectParameterValue]) {
+        let raw = parameters.floatValue(for: "gain")
+        self.init(gain: raw == 0 && parameters["gain"] == nil ? 1.0 : raw)
+    }
+
+    private static func clamp(_ value: Float, to range: ClosedRange<Float>) -> Float {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+}
+
 extension Effect {
     var clipColorFilter: ClipColorFilter? {
         guard type == ClipColorFilter.effectType, appliesTo == .clip else { return nil }
         return ClipColorFilter(parameters: parameters)
+    }
+
+    var clipVolume: ClipVolume? {
+        guard type == ClipVolume.effectType, appliesTo == .clip else { return nil }
+        return ClipVolume(parameters: parameters)
     }
 
     static func clipColorFilter(
@@ -236,6 +272,34 @@ extension Effect {
             createdAt: createdAt,
             updatedAt: Date()
         )
+    }
+
+    static func clipVolume(
+        timelineId: String,
+        clipId: String,
+        volume: ClipVolume,
+        effectId: String = UUID().uuidString,
+        createdAt: Date = Date()
+    ) -> Effect {
+        Effect(
+            effectId: effectId,
+            timelineId: timelineId,
+            type: ClipVolume.effectType,
+            appliesTo: .clip,
+            targetId: clipId,
+            parameters: volume.effectParameters,
+            constraints: ClipVolume.effectConstraints,
+            createdAt: createdAt,
+            updatedAt: Date()
+        )
+    }
+}
+
+private extension ClipVolume {
+    static var effectConstraints: [String: EffectConstraints] {
+        [
+            "gain": EffectConstraints(min: Double(gainRange.lowerBound), max: Double(gainRange.upperBound)),
+        ]
     }
 }
 
