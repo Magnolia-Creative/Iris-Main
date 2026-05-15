@@ -127,7 +127,7 @@ private enum MenuOption: CaseIterable, Equatable {
     case text, video, audio
 
     var label: String {
-        switch self { case .text: "Add Text"; case .video: "Add Video"; case .audio: "Add Audio" }
+        switch self { case .text: "Add Captions"; case .video: "Add Video"; case .audio: "Add Audio" }
     }
 
     var iconName: String {
@@ -138,7 +138,7 @@ private enum MenuOption: CaseIterable, Equatable {
         switch self { case .text: .overlay; case .video: .video; case .audio: .audio }
     }
 
-    /// Text starts auto-captions immediately (no submenu). Video and audio still offer Photos vs Files.
+    /// Captions starts auto-captions immediately (no submenu). Video and audio still offer Photos vs Files.
     var submenuOptions: [SubmenuOption] {
         switch self {
         case .text: []

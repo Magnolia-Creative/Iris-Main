@@ -6,13 +6,6 @@ struct PlaybackControls: View {
     var body: some View {
         ZStack {
             HStack {
-                Button {} label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.ds.text)
-                        .padding(.spacing(.sp1))
-                }
-
                 Spacer()
 
                 HStack(spacing: 0) {
