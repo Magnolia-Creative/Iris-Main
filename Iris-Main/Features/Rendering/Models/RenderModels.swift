@@ -29,6 +29,17 @@ struct RenderTrackInput: Identifiable {
     }
 }
 
+struct RenderAudioInput: Equatable {
+    /// Linear gain for preview/export (`1.0` = 100%).
+    var volume: Float
+
+    static let neutral = RenderAudioInput(volume: 1.0)
+
+    init(volume: Float = 1.0) {
+        self.volume = volume
+    }
+}
+
 struct RenderClipInput: Identifiable {
     let id: UUID
     var assetURL: URL
@@ -37,6 +48,7 @@ struct RenderClipInput: Identifiable {
     var transform: RenderTransformInput
     var colorAdjustments: RenderColorAdjustmentsInput
     var opacity: Float
+    var audio: RenderAudioInput
 
     init(
         id: UUID = UUID(),
@@ -45,7 +57,8 @@ struct RenderClipInput: Identifiable {
         sourceRange: ClosedRange<Double>,
         transform: RenderTransformInput = .identity,
         colorAdjustments: RenderColorAdjustmentsInput = .neutral,
-        opacity: Float = 1.0
+        opacity: Float = 1.0,
+        audio: RenderAudioInput = .neutral
     ) {
         self.id = id
         self.assetURL = assetURL
@@ -54,6 +67,7 @@ struct RenderClipInput: Identifiable {
         self.transform = transform
         self.colorAdjustments = colorAdjustments
         self.opacity = opacity
+        self.audio = audio
     }
 }
 

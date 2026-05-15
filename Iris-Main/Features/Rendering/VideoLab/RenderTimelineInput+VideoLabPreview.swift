@@ -141,7 +141,8 @@ extension RenderTimelineInput {
             sourceRange: s0...s1,
             transform: clip.transform,
             colorAdjustments: clip.colorAdjustments,
-            opacity: clip.opacity
+            opacity: clip.opacity,
+            audio: clip.audio
         )
     }
 }

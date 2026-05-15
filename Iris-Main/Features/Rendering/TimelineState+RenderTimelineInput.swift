@@ -5,6 +5,7 @@ extension TimelineState {
     func makeRenderTimelineInput() -> RenderTimelineInput {
         var renderTracks: [RenderTrackInput] = []
         let colorFiltersByClipId = Self.clipColorFiltersByClipId(from: effects)
+        let volumesByClipId = Self.clipVolumesByClipId(from: effects)
 
         for track in orderedTracks {
             let trackClips = clips.filter { $0.trackId == track.trackId }
@@ -27,6 +28,7 @@ extension TimelineState {
                 let sourceStart = Double(clip.sourceRange.start) / 1_000_000.0
                 let sourceEnd = Double(clip.sourceRange.end) / 1_000_000.0
 
+                let clipVolume = volumesByClipId[clip.clipId] ?? .neutral
                 return RenderClipInput(
                     id: UUID(uuidString: clip.clipId) ?? UUID(),
                     assetURL: assetURL,
@@ -34,7 +36,8 @@ extension TimelineState {
                     sourceRange: sourceStart...sourceEnd,
                     colorAdjustments: RenderColorAdjustmentsInput(
                         clipColorFilter: colorFiltersByClipId[clip.clipId] ?? .neutral
-                    )
+                    ),
+                    audio: RenderAudioInput(volume: clipVolume.gain)
                 )
             }
 
@@ -71,6 +74,18 @@ extension TimelineState {
         }
 
         return latestFilters.mapValues(\.filter)
+    }
+
+    private static func clipVolumesByClipId(from effects: [Effect]) -> [String: ClipVolume] {
+        let latestVolumes = effects.reduce(into: [String: (updatedAt: Date, volume: ClipVolume)]()) { result, effect in
+            guard let volume = effect.clipVolume else { return }
+            if let existing = result[effect.targetId], existing.updatedAt > effect.updatedAt {
+                return
+            }
+            result[effect.targetId] = (effect.updatedAt, volume)
+        }
+
+        return latestVolumes.mapValues(\.volume)
     }
 }
 
