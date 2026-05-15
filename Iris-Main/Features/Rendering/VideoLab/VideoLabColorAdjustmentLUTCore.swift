@@ -1,8 +1,7 @@
-import CoreGraphics
 import Foundation
 import simd
 
-/// Pure color math and 512×512 HALD LUT image generation (no VideoLab import).
+/// Pure color math and 512×512 HALD LUT pixel data (no VideoLab / Metal import).
 enum VideoLabColorAdjustmentLUTCore {
     static func mapRGB(_ rgb: SIMD3<Float>, adjustments: RenderColorAdjustmentsInput) -> SIMD3<Float> {
         var out = rgb
@@ -49,11 +48,12 @@ enum VideoLabColorAdjustmentLUTCore {
         ].map(String.init).joined(separator: "|")
     }
 
-    static func makeLUTCGImage(for adjustments: RenderColorAdjustmentsInput) -> CGImage? {
+    /// 512×512×4 **BGRA8** bytes (opaque), row-major with **y = 0 at top**.
+    /// Matches `MTLPixelFormat.bgra8Unorm` channel order for VideoLab’s `LookupFilter` sampling.
+    static func makeLUTBGRA8PixelData(for adjustments: RenderColorAdjustmentsInput) -> [UInt8] {
         let width = 512
         let height = 512
         let bytesPerPixel = 4
-        let bytesPerRow = width * bytesPerPixel
         var pixels = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
 
         for b in 0 ..< 64 {
@@ -68,6 +68,7 @@ enum VideoLabColorAdjustmentLUTCore {
                     let px = tileX * 64 + r
                     let py = tileY * 64 + g
                     let o = (py * width + px) * bytesPerPixel
+                    // BGRA little-endian word layout (B lowest address).
                     pixels[o] = UInt8(mapped.z * 255.0 + 0.5)
                     pixels[o + 1] = UInt8(mapped.y * 255.0 + 0.5)
                     pixels[o + 2] = UInt8(mapped.x * 255.0 + 0.5)
@@ -75,24 +76,7 @@ enum VideoLabColorAdjustmentLUTCore {
                 }
             }
         }
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
-        return CGImage(
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bitsPerPixel: 32,
-            bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo,
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        )
+        return pixels
     }
 
     private static func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {

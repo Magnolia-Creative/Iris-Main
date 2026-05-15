@@ -59,4 +59,45 @@ struct VideoLabColorAdjustmentLUTMappingTests {
         b.brightness = 0.10002
         #expect(VideoLabColorAdjustmentLUTCore.cacheKey(for: a) == VideoLabColorAdjustmentLUTCore.cacheKey(for: b))
     }
+
+    /// Identity path: neutral adjustments → LUT texels match `mapRGB` (same as linear input for mid cube).
+    @Test func neutralLUTBGRABytesMatchMapRGB() {
+        let adj = RenderColorAdjustmentsInput.neutral
+        let data = VideoLabColorAdjustmentLUTCore.makeLUTBGRA8PixelData(for: adj)
+        #expect(data.count == 512 * 512 * 4)
+
+        func assertCell(r: Int, g: Int, b: Int) {
+            let rin = Float(r) / 63.0
+            let gin = Float(g) / 63.0
+            let bin = Float(b) / 63.0
+            let expected = VideoLabColorAdjustmentLUTCore.mapRGB(SIMD3(rin, gin, bin), adjustments: adj)
+            let tileX = b % 8
+            let tileY = b / 8
+            let px = tileX * 64 + r
+            let py = tileY * 64 + g
+            let o = (py * 512 + px) * 4
+            let bByte = Float(data[o]) / 255.0
+            let gByte = Float(data[o + 1]) / 255.0
+            let rByte = Float(data[o + 2]) / 255.0
+            #expect(abs(rByte - expected.x) < 0.02)
+            #expect(abs(gByte - expected.y) < 0.02)
+            #expect(abs(bByte - expected.z) < 0.02)
+            #expect(data[o + 3] == 255)
+        }
+
+        assertCell(r: 0, g: 0, b: 0)
+        assertCell(r: 63, g: 63, b: 63)
+        assertCell(r: 10, g: 20, b: 5)
+        assertCell(r: 31, g: 31, b: 31)
+    }
+
+    /// After LUT encoding fix, small slider moves should not explode `mapRGB` on gray.
+    @Test func smallTemperatureChangeIsSubtleOnMidGray() {
+        var adj = RenderColorAdjustmentsInput.neutral
+        adj.temperature = 0.05
+        let gray = SIMD3<Float>(0.5, 0.5, 0.5)
+        let out = VideoLabColorAdjustmentLUTCore.mapRGB(gray, adjustments: adj)
+        let delta = simd_length(out - gray)
+        #expect(delta < 0.02)
+    }
 }
