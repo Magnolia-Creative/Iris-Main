@@ -15,50 +15,6 @@ struct CaptionsChromeView: View {
             switch flow.phase {
             case .idle:
                 EmptyView()
-            case .chooseScope:
-                Text("Captions")
-                    .typography(.heading)
-                    .foregroundColor(Color.ds.text)
-                Text("Generate subtitles from your clip transcripts.")
-                    .typography(.bodySmall)
-                    .foregroundColor(Color.ds.textMuted)
-                HStack(spacing: .spacing(.sp2)) {
-                    Button("Caption whole clip") {
-                        flow.chooseCaptionWholeTimeline()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button("Define range") {
-                        flow.chooseDefineCaptionRange()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                Button("Cancel") { flow.cancelFlow() }
-                    .buttonStyle(.plain)
-                    .foregroundColor(Color.ds.textMuted)
-            case .pickingStart:
-                Text("Scrub to where captions should start, then tap below.")
-                    .typography(.body)
-                    .foregroundColor(Color.ds.text)
-                Button("Start here") {
-                    flow.confirmRangeStartAtPlayhead(controller.state.currentTimeAtCenter)
-                }
-                .buttonStyle(.borderedProminent)
-                Button("Cancel") { flow.cancelFlow() }
-                    .buttonStyle(.plain)
-                    .foregroundColor(Color.ds.textMuted)
-            case .pickingEnd:
-                Text("Scrub to where captions should end.")
-                    .typography(.body)
-                    .foregroundColor(Color.ds.text)
-                HStack(spacing: .spacing(.sp2)) {
-                    Button("End here") {
-                        flow.confirmRangeEndAtPlayhead(controller.state.currentTimeAtCenter)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Button("Cancel") { flow.cancelFlow() }
-                        .buttonStyle(.plain)
-                        .foregroundColor(Color.ds.textMuted)
-                }
             case .processing:
                 ProgressView()
                 Text("Generating captions…")

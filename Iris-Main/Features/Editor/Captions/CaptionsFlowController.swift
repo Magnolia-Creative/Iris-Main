@@ -6,9 +6,6 @@ import SwiftUI
 final class CaptionsFlowController: ObservableObject {
     enum Phase: Equatable {
         case idle
-        case chooseScope
-        case pickingStart
-        case pickingEnd
         case processing
         case editingStyle(groupId: String)
     }
@@ -17,6 +14,8 @@ final class CaptionsFlowController: ObservableObject {
     @Published var rangeStartUs: Int64?
     @Published var rangeEndUs: Int64?
     @Published var validationMessage: String?
+    /// Shown in an alert when the flow returns to `idle` (e.g. generation failed).
+    @Published var captionsAlert: String?
     @Published var selectedCaptionCueId: String?
 
     weak var timelineController: TimelineController?
@@ -27,38 +26,25 @@ final class CaptionsFlowController: ObservableObject {
         return true
     }
 
-    var playheadUsesAccentTint: Bool {
-        switch phase {
-        case .pickingStart, .pickingEnd: return true
-        default: return false
-        }
-    }
+    var playheadUsesAccentTint: Bool { false }
 
     func highlightRangeUs(playheadUs: Int64) -> ClosedRange<Int64>? {
-        switch phase {
-        case .pickingEnd:
-            guard let s = rangeStartUs else { return nil }
-            let e = max(playheadUs, s + 1)
-            return s...e
-        case .processing, .editingStyle, .chooseScope, .pickingStart, .idle:
-            if let s = rangeStartUs, let e = rangeEndUs, e > s { return s...e }
-            return nil
-        }
+        _ = playheadUs
+        if let s = rangeStartUs, let e = rangeEndUs, e > s { return s...e }
+        return nil
     }
 
     func attach(_ controller: TimelineController) {
         timelineController = controller
     }
 
-    func beginCaptionsFlow() {
+    /// Starts transcript-based captions for the full timeline (no scope sheet).
+    func startAutoCaptionsForWholeTimeline() {
         validationMessage = nil
+        captionsAlert = nil
         rangeStartUs = nil
         rangeEndUs = nil
         selectedCaptionCueId = nil
-        phase = .chooseScope
-    }
-
-    func chooseCaptionWholeTimeline() {
         guard let controller = timelineController else { return }
         let end = max(controller.state.calculatedTimelineDurationUs, 1)
         rangeStartUs = 0
@@ -69,35 +55,12 @@ final class CaptionsFlowController: ObservableObject {
         }
     }
 
-    func chooseDefineCaptionRange() {
-        phase = .pickingStart
-    }
-
-    func confirmRangeStartAtPlayhead(_ playheadUs: Int64) {
-        rangeStartUs = playheadUs
-        validationMessage = nil
-        phase = .pickingEnd
-    }
-
-    func confirmRangeEndAtPlayhead(_ playheadUs: Int64) {
-        guard rangeStartUs != nil else { return }
-        guard let start = rangeStartUs else { return }
-        if playheadUs <= start {
-            validationMessage = "End must be after start."
-            return
-        }
-        validationMessage = nil
-        rangeEndUs = playheadUs
-        phase = .processing
-        guard let controller = timelineController else { return }
-        Task { await runProcessing(controller: controller) }
-    }
-
     func cancelFlow() {
         phase = .idle
         rangeStartUs = nil
         rangeEndUs = nil
         validationMessage = nil
+        captionsAlert = nil
     }
 
     func openStyleEditor(forGroupId groupId: String) {
@@ -128,23 +91,26 @@ final class CaptionsFlowController: ObservableObject {
         phase = .idle
     }
 
+    private func failToIdle(_ message: String) {
+        validationMessage = nil
+        captionsAlert = message
+        phase = .idle
+    }
+
     private func runProcessing(controller: TimelineController) async {
         guard let start = rangeStartUs, let end = rangeEndUs, end > start else {
-            validationMessage = "Invalid caption range."
-            phase = .idle
+            failToIdle("Invalid caption range.")
             return
         }
 
         let backendProjectId = controller.state.timeline?.projectId.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !backendProjectId.isEmpty else {
-            validationMessage = "Project is not linked for transcripts yet."
-            phase = .idle
+            failToIdle("Project is not linked for transcripts yet.")
             return
         }
 
         guard let videoTrack = controller.state.tracks.first(where: { $0.kind == .video }) else {
-            validationMessage = "Add a video clip first."
-            phase = .idle
+            failToIdle("Add a video clip first.")
             return
         }
 
@@ -171,8 +137,7 @@ final class CaptionsFlowController: ObservableObject {
 
         let cues = CaptionsStitcher.stitch(inputs: inputs, rangeStartUs: start, rangeEndUs: end)
         guard !cues.isEmpty else {
-            validationMessage = "No captions found for this range."
-            phase = .chooseScope
+            failToIdle("No captions found for this range.")
             return
         }
 
@@ -187,8 +152,7 @@ final class CaptionsFlowController: ObservableObject {
             rangeEndUs = nil
             phase = .editingStyle(groupId: groupId)
         } catch {
-            validationMessage = "Could not save captions."
-            phase = .idle
+            failToIdle("Could not save captions.")
             print("[CaptionsFlow] persist error: \(error)")
         }
     }

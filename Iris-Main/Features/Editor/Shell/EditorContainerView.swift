@@ -245,6 +245,19 @@ struct EditorContainerView: View {
         .onAppear {
             captionsFlow.attach(controller)
         }
+        .alert(
+            "Captions",
+            isPresented: Binding(
+                get: { captionsFlow.captionsAlert != nil },
+                set: { if !$0 { captionsFlow.captionsAlert = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                captionsFlow.captionsAlert = nil
+            }
+        } message: {
+            Text(captionsFlow.captionsAlert ?? "")
+        }
         .task {
             await MainActor.run {
                 SemanticSearchViewModel.shared.prewarmEmbeddingServicesIfNeeded()
@@ -498,6 +511,10 @@ struct EditorContainerView: View {
     }
 
     private func handleEditorAddSelection(kind: TrackKind, source: ImportSource) {
+        if kind == .overlay && source == .caption {
+            captionsFlow.startAutoCaptionsForWholeTimeline()
+            return
+        }
         guard kind == .video, source == .photos else {
             controller.handleAddSelection(kind: kind, source: source)
             return

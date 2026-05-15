@@ -8,6 +8,7 @@ struct EditorCanvasView: View {
     let activeSpace: EditorSpace
     @ObservedObject var captionsFlow: CaptionsFlowController
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
+    @State private var isTimelineAddMenuOpen = false
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
     var promptActionPreview: TimelinePromptActionPreview? = nil
@@ -136,7 +137,7 @@ struct EditorCanvasView: View {
             selectedClipId: controller.binding(\.selectedClipId),
             playbackState: state.playbackState,
             onAddSelection: allowsTimelineAdditions ? addSelection : nil,
-            onTapAddCaptions: allowsTimelineAdditions ? { captionsFlow.beginCaptionsFlow() } : nil,
+            isAddMenuOpen: $isTimelineAddMenuOpen,
             onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
             onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
             onDropImportedSegmentAtTime: activeSpace == .importMedia ? { item, timeUs in

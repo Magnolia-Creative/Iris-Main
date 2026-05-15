@@ -16,7 +16,7 @@ struct TimelineSectionView: View {
     @Binding var selectedClipId: String?
     var playbackState: TimelinePlaybackState = .idle
     let onAddSelection: ((TrackKind, ImportSource) -> Void)?
-    var onTapAddCaptions: (() -> Void)? = nil
+    @Binding var isAddMenuOpen: Bool
     let onMoveClip: (String, Int64, [String]) -> Void
     let onTrimClip: (String, TimeRange, TimeRange, Bool) -> Void
     var onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)? = nil
@@ -264,8 +264,8 @@ struct TimelineSectionView: View {
                 }
                 .offset(y: rulerVerticalOffset)
 
-                if showAddButton, let onTapAddCaptions {
-                    AddClipButton(onTap: onTapAddCaptions)
+                if showAddButton, let onAddSelection {
+                    AddClipButton(onSelect: onAddSelection, isMenuOpen: $isAddMenuOpen)
                         .padding(.top, addButtonTopOffset)
                         .padding(.trailing, .spacing(.sp6))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
