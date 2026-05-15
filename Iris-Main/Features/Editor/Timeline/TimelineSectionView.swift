@@ -113,6 +113,7 @@ struct TimelineSectionView: View {
                         }
                         .frame(minWidth: geometry.size.width)
                     }
+                    .scrollDisabled(isAddMenuOpen)
                     .background(Color.ds.bg)
                     .coordinateSpace(name: "timelineScroll")
                     .onScrollGeometryChange(for: CGFloat.self) { geo in
@@ -267,6 +268,17 @@ struct TimelineSectionView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: layout.rulerHeight, alignment: .topTrailing)
                 .offset(y: rulerVerticalOffset)
+
+                if isAddMenuOpen {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                isAddMenuOpen = false
+                            }
+                        }
+                }
 
                 if showAddButton, let onAddSelection {
                     AddClipButton(onSelect: onAddSelection, isMenuOpen: $isAddMenuOpen)
