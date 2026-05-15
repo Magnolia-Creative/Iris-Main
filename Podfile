@@ -191,4 +191,171 @@ BROKEN
       ],
     ]
   )
+
+  # VideoLab 0.0.1: AVVideoCompositing pixel buffers must be Metal/IOSurface compatible on
+  # modern iOS; OpenGLES-only attributes break IOSurface-backed textures in Texture.makeTexture.
+  video_compositor = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Video/VideoCompositor.swift')
+  patch_file(
+    video_compositor,
+    [
+      [
+        "import AVFoundation\n\nclass VideoCompositor:",
+        "import AVFoundation\nimport CoreVideo\n\nclass VideoCompositor:",
+      ],
+      [
+        "String(kCVPixelBufferOpenGLESCompatibilityKey): true]",
+        "String(kCVPixelBufferMetalCompatibilityKey): true,\n         String(kCVPixelBufferIOSurfacePropertiesKey): [String: Any]()]",
+      ],
+      [
+        "        guard let newPixelBuffer = renderContext?.newPixelBuffer() else {\n            return nil\n        }",
+        "        guard let newPixelBuffer = renderContext?.newPixelBuffer() else {\n            #if DEBUG\n            print(\"[VideoLab] VideoCompositor: renderContext?.newPixelBuffer() returned nil\")\n            #endif\n            return nil\n        }",
+      ],
+    ]
+  )
+
+  # DEBUG-only compositor diagnostics (silent failures produced black frames).
+  layer_compositor_debug = <<~'DBGHELP'.chomp
+    import AVFoundation
+
+    #if DEBUG
+    private func videoLabLayerCompositorLog(_ message: String) {
+        print("[VideoLab] LayerCompositor: \(message)")
+    }
+    #endif
+
+    class LayerCompositor {
+DBGHELP
+
+  lc_guard_instruction_old = (<<'LC1O').chomp
+        guard let instruction = request.videoCompositionInstruction as? VideoCompositionInstruction else {
+            return
+        }
+LC1O
+  lc_guard_instruction_new = (<<'LC1N').chomp
+        guard let instruction = request.videoCompositionInstruction as? VideoCompositionInstruction else {
+            #if DEBUG
+            videoLabLayerCompositorLog("missing VideoCompositionInstruction")
+            #endif
+            return
+        }
+LC1N
+
+  lc_guard_output_tex_old = (<<'LC2O').chomp
+        guard let outputTexture = Texture.makeTexture(pixelBuffer: pixelBuffer) else {
+            return
+        }
+LC2O
+  lc_guard_output_tex_new = (<<'LC2N').chomp
+        guard let outputTexture = Texture.makeTexture(pixelBuffer: pixelBuffer) else {
+            #if DEBUG
+            videoLabLayerCompositorLog("Texture.makeTexture(pixelBuffer:) failed for output pixel buffer")
+            #endif
+            return
+        }
+LC2N
+
+  lc_guard_group_old = (<<'LC3O').chomp
+            guard let groupTexture = sharedMetalRenderingDevice.textureCache.requestTexture(width: textureWidth, height: textureHeight) else {
+                return
+            }
+LC3O
+  lc_guard_group_new = (<<'LC3N').chomp
+            guard let groupTexture = sharedMetalRenderingDevice.textureCache.requestTexture(width: textureWidth, height: textureHeight) else {
+                #if DEBUG
+                videoLabLayerCompositorLog("textureCache.requestTexture failed for layer group \(textureWidth)x\(textureHeight)")
+                #endif
+                return
+            }
+LC3N
+
+  lc_guard_source_frame_old = (<<'LC4O').chomp
+            guard let pixelBuffer = request.sourceFrame(byTrackID: videoRenderLayer.trackID) else {
+                return
+            }
+LC4O
+  lc_guard_source_frame_new = (<<'LC4N').chomp
+            guard let pixelBuffer = request.sourceFrame(byTrackID: videoRenderLayer.trackID) else {
+                #if DEBUG
+                videoLabLayerCompositorLog("sourceFrame missing for trackID \(videoRenderLayer.trackID)")
+                #endif
+                return
+            }
+LC4N
+
+  lc_guard_bgra_old = (<<'LC5O').chomp
+            guard let videoTexture = bgraVideoTexture(from: pixelBuffer,
+                                                      preferredTransform: videoRenderLayer.preferredTransform) else {
+                return
+            }
+LC5O
+  lc_guard_bgra_new = (<<'LC5N').chomp
+            guard let videoTexture = bgraVideoTexture(from: pixelBuffer,
+                                                      preferredTransform: videoRenderLayer.preferredTransform) else {
+                #if DEBUG
+                let fmt = CVPixelBufferGetPixelFormatType(pixelBuffer)
+                videoLabLayerCompositorLog("bgraVideoTexture failed pixelFormat=0x\(String(fmt, radix: 16))")
+                #endif
+                return
+            }
+LC5N
+
+  lc_guard_image_clone_old = (<<'LC6O').chomp
+            guard let imageTexture = cloneTexture(from: sourceTexture) else {
+                return
+            }
+LC6O
+  lc_guard_image_clone_new = (<<'LC6N').chomp
+            guard let imageTexture = cloneTexture(from: sourceTexture) else {
+                #if DEBUG
+                videoLabLayerCompositorLog("cloneTexture failed for image source")
+                #endif
+                return
+            }
+LC6N
+
+  lc_guard_blend_bg_old = (<<'LC7O').chomp
+        guard let backgroundTexture = cloneTexture(from: outputTexture) else {
+            return
+        }
+LC7O
+  lc_guard_blend_bg_new = (<<'LC7N').chomp
+        guard let backgroundTexture = cloneTexture(from: outputTexture) else {
+            #if DEBUG
+            videoLabLayerCompositorLog("cloneTexture failed for blend background")
+            #endif
+            return
+        }
+LC7N
+
+  lc_guard_clone_tex_old = (<<'LC8O').chomp
+        guard let cloneTexture = sharedMetalRenderingDevice.textureCache.requestTexture(width: textureWidth, height: textureHeight) else {
+            return nil
+        }
+LC8O
+  lc_guard_clone_tex_new = (<<'LC8N').chomp
+        guard let cloneTexture = sharedMetalRenderingDevice.textureCache.requestTexture(width: textureWidth, height: textureHeight) else {
+            #if DEBUG
+            videoLabLayerCompositorLog("textureCache.requestTexture failed for clone \(textureWidth)x\(textureHeight)")
+            #endif
+            return nil
+        }
+LC8N
+
+  patch_file(
+    layer_compositor,
+    [
+      [
+        "import AVFoundation\n\nclass LayerCompositor {",
+        layer_compositor_debug,
+      ],
+      [lc_guard_instruction_old, lc_guard_instruction_new],
+      [lc_guard_output_tex_old, lc_guard_output_tex_new],
+      [lc_guard_group_old, lc_guard_group_new],
+      [lc_guard_source_frame_old, lc_guard_source_frame_new],
+      [lc_guard_bgra_old, lc_guard_bgra_new],
+      [lc_guard_image_clone_old, lc_guard_image_clone_new],
+      [lc_guard_blend_bg_old, lc_guard_blend_bg_new],
+      [lc_guard_clone_tex_old, lc_guard_clone_tex_new],
+    ]
+  )
 end
