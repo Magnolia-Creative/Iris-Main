@@ -124,6 +124,7 @@ extension TimelineState {
         clips.remove(at: index)
         clips.append(leftClip)
         clips.append(rightClip)
+        applyCaptionCueSplit(originalClipId: clipId, leftClip: leftClip, rightClip: rightClip, sourceMid: sourceMid)
 
         if selectedClipId == clipId {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -132,6 +133,75 @@ extension TimelineState {
         }
 
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
+    }
+
+    private mutating func applyCaptionCueSplit(
+        originalClipId: String,
+        leftClip: Clip,
+        rightClip: Clip,
+        sourceMid: Int64
+    ) {
+        guard !captionCues.isEmpty else { return }
+        let now = Date()
+        var updatedCues: [CaptionCue] = []
+
+        for cue in captionCues {
+            guard cue.clipId == originalClipId,
+                  let sourceStart = cue.sourceStartUs,
+                  let sourceEnd = cue.sourceEndUs,
+                  sourceEnd > sourceStart
+            else {
+                updatedCues.append(cue)
+                continue
+            }
+
+            if sourceEnd <= sourceMid {
+                if let reassigned = cue.reanchored(to: leftClip, sourceStartUs: sourceStart, sourceEndUs: sourceEnd, updatedAt: now) {
+                    updatedCues.append(reassigned)
+                }
+            } else if sourceStart >= sourceMid {
+                if let reassigned = cue.reanchored(to: rightClip, sourceStartUs: sourceStart, sourceEndUs: sourceEnd, updatedAt: now) {
+                    updatedCues.append(reassigned)
+                }
+            } else {
+                let splitText = splitCaptionText(cue.text, sourceStartUs: sourceStart, splitUs: sourceMid, sourceEndUs: sourceEnd)
+                if let leftCue = cue.reanchored(to: leftClip, sourceStartUs: sourceStart, sourceEndUs: sourceMid, text: splitText.left, updatedAt: now) {
+                    updatedCues.append(leftCue)
+                }
+                if let rightCue = CaptionCue(
+                    groupId: cue.groupId,
+                    clipId: rightClip.clipId,
+                    text: splitText.right,
+                    timelineStartUs: cue.timelineStartUs,
+                    timelineEndUs: cue.timelineEndUs,
+                    sourceStartUs: sourceMid,
+                    sourceEndUs: sourceEnd,
+                    createdAt: cue.createdAt,
+                    updatedAt: now
+                ).projectedThroughCurrentClip(rightClip) {
+                    updatedCues.append(rightCue)
+                }
+            }
+        }
+
+        captionCues = updatedCues.sorted { lhs, rhs in
+            lhs.timelineStartUs == rhs.timelineStartUs
+                ? lhs.cueId < rhs.cueId
+                : lhs.timelineStartUs < rhs.timelineStartUs
+        }
+    }
+
+    private func splitCaptionText(_ text: String, sourceStartUs: Int64, splitUs: Int64, sourceEndUs: Int64) -> (left: String, right: String) {
+        let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard words.count > 1, sourceEndUs > sourceStartUs else { return (text, text) }
+
+        let ratio = Double(splitUs - sourceStartUs) / Double(sourceEndUs - sourceStartUs)
+        let rawLeftCount = Int((Double(words.count) * ratio).rounded())
+        let leftCount = min(max(rawLeftCount, 1), words.count - 1)
+        return (
+            words[..<leftCount].joined(separator: " "),
+            words[leftCount...].joined(separator: " ")
+        )
     }
 
     private mutating func applyRemoveClip(clipId: String) -> [Action] {
@@ -394,5 +464,36 @@ extension TimelineState {
                 )
             }
         }
+    }
+}
+
+private extension CaptionCue {
+    func reanchored(
+        to clip: Clip,
+        sourceStartUs: Int64,
+        sourceEndUs: Int64,
+        text: String? = nil,
+        updatedAt: Date
+    ) -> CaptionCue? {
+        CaptionCue(
+            cueId: cueId,
+            groupId: groupId,
+            clipId: clip.clipId,
+            text: text ?? self.text,
+            timelineStartUs: timelineStartUs,
+            timelineEndUs: timelineEndUs,
+            sourceStartUs: sourceStartUs,
+            sourceEndUs: sourceEndUs,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        ).projectedThroughCurrentClip(clip)
+    }
+
+    func projectedThroughCurrentClip(_ clip: Clip) -> CaptionCue? {
+        guard let range = CaptionCueProjection.currentTimelineRange(for: self, clips: [clip.clipId: clip]) else { return nil }
+        var cue = self
+        cue.timelineStartUs = range.start
+        cue.timelineEndUs = range.end
+        return cue
     }
 }

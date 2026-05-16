@@ -121,6 +121,14 @@ struct TimelinePersistence {
         try db.create(cue)
     }
 
+    func updateCaptionCue(_ cue: CaptionCue) throws {
+        try db.update(cue)
+    }
+
+    func deleteCaptionCue(cueId: String) throws {
+        try db.delete(CaptionCue.self, id: cueId, keyColumn: "cue_id")
+    }
+
     /// Deletes a caption group; cues are removed via ON DELETE CASCADE on `caption_cues.group_id`.
     func deleteCaptionGroup(groupId: String) throws {
         try db.delete(CaptionGroup.self, id: groupId, keyColumn: "group_id")

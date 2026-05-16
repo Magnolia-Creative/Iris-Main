@@ -456,6 +456,7 @@ final class TimelineController: ObservableObject {
         guard !actions.isEmpty else { return false }
         let beforeClips = state.clips
         let beforeEffects = state.effects
+        let beforeCaptionCues = state.captionCues
         Self.logger.info(
             "[TimelineActions] Applying count=\(actions.count, privacy: .public) timeline=\(self.state.timelineId, privacy: .public) selectedClip=\(self.state.selectedClipId ?? "nil", privacy: .public) currentTimeUs=\(self.state.currentTimeAtCenter, privacy: .public) clipCount=\(beforeClips.count, privacy: .public)"
         )
@@ -463,15 +464,19 @@ final class TimelineController: ObservableObject {
         let inverseActions = state.applyRecordingUndo(forward: actions, recordUndo: recordUndo)
         let diff = clipDiff(before: beforeClips, after: state.clips)
         let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
+        let captionCueDiffResult = captionCueDiff(before: beforeCaptionCues, after: state.captionCues)
         let didChangeClips = !diff.added.isEmpty || !diff.updated.isEmpty || !diff.deletedIds.isEmpty
         let didChangeEffects = !effectDiffResult.created.isEmpty
             || !effectDiffResult.updated.isEmpty
             || !effectDiffResult.deletedIds.isEmpty
-        let didChange = didChangeClips || didChangeEffects
+        let didChangeCaptionCues = !captionCueDiffResult.created.isEmpty
+            || !captionCueDiffResult.updated.isEmpty
+            || !captionCueDiffResult.deletedIds.isEmpty
+        let didChange = didChangeClips || didChangeEffects || didChangeCaptionCues
 
         if didChange {
             Self.logger.info(
-                "[TimelineActions] Applied count=\(actions.count, privacy: .public) added=\(diff.added.count, privacy: .public) updated=\(diff.updated.count, privacy: .public) deleted=\(diff.deletedIds.count, privacy: .public) effectsCreated=\(effectDiffResult.created.count, privacy: .public) effectsUpdated=\(effectDiffResult.updated.count, privacy: .public) effectsDeleted=\(effectDiffResult.deletedIds.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public)"
+                "[TimelineActions] Applied count=\(actions.count, privacy: .public) added=\(diff.added.count, privacy: .public) updated=\(diff.updated.count, privacy: .public) deleted=\(diff.deletedIds.count, privacy: .public) effectsCreated=\(effectDiffResult.created.count, privacy: .public) effectsUpdated=\(effectDiffResult.updated.count, privacy: .public) effectsDeleted=\(effectDiffResult.deletedIds.count, privacy: .public) captionCuesCreated=\(captionCueDiffResult.created.count, privacy: .public) captionCuesUpdated=\(captionCueDiffResult.updated.count, privacy: .public) captionCuesDeleted=\(captionCueDiffResult.deletedIds.count, privacy: .public) inverseCount=\(inverseActions.count, privacy: .public)"
             )
         } else {
             Self.logger.error(
@@ -485,6 +490,11 @@ final class TimelineController: ObservableObject {
             updated: effectDiffResult.updated,
             deletedIds: effectDiffResult.deletedIds
         )
+        persistCaptionCueChanges(
+            created: captionCueDiffResult.created,
+            updated: captionCueDiffResult.updated,
+            deletedIds: captionCueDiffResult.deletedIds
+        )
 
         objectWillChange.send()
         return didChange
@@ -493,6 +503,7 @@ final class TimelineController: ObservableObject {
     func undoLastActionGroup() {
         let beforeClips = state.clips
         let beforeEffects = state.effects
+        let beforeCaptionCues = state.captionCues
         guard state.undoLastActionGroupFromHistory() else { return }
         persistClipChanges(before: beforeClips, after: state.clips)
         let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
@@ -501,12 +512,19 @@ final class TimelineController: ObservableObject {
             updated: effectDiffResult.updated,
             deletedIds: effectDiffResult.deletedIds
         )
+        let captionCueDiffResult = captionCueDiff(before: beforeCaptionCues, after: state.captionCues)
+        persistCaptionCueChanges(
+            created: captionCueDiffResult.created,
+            updated: captionCueDiffResult.updated,
+            deletedIds: captionCueDiffResult.deletedIds
+        )
         objectWillChange.send()
     }
 
     func redoLastActionGroup() {
         let beforeClips = state.clips
         let beforeEffects = state.effects
+        let beforeCaptionCues = state.captionCues
         guard state.redoLastActionGroupFromHistory() else { return }
         persistClipChanges(before: beforeClips, after: state.clips)
         let effectDiffResult = effectDiff(before: beforeEffects, after: state.effects)
@@ -514,6 +532,12 @@ final class TimelineController: ObservableObject {
             created: effectDiffResult.created,
             updated: effectDiffResult.updated,
             deletedIds: effectDiffResult.deletedIds
+        )
+        let captionCueDiffResult = captionCueDiff(before: beforeCaptionCues, after: state.captionCues)
+        persistCaptionCueChanges(
+            created: captionCueDiffResult.created,
+            updated: captionCueDiffResult.updated,
+            deletedIds: captionCueDiffResult.deletedIds
         )
         objectWillChange.send()
     }
@@ -569,9 +593,12 @@ final class TimelineController: ObservableObject {
         for c in cues {
             let cue = CaptionCue(
                 groupId: groupId,
+                clipId: c.clipId,
                 text: c.text,
                 timelineStartUs: c.timelineStartUs,
-                timelineEndUs: c.timelineEndUs
+                timelineEndUs: c.timelineEndUs,
+                sourceStartUs: c.sourceStartUs,
+                sourceEndUs: c.sourceEndUs
             )
             try persistence.createCaptionCue(cue)
             saved.append(cue)
@@ -883,6 +910,12 @@ final class TimelineController: ObservableObject {
         let deletedIds: [String]
     }
 
+    private struct CaptionCueDiff {
+        let created: [CaptionCue]
+        let updated: [CaptionCue]
+        let deletedIds: [String]
+    }
+
     private func persistClipChanges(before: [Clip], after: [Clip]) {
         let diff = clipDiff(before: before, after: after)
         persistClipChanges(diff)
@@ -913,6 +946,20 @@ final class TimelineController: ObservableObject {
             for effectId in deletedIds { try persistence.deleteEffect(effectId: effectId) }
         } catch {
             print("Failed to persist effect changes: \(error)")
+        }
+
+        scheduleDebouncedMetadataSave()
+    }
+
+    private func persistCaptionCueChanges(created: [CaptionCue], updated: [CaptionCue], deletedIds: [String]) {
+        guard !created.isEmpty || !updated.isEmpty || !deletedIds.isEmpty else { return }
+
+        do {
+            for cue in created { try persistence.createCaptionCue(cue) }
+            for cue in updated { try persistence.updateCaptionCue(cue) }
+            for cueId in deletedIds { try persistence.deleteCaptionCue(cueId: cueId) }
+        } catch {
+            print("Failed to persist caption cue changes: \(error)")
         }
 
         scheduleDebouncedMetadataSave()
@@ -1000,6 +1047,23 @@ final class TimelineController: ObservableObject {
         return EffectDiff(created: created, updated: updated, deletedIds: deletedIds)
     }
 
+    private func captionCueDiff(before: [CaptionCue], after: [CaptionCue]) -> CaptionCueDiff {
+        let beforeById = Dictionary(uniqueKeysWithValues: before.map { ($0.cueId, $0) })
+        let afterById = Dictionary(uniqueKeysWithValues: after.map { ($0.cueId, $0) })
+        let beforeIds = Set(beforeById.keys)
+        let afterIds = Set(afterById.keys)
+
+        let created = afterIds.subtracting(beforeIds).compactMap { afterById[$0] }
+        let deletedIds = Array(beforeIds.subtracting(afterIds))
+        let updated = beforeIds.intersection(afterIds).compactMap { id -> CaptionCue? in
+            guard let prev = beforeById[id], let curr = afterById[id] else { return nil }
+            guard didCaptionCueChange(before: prev, after: curr) else { return nil }
+            return curr
+        }
+
+        return CaptionCueDiff(created: created, updated: updated, deletedIds: deletedIds)
+    }
+
     private func didEffectChange(before: Effect, after: Effect) -> Bool {
         before.type != after.type
             || before.appliesTo != after.appliesTo
@@ -1013,6 +1077,16 @@ final class TimelineController: ObservableObject {
             || before.sourceRange.end != after.sourceRange.end
             || before.timelineRange.start != after.timelineRange.start
             || before.timelineRange.end != after.timelineRange.end
+    }
+
+    private func didCaptionCueChange(before: CaptionCue, after: CaptionCue) -> Bool {
+        before.groupId != after.groupId
+            || before.clipId != after.clipId
+            || before.text != after.text
+            || before.timelineStartUs != after.timelineStartUs
+            || before.timelineEndUs != after.timelineEndUs
+            || before.sourceStartUs != after.sourceStartUs
+            || before.sourceEndUs != after.sourceEndUs
     }
 
     private static func actionSummary(_ actions: [Action]) -> String {
