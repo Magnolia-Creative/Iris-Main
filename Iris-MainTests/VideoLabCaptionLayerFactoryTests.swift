@@ -1,5 +1,6 @@
 import QuartzCore
 import Testing
+import UIKit
 @testable import Iris_Main
 
 struct VideoLabCaptionLayerFactoryTests {
@@ -36,7 +37,22 @@ struct VideoLabCaptionLayerFactoryTests {
         #expect(abs(textLayer.anchorPoint.y - 1.0) < 0.001)
     }
 
-    @Test func usesAbsoluteCueTimingForOpacityAnimation() throws {
+    @Test func scalesCaptionFontFromRenderSize() throws {
+        let layer = VideoLabCaptionLayerFactory.makeAnimationLayer(
+            cues: [makeCue()],
+            timelineDuration: 5,
+            renderSize: CGSize(width: 1920, height: 1080)
+        )
+
+        let textLayer = try #require(layer.sublayers?.first as? CATextLayer)
+        let attributed = try #require(textLayer.string as? NSAttributedString)
+        let font = try #require(attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+
+        #expect(abs(font.pointSize - 81) < 0.001)
+        #expect(abs(textLayer.cornerRadius - 45) < 0.001)
+    }
+
+    @Test func usesExportSafeTimelineOpacityAnimation() throws {
         let cue = makeCue(startTime: 12.25, endTime: 14.0, opacity: 0.75)
 
         let layer = VideoLabCaptionLayerFactory.makeAnimationLayer(
@@ -46,13 +62,34 @@ struct VideoLabCaptionLayerFactoryTests {
         )
 
         let textLayer = try #require(layer.sublayers?.first as? CATextLayer)
-        let opacity = try #require(textLayer.animation(forKey: "captionOpacity") as? CABasicAnimation)
+        let opacity = try #require(textLayer.animation(forKey: "captionOpacity") as? CAKeyframeAnimation)
 
-        #expect(abs(opacity.beginTime - 12.25) < 0.001)
-        #expect(abs(opacity.duration - 1.75) < 0.001)
-        #expect(opacity.fromValue as? Float == 0.75)
-        #expect(opacity.toValue as? Float == 0.75)
+        let keyTimes = try #require(opacity.keyTimes)
+        let values = try #require(opacity.values as? [Float])
+
+        #expect(abs(opacity.beginTime - AVCoreAnimationBeginTimeAtZero) < 0.001)
+        #expect(abs(opacity.duration - 20) < 0.001)
+        #expect(opacity.calculationMode == .discrete)
+        #expect(opacity.fillMode == .both)
+        #expect(opacity.isRemovedOnCompletion == false)
+        #expect(keyTimes.map(\.doubleValue) == [0, 0.6125, 0.7, 1])
+        #expect(values == [0, 0.75, 0, 0])
         #expect(textLayer.opacity == 0)
+    }
+
+    @Test func renderCompositionCarriesCaptionAnimationLayer() throws {
+        let cue = makeCue()
+        let input = RenderTimelineInput(
+            tracks: [],
+            captions: [cue],
+            outputSize: CGSize(width: 1920, height: 1080),
+            duration: 5
+        )
+
+        let composition = VideoLabTimelineAdapter.makeRenderComposition(from: input)
+
+        #expect(composition.animationLayer != nil)
+        #expect(composition.animationLayer?.bounds.size == CGSize(width: 1920, height: 1080))
     }
 
     private func makeCue(
