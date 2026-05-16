@@ -3,12 +3,27 @@ import SwiftUI
 struct PlaybackControls: View {
     @ObservedObject var playback: PlaybackController
     @ObservedObject var timeline: TimelineController
+    @Binding var showAspectSettings: Bool
+
+    init(
+        playback: PlaybackController,
+        timeline: TimelineController,
+        showAspectSettings: Binding<Bool> = .constant(false)
+    ) {
+        self.playback = playback
+        self.timeline = timeline
+        self._showAspectSettings = showAspectSettings
+    }
 
     var body: some View {
         ZStack {
             HStack {
-                Button {} label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                Button {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        showAspectSettings.toggle()
+                    }
+                } label: {
+                    Image(systemName: "gearshape")
                         .font(.system(size: 16))
                         .foregroundColor(Color.ds.text)
                         .padding(.spacing(.sp1))
