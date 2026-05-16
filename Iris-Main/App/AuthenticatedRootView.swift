@@ -21,7 +21,7 @@ struct AuthenticatedRootView: View {
     private var signedOutExperience: some View {
         GeometryReader { proxy in
             AuthView(isDismissable: false)
-                .clerkAppIcon(Image("Iris_Outline"))
+                .clerkAppIcon(Image("Iris_Outline").renderingMode(.template))
                 .contentMargins(.top, topScrollPadding(proxy: proxy), for: .scrollContent)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
