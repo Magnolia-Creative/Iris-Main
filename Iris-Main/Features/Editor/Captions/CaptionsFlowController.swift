@@ -56,7 +56,7 @@ final class CaptionsFlowController: ObservableObject {
         rangeStartUs = 0
         rangeEndUs = end
         phase = .processing
-        Task {
+        Task { @MainActor in
             await runProcessing(controller: controller)
         }
     }
@@ -109,6 +109,8 @@ final class CaptionsFlowController: ObservableObject {
             failToIdle("Invalid caption range.")
             return
         }
+
+        await controller.refreshBackendProjectMappingFromStoreIfNeeded()
 
         let backendProjectId = controller.state.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let timelineId = controller.state.timelineId

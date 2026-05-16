@@ -96,6 +96,26 @@ final class TimelineController: ObservableObject {
         }
     }
 
+    /// Reloads `TimelineState.backendProjectId` from SQLite when it is missing (e.g. after relink or before captions preflight).
+    @MainActor
+    internal func refreshBackendProjectMappingFromStoreIfNeeded() async {
+        let trimmed = state.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard trimmed.isEmpty else { return }
+        do {
+            let loaded = try persistence.loadTimelineData(timelineId: state.timelineId)
+            let bid = loaded.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !bid.isEmpty else { return }
+            state.backendProjectId = bid
+            Self.logger.notice(
+                "[TimelineController] refreshed backendProjectId from store timeline=\(self.state.timelineId, privacy: .public) backend=\(bid, privacy: .public)"
+            )
+        } catch {
+            Self.logger.error(
+                "[TimelineController] refreshBackendProjectMappingFromStore failed timeline=\(self.state.timelineId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
     @MainActor
     func applyInitialImportSeedIfNeeded(_ seed: ImportedTimelineSeed) async {
         guard !hasAppliedInitialImportSeed else { return }
