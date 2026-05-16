@@ -17,9 +17,9 @@ struct OutputAspectRatio: Equatable, Hashable, Codable, Sendable {
         return CGFloat(width) / CGFloat(height)
     }
 
-    /// Normalized pair with positive gcd-reduced values, or nil if invalid.
-    func normalized() -> OutputAspectRatio? {
-        guard width > 0, height > 0 else { return nil }
+    /// Normalized pair with positive gcd-reduced values.
+    func normalized() -> OutputAspectRatio {
+        guard width > 0, height > 0 else { return self }
         let g = Self.gcd(width, height)
         return OutputAspectRatio(width: width / g, height: height / g)
     }
