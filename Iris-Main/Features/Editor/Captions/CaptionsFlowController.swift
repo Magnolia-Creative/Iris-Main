@@ -202,35 +202,41 @@ final class CaptionsFlowController: ObservableObject {
         }
 
         var inputs: [CaptionsStitcher.ClipTranscriptInput] = []
-        var seenKeys = Set<String>()
+        var remoteByKey: [String: RemoteClipCaptions] = [:]
         var sawTranscriptNotReady = false
         var hadFetchFailure = false
 
-        for (clip, media) in overlapping {
+        for (clip, media) in clipsWithUploadKeys {
             guard let key = media.spec.clipUploadLocalKey, !key.isEmpty else { continue }
-            guard seenKeys.insert(key).inserted else { continue }
-            Self.logger.notice(
-                """
-                [CaptionsFlow] requesting captions timeline=\(timelineId, privacy: .public) \
-                backendProject=\(backendProjectId, privacy: .public) \
-                localKey=\(key, privacy: .public) \
-                clipId=\(clip.clipId, privacy: .public) \
-                mediaId=\(media.mediaId, privacy: .public) \
-                clipRangeUs=\(clip.timelineRange.start, privacy: .public)...\(clip.timelineRange.end, privacy: .public)
-                """
-            )
             do {
-                let remote = try await captionsService.fetchCaptions(projectId: backendProjectId, localKey: key)
-                Self.logger.notice(
-                    """
-                    [CaptionsFlow] captions loaded timeline=\(timelineId, privacy: .public) \
-                    localKey=\(key, privacy: .public) \
-                    clipId=\(remote.clipId, privacy: .public) \
-                    transcriptId=\(remote.transcriptId ?? -1, privacy: .public) \
-                    status=\(remote.processingStatus, privacy: .public) \
-                    sentenceCount=\(remote.sentences.count, privacy: .public)
-                    """
-                )
+                let remote: RemoteClipCaptions
+                if let cached = remoteByKey[key] {
+                    remote = cached
+                } else {
+                    Self.logger.notice(
+                        """
+                        [CaptionsFlow] requesting captions timeline=\(timelineId, privacy: .public) \
+                        backendProject=\(backendProjectId, privacy: .public) \
+                        localKey=\(key, privacy: .public) \
+                        clipId=\(clip.clipId, privacy: .public) \
+                        mediaId=\(media.mediaId, privacy: .public) \
+                        clipRangeUs=\(clip.timelineRange.start, privacy: .public)...\(clip.timelineRange.end, privacy: .public)
+                        """
+                    )
+                    remote = try await captionsService.fetchCaptions(projectId: backendProjectId, localKey: key)
+                    remoteByKey[key] = remote
+                    Self.logger.notice(
+                        """
+                        [CaptionsFlow] captions loaded timeline=\(timelineId, privacy: .public) \
+                        localKey=\(key, privacy: .public) \
+                        clipId=\(remote.clipId, privacy: .public) \
+                        transcriptId=\(remote.transcriptId ?? -1, privacy: .public) \
+                        status=\(remote.processingStatus, privacy: .public) \
+                        sentenceCount=\(remote.sentences.count, privacy: .public)
+                        """
+                    )
+                }
+
                 inputs.append(CaptionsStitcher.ClipTranscriptInput(clip: clip, media: media, captions: remote))
             } catch let captionsError as CaptionsServiceError {
                 hadFetchFailure = true
