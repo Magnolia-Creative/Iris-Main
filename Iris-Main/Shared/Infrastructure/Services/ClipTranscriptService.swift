@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum ClipTranscriptServiceError: LocalizedError {
     case invalidResponse
@@ -45,6 +46,10 @@ struct ClipTranscriptResponse: Decodable, Equatable, Sendable {
 }
 
 struct ClipTranscriptService: Sendable {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "ClipTranscriptService"
+    )
     private let session: URLSession
     private let authClient: AuthenticatedBackendClient
     private let decoder = JSONDecoder()
@@ -105,10 +110,14 @@ struct ClipTranscriptService: Sendable {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("[ClipTranscriptService] non-http response")
             throw ClipTranscriptServiceError.invalidResponse
         }
         guard (200 ..< 300).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            Self.logger.error(
+                "[ClipTranscriptService] request failed status=\(httpResponse.statusCode, privacy: .public) url=\(httpResponse.url?.absoluteString ?? "nil", privacy: .public) body=\(body, privacy: .public)"
+            )
             throw ClipTranscriptServiceError.requestFailed(statusCode: httpResponse.statusCode, body: body)
         }
     }

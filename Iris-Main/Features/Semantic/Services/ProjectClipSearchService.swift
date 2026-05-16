@@ -1,7 +1,12 @@
 import Foundation
+import OSLog
 
 /// Calls backend project-scoped semantic and transcript (sentence) search APIs.
 struct ProjectClipSearchService: Sendable {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "ProjectClipSearchService"
+    )
     private let session: URLSession
     private let authClient: AuthenticatedBackendClient
     private let decoder: JSONDecoder
@@ -78,10 +83,14 @@ struct ProjectClipSearchService: Sendable {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("[ProjectClipSearchService] non-http response")
             throw ProjectClipProcessingError.invalidResponse
         }
         guard (200 ..< 300).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            Self.logger.error(
+                "[ProjectClipSearchService] search failed status=\(httpResponse.statusCode, privacy: .public) url=\(httpResponse.url?.absoluteString ?? "nil", privacy: .public) body=\(body, privacy: .public)"
+            )
             throw ProjectClipProcessingError.requestFailed(statusCode: httpResponse.statusCode, body: body)
         }
     }

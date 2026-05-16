@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum IngestUploadError: LocalizedError {
     case invalidResponse
@@ -15,6 +16,10 @@ enum IngestUploadError: LocalizedError {
 }
 
 struct IngestUploadService {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "IngestUploadService"
+    )
     private let session: URLSession
     private let authClient: AuthenticatedBackendClient
 
@@ -35,11 +40,15 @@ struct IngestUploadService {
         let (data, response) = try await session.upload(for: request, from: body)
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("[IngestUploadService] non-http response endpoint=\(endpoint.absoluteString, privacy: .public)")
             throw IngestUploadError.invalidResponse
         }
 
         guard (200 ..< 300).contains(httpResponse.statusCode) else {
             let bodyText = String(data: data, encoding: .utf8) ?? ""
+            Self.logger.error(
+                "[IngestUploadService] upload failed status=\(httpResponse.statusCode, privacy: .public) endpoint=\(endpoint.absoluteString, privacy: .public) body=\(bodyText, privacy: .public)"
+            )
             throw IngestUploadError.requestFailed(statusCode: httpResponse.statusCode, body: bodyText)
         }
 

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum ProjectClipProcessingError: LocalizedError {
     case invalidResponse
@@ -18,6 +19,10 @@ enum ProjectClipProcessingError: LocalizedError {
 }
 
 struct ProjectClipProcessingService {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "ProjectClipProcessingService"
+    )
     private let session: URLSession
     private let authClient: AuthenticatedBackendClient
     private let decoder = JSONDecoder()
@@ -205,10 +210,14 @@ struct ProjectClipProcessingService {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
+            Self.logger.error("[ProjectClipProcessingService] non-http response")
             throw ProjectClipProcessingError.invalidResponse
         }
         guard (200 ..< 300).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            Self.logger.error(
+                "[ProjectClipProcessingService] request failed status=\(httpResponse.statusCode, privacy: .public) url=\(httpResponse.url?.absoluteString ?? "nil", privacy: .public) body=\(body, privacy: .public)"
+            )
             throw ProjectClipProcessingError.requestFailed(statusCode: httpResponse.statusCode, body: body)
         }
     }
