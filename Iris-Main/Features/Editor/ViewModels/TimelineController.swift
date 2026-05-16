@@ -594,6 +594,14 @@ final class TimelineController: ObservableObject {
         objectWillChange.send()
     }
 
+    @MainActor
+    func deleteCaptionGroup(groupId: String) throws {
+        try persistence.deleteCaptionGroup(groupId: groupId)
+        state.captionGroups.removeAll { $0.groupId == groupId }
+        state.captionCues.removeAll { $0.groupId == groupId }
+        objectWillChange.send()
+    }
+
     func moveClip(clipId: String, toStartTimeUs timeUs: Int64, orderedClipIds: [String]) {
         _ = timeUs
         applyActions([
