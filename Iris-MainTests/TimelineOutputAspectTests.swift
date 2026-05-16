@@ -54,6 +54,16 @@ struct TimelineOutputAspectTests {
         #expect(size == CGSize(width: 1080, height: 1920))
     }
 
+    @Test func renderInputOutputSizeFollowsManualAspectChanges() {
+        var state = TimelineState(timelineId: "timeline")
+
+        state.manualOutputAspect = OutputAspectRatio(width: 16, height: 9)
+        #expect(state.makeRenderTimelineInput().outputSize == CGSize(width: 1920, height: 1080))
+
+        state.manualOutputAspect = OutputAspectRatio(width: 9, height: 16)
+        #expect(state.makeRenderTimelineInput().outputSize == CGSize(width: 1080, height: 1920))
+    }
+
     @Test func derivedAspectRecoversAfterTimelineBecomesEmpty() {
         let timelineId = "timeline"
         let videoTrack = Track(trackId: "video-track", timelineId: timelineId, kind: .video)
