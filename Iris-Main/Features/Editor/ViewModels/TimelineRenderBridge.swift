@@ -24,6 +24,8 @@ final class TimelineRenderBridge: ObservableObject {
                     && old.clips.map(\.sourceRange.end) == new.clips.map(\.sourceRange.end)
                     && Self.clipColorFiltersByClipId(from: old.effects) == Self.clipColorFiltersByClipId(from: new.effects)
                     && Self.clipVolumesByClipId(from: old.effects) == Self.clipVolumesByClipId(from: new.effects)
+                    && old.captionGroups == new.captionGroups
+                    && old.captionCues == new.captionCues
             }
             .sink { [weak self] state in
                 self?.syncTimeline(from: state)
