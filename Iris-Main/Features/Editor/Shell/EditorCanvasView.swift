@@ -12,6 +12,31 @@ struct EditorCanvasView: View {
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
     var promptActionPreview: TimelinePromptActionPreview? = nil
+    @Binding var showPlaybackAspectSettings: Bool
+
+    init(
+        controller: TimelineController,
+        playbackController: PlaybackController?,
+        renderBridge: TimelineRenderBridge,
+        activeSpace: EditorSpace,
+        captionsFlow: CaptionsFlowController,
+        showPlaybackAspectSettings: Binding<Bool> = .constant(false),
+        onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
+        reviewFocusedClipIds: Set<String> = [],
+        isReviewInteractionDisabled: Bool = false,
+        promptActionPreview: TimelinePromptActionPreview? = nil
+    ) {
+        self.controller = controller
+        self.playbackController = playbackController
+        self.renderBridge = renderBridge
+        self.activeSpace = activeSpace
+        self.captionsFlow = captionsFlow
+        self._showPlaybackAspectSettings = showPlaybackAspectSettings
+        self.onAddSelection = onAddSelection
+        self.reviewFocusedClipIds = reviewFocusedClipIds
+        self.isReviewInteractionDisabled = isReviewInteractionDisabled
+        self.promptActionPreview = promptActionPreview
+    }
 
     private var showsPlaybackControls: Bool {
         activeSpace == .edit || activeSpace == .export
@@ -79,8 +104,23 @@ struct EditorCanvasView: View {
                 timelineViewContainer(state: state)
                     .padding(.top, timelineTopInset)
             }
+
+            if showPlaybackAspectSettings {
+                aspectSettingsOverlay
+                    .zIndex(90)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.92)
+                                .combined(with: .opacity)
+                                .combined(with: .offset(y: 8)),
+                            removal: .scale(scale: 0.96)
+                                .combined(with: .opacity)
+                        )
+                    )
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showPlaybackAspectSettings)
         .onChange(of: activeSpace) { _, newSpace in
             EditorDebugTrace.log(
                 "EditorCanvasView",
@@ -100,16 +140,42 @@ struct EditorCanvasView: View {
 
     private func timelineTopSection(playback: PlaybackController) -> some View {
         VStack(spacing: 0) {
-            PreviewSection(controller: playback, renderBridge: renderBridge)
+            PreviewSection(
+                controller: playback,
+                renderBridge: renderBridge,
+                previewAspect: controller.state.effectiveOutputAspect?.aspectCGFloat
+            )
                 .frame(height: previewHeight)
                 .padding(.horizontal, .sp3)
                 .padding(.bottom, previewBottomSpacing)
 
             if showsPlaybackControls {
-                PlaybackControls(playback: playback, timeline: controller)
+                PlaybackControls(
+                    playback: playback,
+                    timeline: controller,
+                    showAspectSettings: $showPlaybackAspectSettings
+                )
                     .padding(.horizontal, .sp4)
             }
         }
+    }
+
+    private var aspectSettingsOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showPlaybackAspectSettings = false
+                    }
+                }
+
+            PlaybackAspectSettingsPanel(
+                timeline: controller,
+                isPresented: $showPlaybackAspectSettings
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func timelineView(state: TimelineState, layout: TimelineLayout) -> some View {
