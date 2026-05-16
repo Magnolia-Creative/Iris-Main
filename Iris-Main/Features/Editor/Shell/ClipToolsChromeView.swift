@@ -24,27 +24,32 @@ struct ClipToolsChromeView: View {
         Self.isSliderExpandedTool(id: expandedToolId)
     }
 
+    private var expandedToolSelection: Binding<Int?> {
+        Binding(
+            get: { expandedToolId < 0 ? nil : expandedToolId },
+            set: { expandedToolId = $0 ?? -1 }
+        )
+    }
+
     var body: some View {
-        HStack(spacing: .spacing(.sp2)) {
-            if !isSliderExpanded {
+        EditorExpandableToolRow(
+            expandedToolId: expandedToolSelection,
+            showsLeadingWhenExpanded: !isSliderExpanded,
+            leading: {
                 clipDeselectButton
-                    .transition(
-                        .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
-                    )
-
-                EditorToolDivider()
-                    .transition(.opacity)
-            }
-
-            if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
-                clipToolsExpandedCluster(selected: selected)
-            } else {
+            },
+            collapsed: {
                 ScrollView(.horizontal, showsIndicators: false) {
                     clipToolsCollapsedStrip
                 }
                 .fixedSize(horizontal: true, vertical: false)
+            },
+            expanded: { toolId in
+                if let selected = clipTools.first(where: { $0.id == toolId }) {
+                    clipToolsExpandedCluster(selected: selected)
+                }
             }
-        }
+        )
     }
 
     private var clipDeselectButton: some View {

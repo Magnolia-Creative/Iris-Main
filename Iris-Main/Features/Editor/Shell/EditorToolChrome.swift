@@ -102,6 +102,70 @@ struct EditorToolPillLabel: View {
     }
 }
 
+struct EditorExpandableToolRow<ExpandedToolID: Equatable, Leading: View, Collapsed: View, Expanded: View>: View {
+    @Binding var expandedToolId: ExpandedToolID?
+    var showsLeadingWhenExpanded: Bool = true
+    var includesTrailingSpacer: Bool = false
+    let leading: () -> Leading
+    let collapsed: () -> Collapsed
+    let expanded: (ExpandedToolID) -> Expanded
+
+    init(
+        expandedToolId: Binding<ExpandedToolID?>,
+        showsLeadingWhenExpanded: Bool = true,
+        includesTrailingSpacer: Bool = false,
+        @ViewBuilder leading: @escaping () -> Leading,
+        @ViewBuilder collapsed: @escaping () -> Collapsed,
+        @ViewBuilder expanded: @escaping (ExpandedToolID) -> Expanded
+    ) {
+        self._expandedToolId = expandedToolId
+        self.showsLeadingWhenExpanded = showsLeadingWhenExpanded
+        self.includesTrailingSpacer = includesTrailingSpacer
+        self.leading = leading
+        self.collapsed = collapsed
+        self.expanded = expanded
+    }
+
+    private var isExpanded: Bool {
+        expandedToolId != nil
+    }
+
+    var body: some View {
+        HStack(spacing: .spacing(.sp2)) {
+            if !isExpanded || showsLeadingWhenExpanded {
+                leading()
+                    .transition(
+                        .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                    )
+
+                EditorToolDivider()
+                    .transition(.opacity)
+            }
+
+            ZStack(alignment: .leading) {
+                if let expandedToolId {
+                    expanded(expandedToolId)
+                        .transition(
+                            .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                        )
+                } else {
+                    collapsed()
+                        .transition(
+                            .opacity.combined(with: .scale(scale: 0.98, anchor: .leading))
+                        )
+                }
+            }
+            .contentTransition(.opacity)
+
+            if includesTrailingSpacer {
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(minHeight: .spacing(.sp8))
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isExpanded)
+    }
+}
+
 /// Applies `matchedGeometryEffect` only when `id` and `namespace` are non-nil.
 private struct EditorToolIconMatchModifier: ViewModifier {
     let id: String?

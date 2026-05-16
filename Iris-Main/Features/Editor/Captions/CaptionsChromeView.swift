@@ -42,25 +42,21 @@ private struct CaptionStyleEditorView: View {
     }
 
     var body: some View {
-        HStack(spacing: .spacing(.sp2)) {
-            deselectButton
-
-            EditorToolDivider()
-
-            ZStack(alignment: .leading) {
-                if let tool = expandedTool {
+        EditorExpandableToolRow(
+            expandedToolId: $flow.expandedStyleTool,
+            includesTrailingSpacer: true,
+            leading: {
+                deselectButton
+            },
+            collapsed: {
+                collapsedToolsStrip
+            },
+            expanded: { rawTool in
+                if let tool = CaptionTool(rawValue: rawTool) {
                     expandedRow(for: tool)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
-                } else {
-                    collapsedToolsStrip
-                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
                 }
             }
-            .contentTransition(.opacity)
-
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: .spacing(.sp8))
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: flow.expandedStyleTool)
         .onAppear { syncFromState() }
