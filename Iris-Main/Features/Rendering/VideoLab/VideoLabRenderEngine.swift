@@ -404,12 +404,27 @@ final class VideoLabRenderEngine: NSObject {
             return rect
         }()
 
+        let layout = Self.captionLayerLayout(
+            captionRenderSize: captionRenderSize,
+            visibleVideoRect: visibleVideoRect
+        )
+        captionLayer.anchorPoint = CGPoint(x: 0, y: 0)
+        captionLayer.bounds = layout.bounds
+        captionLayer.position = layout.position
+        captionLayer.setAffineTransform(layout.transform)
+    }
+
+    static func captionLayerLayout(
+        captionRenderSize: CGSize,
+        visibleVideoRect: CGRect
+    ) -> (bounds: CGRect, position: CGPoint, transform: CGAffineTransform) {
         let scaleX = visibleVideoRect.width / captionRenderSize.width
         let scaleY = visibleVideoRect.height / captionRenderSize.height
-        captionLayer.anchorPoint = CGPoint(x: 0, y: 0)
-        captionLayer.bounds = CGRect(origin: .zero, size: captionRenderSize)
-        captionLayer.position = visibleVideoRect.origin
-        captionLayer.setAffineTransform(CGAffineTransform(scaleX: scaleX, y: scaleY))
+        return (
+            bounds: CGRect(origin: .zero, size: captionRenderSize),
+            position: visibleVideoRect.origin,
+            transform: CGAffineTransform(scaleX: scaleX, y: scaleY)
+        )
     }
 
     private func installPlayerLayerVideoRectObserverIfNeeded(for layer: AVPlayerLayer) {
