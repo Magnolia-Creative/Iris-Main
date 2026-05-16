@@ -48,6 +48,47 @@ struct BackendProjectCaptionLinkageTests {
         #expect(loaded.mediaById[media.mediaId]?.spec.clipUploadLocalKey == "upload-local-key")
         #expect(loaded.clips.contains { $0.mediaId == media.mediaId })
     }
+
+    @Test func updateMediaSpecMergesWithoutErasingCaptionMetadata() throws {
+        let db = try DatabaseManager.makeInMemory()
+        let fixture = try seedMinimalProjectAndTimeline(in: db)
+        let media = try seedVideoMediaOnTimeline(in: db, fixture: fixture, localKey: "upload-local-key")
+
+        _ = try #require(try db.updateMediaSpec(mediaId: media.mediaId) { spec in
+            spec.transcriptID = "transcript-1"
+            spec.transcriptFullText = "hello world"
+            spec.transcriptSentences = [
+                MediaTranscriptSentence(
+                    text: "hello world",
+                    startTimeSeconds: 0,
+                    endTimeSeconds: 1,
+                    confidence: 0.9,
+                    speaker: nil,
+                    channel: nil
+                )
+            ]
+        })
+
+        let thumbnailUpdated = try #require(try db.updateMediaSpec(mediaId: media.mediaId) { spec in
+            spec.thumbnailStripPath = "thumbs/caption-upload.jpg"
+            spec.thumbnailStripHeight = 72
+            spec.thumbnailStripFrameCount = 12
+        })
+
+        #expect(thumbnailUpdated.spec.clipUploadLocalKey == "upload-local-key")
+        #expect(thumbnailUpdated.spec.transcriptID == "transcript-1")
+        #expect(thumbnailUpdated.spec.transcriptFullText == "hello world")
+        #expect(thumbnailUpdated.spec.transcriptSentences?.count == 1)
+        #expect(thumbnailUpdated.spec.thumbnailStripPath == "thumbs/caption-upload.jpg")
+
+        let keyUpdated = try #require(try db.updateMediaSpec(mediaId: media.mediaId) { spec in
+            spec.clipUploadLocalKey = "replacement-upload-key"
+        })
+
+        #expect(keyUpdated.spec.clipUploadLocalKey == "replacement-upload-key")
+        #expect(keyUpdated.spec.transcriptID == "transcript-1")
+        #expect(keyUpdated.spec.thumbnailStripFrameCount == 12)
+    }
 }
 
 private struct CaptionLinkageFixture {
