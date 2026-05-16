@@ -6,7 +6,7 @@ import VideoLab
 @testable import Iris_Main
 
 struct VideoLabCaptionLayerFactoryTests {
-    @Test func wrapsCaptionTextEveryEightWords() throws {
+    @Test func keepsShortCaptionTextOnOneLine() throws {
         let cue = makeCue(text: "one two three four five six seven eight nine ten")
 
         let layer = VideoLabCaptionLayerFactory.makeAnimationLayer(
@@ -18,13 +18,22 @@ struct VideoLabCaptionLayerFactoryTests {
         let textLayer = try #require(layer.sublayers?.first as? CATextLayer)
         let text = try #require(textLayer.string as? NSAttributedString).string
 
-        #expect(text == "one two three four five six seven eight\nnine ten")
+        #expect(text == "one two three four five six seven eight nine ten")
     }
 
     @Test func positionsCaptionAtBottomCenterOfRenderSpace() throws {
-        let renderSize = CGSize(width: 1920, height: 1080)
-        let cue = makeCue(position: SIMD2<Float>(0.5, 0.95))
+        try assertCaptionPosition(
+            renderSize: CGSize(width: 1920, height: 1080),
+            expected: CGPoint(x: 960, y: 1026)
+        )
+        try assertCaptionPosition(
+            renderSize: CGSize(width: 1080, height: 1920),
+            expected: CGPoint(x: 540, y: 1824)
+        )
+    }
 
+    private func assertCaptionPosition(renderSize: CGSize, expected: CGPoint) throws {
+        let cue = makeCue(position: SIMD2<Float>(0.5, 0.95))
         let layer = VideoLabCaptionLayerFactory.makeAnimationLayer(
             cues: [cue],
             timelineDuration: 5,
@@ -33,8 +42,8 @@ struct VideoLabCaptionLayerFactoryTests {
 
         let textLayer = try #require(layer.sublayers?.first as? CATextLayer)
 
-        #expect(abs(textLayer.position.x - 960) < 0.001)
-        #expect(abs(textLayer.position.y - 1026) < 0.001)
+        #expect(abs(textLayer.position.x - expected.x) < 0.001)
+        #expect(abs(textLayer.position.y - expected.y) < 0.001)
         #expect(abs(textLayer.anchorPoint.x - 0.5) < 0.001)
         #expect(abs(textLayer.anchorPoint.y - 1.0) < 0.001)
     }
