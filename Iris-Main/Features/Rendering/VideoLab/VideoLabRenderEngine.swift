@@ -32,6 +32,7 @@ final class VideoLabRenderEngine: NSObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var captionSyncLayer: AVSynchronizedLayer?
+    private var captionRenderSize: CGSize = .zero
     private var rebuildTask: Task<Void, Never>?
     private var isScrubbing: Bool = false
     /// Duration of the last built `AVPlayerItem` (after visual-track filtering). Used to clamp `currentTime` when it differs from `timeline.duration`.
@@ -80,7 +81,7 @@ final class VideoLabRenderEngine: NSObject {
     func layoutPlayerHost() {
         guard let view = playerHostView else { return }
         playerLayer?.frame = view.bounds
-        captionSyncLayer?.frame = view.bounds
+        layoutCaptionSyncLayer()
 #if DEBUG
         if view.bounds.width < 1 || view.bounds.height < 1 {
             VideoLabPreviewDiagnostics.logPlayerLayerReadyIfChanged(ready: playerLayer?.isReadyForDisplay ?? false, bounds: view.bounds)
@@ -175,6 +176,7 @@ final class VideoLabRenderEngine: NSObject {
         removeObservers()
         captionSyncLayer?.removeFromSuperlayer()
         captionSyncLayer = nil
+        captionRenderSize = .zero
 
         guard timeline.duration > 0 else {
             compositionDuration = 0
@@ -243,6 +245,8 @@ final class VideoLabRenderEngine: NSObject {
             sync.addSublayer(animationLayer)
             host.layer.addSublayer(sync)
             captionSyncLayer = sync
+            captionRenderSize = prepared.outputSize
+            layoutCaptionSyncLayer()
         }
 
         guard !Task.isCancelled else { return }
@@ -259,6 +263,33 @@ final class VideoLabRenderEngine: NSObject {
         } else {
             player?.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
         }
+    }
+
+    private func layoutCaptionSyncLayer() {
+        guard let host = playerHostView,
+              let sync = captionSyncLayer,
+              let captionLayer = sync.sublayers?.first,
+              captionRenderSize.width > 0,
+              captionRenderSize.height > 0 else {
+            return
+        }
+
+        sync.frame = host.bounds
+        let visibleVideoRect: CGRect = {
+            guard let rect = playerLayer?.videoRect,
+                  rect.width > 0,
+                  rect.height > 0 else {
+                return host.bounds
+            }
+            return rect
+        }()
+
+        let scaleX = visibleVideoRect.width / captionRenderSize.width
+        let scaleY = visibleVideoRect.height / captionRenderSize.height
+        captionLayer.anchorPoint = CGPoint(x: 0, y: 0)
+        captionLayer.bounds = CGRect(origin: .zero, size: captionRenderSize)
+        captionLayer.position = visibleVideoRect.origin
+        captionLayer.setAffineTransform(CGAffineTransform(scaleX: scaleX, y: scaleY))
     }
 
     private func syncCurrentTimeFromPlayer() {
