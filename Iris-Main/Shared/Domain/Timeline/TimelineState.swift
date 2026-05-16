@@ -23,12 +23,14 @@ struct TimelineState {
     /// Local project id for persisting playback/export settings.
     var projectId: String?
     /// Stored project export resolution (long edge semantics depend on orientation).
-    var projectResolutionWidth: Int
-    var projectResolutionHeight: Int
+    var projectResolutionWidth: Int?
+    var projectResolutionHeight: Int?
     /// User-selected canvas aspect persisted on `Project` (nil = follow first clip automatically).
     var manualOutputAspect: OutputAspectRatio?
     /// Aspect inferred from the earliest timeline visual clip with known media dimensions.
     var derivedOutputAspect: OutputAspectRatio?
+    /// Exact native pixel size from the same clip that drives `derivedOutputAspect`.
+    var derivedOutputPixelSize: CGSize?
 
     var pixelsPerSecond: CGFloat
     var currentTimeAtCenter: Int64
@@ -67,10 +69,11 @@ struct TimelineState {
         self.projectTitle = "Project"
         self.backendProjectId = nil
         self.projectId = nil
-        self.projectResolutionWidth = 1920
-        self.projectResolutionHeight = 1080
+        self.projectResolutionWidth = nil
+        self.projectResolutionHeight = nil
         self.manualOutputAspect = nil
         self.derivedOutputAspect = nil
+        self.derivedOutputPixelSize = nil
         self.pixelsPerSecond = 100
         self.currentTimeAtCenter = 0
         self.pendingImport = nil
@@ -154,8 +157,8 @@ struct TimelineState {
             self.projectResolutionHeight = project.resolutionHeight
             self.manualOutputAspect = project.manualOutputAspect
         } else {
-            self.projectResolutionWidth = 1920
-            self.projectResolutionHeight = 1080
+            self.projectResolutionWidth = nil
+            self.projectResolutionHeight = nil
             self.manualOutputAspect = nil
         }
         clearActionHistory()
