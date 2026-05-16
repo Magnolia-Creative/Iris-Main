@@ -577,17 +577,28 @@ extension ImportBrowserViewModel {
         }
         if let existingMediaID = clip.localMediaID {
             print("[ImportBrowser] local media already available localKey=\(localKey) mediaID=\(existingMediaID)")
-            if var media = try? db.getMedia(mediaId: existingMediaID) {
-                let trimmedKey = localKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                let existingUpload = media.spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                if !trimmedKey.isEmpty, existingUpload.caseInsensitiveCompare(trimmedKey) != .orderedSame {
-                    media.spec.clipUploadLocalKey = trimmedKey
-                    media.updatedAt = Date()
-                    try? db.update(media)
-                    print(
-                        "[ImportBrowser] backfilled clipUploadLocalKey for existing media mediaID=\(existingMediaID) localKey=\(trimmedKey)"
+            do {
+                if let media = try db.getMedia(mediaId: existingMediaID) {
+                    let trimmedKey = localKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let existingUpload = media.spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if !trimmedKey.isEmpty, existingUpload.caseInsensitiveCompare(trimmedKey) != .orderedSame {
+                        _ = try db.updateMediaSpec(mediaId: existingMediaID) { spec in
+                            spec.clipUploadLocalKey = trimmedKey
+                        }
+                        print(
+                            "[ImportBrowser] backfilled clipUploadLocalKey for existing media mediaID=\(existingMediaID) localKey=\(trimmedKey)"
+                        )
+                    }
+                } else {
+                    Self.transcriptPersistenceLog.warning(
+                        "clipUploadLocalKey backfill skipped missing media mediaID=\(existingMediaID, privacy: .public) localKey=\(localKey, privacy: .public)"
                     )
                 }
+            } catch {
+                Self.transcriptPersistenceLog.error(
+                    "clipUploadLocalKey backfill failed mediaID=\(existingMediaID, privacy: .public) localKey=\(localKey, privacy: .public) error=\(String(describing: error), privacy: .public)"
+                )
+                throw error
             }
             return existingMediaID
         }
@@ -617,10 +628,18 @@ extension ImportBrowserViewModel {
             guard let media = imported.first else {
                 throw makeLocalLibraryImportError("The clip could not be added to the local library.")
             }
-            var mediaWithUploadKey = media
-            mediaWithUploadKey.spec.clipUploadLocalKey = localKey
-            mediaWithUploadKey.updatedAt = Date()
-            try self.db.update(mediaWithUploadKey)
+            let trimmedKey = localKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedKey.isEmpty else {
+                throw makeLocalLibraryImportError("The selected clip is missing its upload key.")
+            }
+            guard let mediaWithUploadKey = try self.db.updateMediaSpec(
+                mediaId: media.mediaId,
+                mutate: { spec in
+                    spec.clipUploadLocalKey = trimmedKey
+                }
+            ) else {
+                throw makeLocalLibraryImportError("The imported clip could not be saved locally.")
+            }
             await MainActor.run {
                 self.updateClip(localKey: localKey) { clip in
                     clip.localMediaID = mediaWithUploadKey.mediaId
