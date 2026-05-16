@@ -37,18 +37,77 @@ struct BackendProjectCaptionLinkageTests {
         await controller.refreshBackendProjectMappingFromStoreIfNeeded()
         #expect(controller.state.backendProjectId == "163")
     }
+
+    @Test func timelinePersistenceSurfacesSavedClipUploadLocalKey() throws {
+        let db = try DatabaseManager.makeInMemory()
+        let fixture = try seedMinimalProjectAndTimeline(in: db)
+        let media = try seedVideoMediaOnTimeline(in: db, fixture: fixture, localKey: "upload-local-key")
+
+        let loaded = try TimelinePersistence(db: db).loadTimelineData(timelineId: fixture.timelineId)
+
+        #expect(loaded.mediaById[media.mediaId]?.spec.clipUploadLocalKey == "upload-local-key")
+        #expect(loaded.clips.contains { $0.mediaId == media.mediaId })
+    }
 }
 
 private struct CaptionLinkageFixture {
     let projectId: String
     let timelineId: String
+    let mediaLibraryId: String
 }
 
 private func seedMinimalProjectAndTimeline(in db: DatabaseManager) throws -> CaptionLinkageFixture {
     let projectId = "proj-caption-backend-link"
 
     try db.create(Project(projectId: projectId, name: "Caption Backend"))
-    try db.create(MediaLibrary(projectId: projectId))
+    let library = MediaLibrary(projectId: projectId)
+    try db.create(library)
     let timeline = try db.createTimeline(forProjectId: projectId)
-    return CaptionLinkageFixture(projectId: projectId, timelineId: timeline.timelineId)
+    return CaptionLinkageFixture(
+        projectId: projectId,
+        timelineId: timeline.timelineId,
+        mediaLibraryId: library.mediaLibraryId
+    )
+}
+
+@discardableResult
+private func seedVideoMediaOnTimeline(
+    in db: DatabaseManager,
+    fixture: CaptionLinkageFixture,
+    localKey: String
+) throws -> Media {
+    let assetReference = AssetReference(
+        assetRefId: "asset-caption-upload",
+        locationType: .local,
+        uri: "file:///caption-upload.mp4"
+    )
+    try db.create(assetReference)
+
+    var spec = MediaSpec()
+    spec.duration = 10
+    spec.width = 1920
+    spec.height = 1080
+    spec.clipUploadLocalKey = localKey
+    let media = Media(
+        mediaId: "media-caption-upload",
+        mediaLibraryId: fixture.mediaLibraryId,
+        kind: .video,
+        assetRefId: assetReference.assetRefId,
+        spec: spec
+    )
+    try db.create(media)
+
+    let videoTrack = try db
+        .ensureCoreTracks(forTimelineId: fixture.timelineId)
+        .first { $0.kind == .video }
+    let track = try #require(videoTrack)
+    try db.create(Clip(
+        clipId: "clip-caption-upload",
+        trackId: track.trackId,
+        mediaId: media.mediaId,
+        sourceRange: TimeRange(start: 0, end: 10_000_000),
+        timelineRange: TimeRange(start: 0, end: 10_000_000)
+    ))
+
+    return media
 }
