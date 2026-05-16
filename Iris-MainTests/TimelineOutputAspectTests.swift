@@ -31,18 +31,21 @@ struct TimelineOutputAspectTests {
             ]
         )
 
-        #expect(aspect == OutputAspectRatio(width: 1620, height: 1080))
+        #expect(aspect?.width == 1620)
+        #expect(aspect?.height == 1080)
     }
 
     @Test func manualAspectOverridesDerivedAspect() {
         var state = TimelineState(timelineId: "timeline")
         state.derivedOutputAspect = OutputAspectRatio(width: 16, height: 9)
 
-        #expect(state.effectiveOutputAspect == OutputAspectRatio(width: 16, height: 9))
+        #expect(state.effectiveOutputAspect?.width == 16)
+        #expect(state.effectiveOutputAspect?.height == 9)
 
         state.manualOutputAspect = OutputAspectRatio(width: 9, height: 16)
 
-        #expect(state.effectiveOutputAspect == OutputAspectRatio(width: 9, height: 16))
+        #expect(state.effectiveOutputAspect?.width == 9)
+        #expect(state.effectiveOutputAspect?.height == 16)
     }
 
     @Test func portraitPixelSizeUsesLongSide() {
@@ -66,7 +69,7 @@ struct TimelineOutputAspectTests {
         spec.duration = 1
         spec.width = width
         spec.height = height
-        Media(
+        return Media(
             mediaId: id,
             mediaLibraryId: "library",
             kind: kind,
