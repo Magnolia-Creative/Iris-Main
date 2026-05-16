@@ -290,6 +290,7 @@ struct EditorContainerView: View {
         .onTapGesture {
             withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                 controller.clearSelection()
+                captionsFlow.cancelStyleEditing()
             }
         }
         .onDisappear {
