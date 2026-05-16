@@ -62,19 +62,41 @@ enum VideoLabCaptionLayerFactory {
             ).cgColor
             textLayer.opacity = 0
 
+            let tStart = min(max(cue.startTime / duration, 0), 1)
+            let tEnd = min(max(cue.endTime / duration, 0), 1)
+            guard tEnd > tStart else {
+                textLayer.opacity = 0
+                root.addSublayer(textLayer)
+                continue
+            }
+
             let opacityAnim = CAKeyframeAnimation(keyPath: "opacity")
             opacityAnim.duration = duration
-            let t0 = 0.0
-            let t1 = cue.startTime / duration
-            let t2 = cue.endTime / duration
-            let t3 = 1.0
-            opacityAnim.keyTimes = [
-                NSNumber(value: t0),
-                NSNumber(value: min(max(t1, 0), 1)),
-                NSNumber(value: min(max(t2, 0), 1)),
-                NSNumber(value: t3),
-            ]
-            opacityAnim.values = [0, Float(cue.opacity), Float(cue.opacity), 0]
+            let op = Float(cue.opacity)
+            let almostOne = 1.0 - 1e-9
+
+            let keyTimes: [NSNumber]
+            let values: [Float]
+            if tStart > 1e-9 {
+                if tEnd < almostOne {
+                    keyTimes = [0, tStart, tEnd, 1].map(NSNumber.init(value:))
+                    values = [0, op, 0, 0]
+                } else {
+                    keyTimes = [0, tStart, 1].map(NSNumber.init(value:))
+                    values = [0, op, 0]
+                }
+            } else if tEnd < almostOne {
+                keyTimes = [0, tEnd, 1].map(NSNumber.init(value:))
+                values = [op, 0, 0]
+            } else {
+                let split = max(tEnd - 1e-6, 0)
+                keyTimes = [0, split, 1].map(NSNumber.init(value:))
+                values = [op, 0, 0]
+            }
+
+            opacityAnim.keyTimes = keyTimes
+            opacityAnim.values = values
+            opacityAnim.calculationMode = .discrete
             opacityAnim.beginTime = AVCoreAnimationBeginTimeAtZero
             opacityAnim.fillMode = .forwards
             opacityAnim.isRemovedOnCompletion = false
