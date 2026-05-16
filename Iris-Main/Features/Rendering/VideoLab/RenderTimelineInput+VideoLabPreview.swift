@@ -204,6 +204,52 @@ enum VideoLabPreviewDiagnostics {
         logger.debug("renderInput tracks=\(input.tracks.count) visualTracks=\(visual) audioTracks=\(audio) clips=\(clips) duration=\(input.duration) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height))")
     }
 
+    static func logRebuildScheduled(
+        generation: UInt64,
+        cancelledPrevious: Bool,
+        input: RenderTimelineInput,
+        hostBounds: CGRect
+    ) {
+        logger.debug(
+            "VideoLab rebuild scheduled generation=\(generation) cancelledPrevious=\(cancelledPrevious) duration=\(input.duration) clips=\(clipCount(input)) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height)) hostBounds=\(String(describing: hostBounds), privacy: .public)"
+        )
+    }
+
+    static func logRebuildStarted(
+        generation: UInt64,
+        input: RenderTimelineInput,
+        hostBounds: CGRect
+    ) {
+        logger.debug(
+            "VideoLab rebuild started generation=\(generation) duration=\(input.duration) clips=\(clipCount(input)) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height)) hostBounds=\(String(describing: hostBounds), privacy: .public)"
+        )
+    }
+
+    static func logRebuildCleared(
+        generation: UInt64,
+        reason: String,
+        input: RenderTimelineInput,
+        hostBounds: CGRect
+    ) {
+        logger.debug(
+            "VideoLab rebuild cleared generation=\(generation) reason=\(reason, privacy: .public) duration=\(input.duration) clips=\(clipCount(input)) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height)) hostBounds=\(String(describing: hostBounds), privacy: .public)"
+        )
+    }
+
+    static func logRebuildBuilding(
+        generation: UInt64,
+        input: RenderTimelineInput,
+        hostBounds: CGRect
+    ) {
+        logger.debug(
+            "VideoLab rebuild building generation=\(generation) duration=\(input.duration) clips=\(clipCount(input)) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height)) hostBounds=\(String(describing: hostBounds), privacy: .public)"
+        )
+    }
+
+    private static func clipCount(_ input: RenderTimelineInput) -> Int {
+        input.tracks.flatMap(\.clips).count
+    }
+
     static func logPlayerItemIfChanged(_ item: AVPlayerItem) {
         let sig = "\(item.status.rawValue)|\(item.error.map { String(describing: $0) } ?? "nil")|\(item.videoComposition != nil)"
         guard sig != lastPlayerItemSignature else { return }

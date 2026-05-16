@@ -34,6 +34,7 @@ final class VideoLabRenderEngine: NSObject {
     private var captionSyncLayer: AVSynchronizedLayer?
     private var captionRenderSize: CGSize = .zero
     private var rebuildTask: Task<Void, Never>?
+    private var rebuildGeneration: UInt64 = 0
     private var isScrubbing: Bool = false
     /// Duration of the last built `AVPlayerItem` (after visual-track filtering). Used to clamp `currentTime` when it differs from `timeline.duration`.
     private var compositionDuration: Double = 0
@@ -100,10 +101,21 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     private func scheduleRebuild() {
+        let cancelledPrevious = rebuildTask != nil
         rebuildTask?.cancel()
+        rebuildGeneration &+= 1
+        let generation = rebuildGeneration
         let snapshot = timeline
+#if DEBUG
+        VideoLabPreviewDiagnostics.logRebuildScheduled(
+            generation: generation,
+            cancelledPrevious: cancelledPrevious,
+            input: snapshot,
+            hostBounds: playerHostView?.bounds ?? .zero
+        )
+#endif
         rebuildTask = Task { [weak self] in
-            await self?.rebuildPlayer(from: snapshot)
+            await self?.rebuildPlayer(from: snapshot, generation: generation)
         }
     }
 
@@ -170,8 +182,16 @@ final class VideoLabRenderEngine: NSObject {
         return duration.seconds
     }
 
-    private func rebuildPlayer(from timeline: RenderTimelineInput) async {
+    private func rebuildPlayer(from timeline: RenderTimelineInput, generation: UInt64) async {
         guard !Task.isCancelled else { return }
+
+#if DEBUG
+        VideoLabPreviewDiagnostics.logRebuildStarted(
+            generation: generation,
+            input: timeline,
+            hostBounds: playerHostView?.bounds ?? .zero
+        )
+#endif
 
         removeObservers()
         captionSyncLayer?.removeFromSuperlayer()
@@ -179,6 +199,14 @@ final class VideoLabRenderEngine: NSObject {
         captionRenderSize = .zero
 
         guard timeline.duration > 0 else {
+#if DEBUG
+            VideoLabPreviewDiagnostics.logRebuildCleared(
+                generation: generation,
+                reason: "empty_duration",
+                input: timeline,
+                hostBounds: playerHostView?.bounds ?? .zero
+            )
+#endif
             compositionDuration = 0
             player?.replaceCurrentItem(with: nil)
             return
@@ -191,6 +219,12 @@ final class VideoLabRenderEngine: NSObject {
             compositionDuration = 0
             player?.replaceCurrentItem(with: nil)
 #if DEBUG
+            VideoLabPreviewDiagnostics.logRebuildCleared(
+                generation: generation,
+                reason: "prepared_empty",
+                input: prepared,
+                hostBounds: playerHostView?.bounds ?? .zero
+            )
             VideoLabPreviewDiagnostics.logTimelineSummary(prepared)
 #endif
             return
@@ -200,6 +234,11 @@ final class VideoLabRenderEngine: NSObject {
 
 #if DEBUG
         VideoLabPreviewDiagnostics.logTimelineSummary(prepared)
+        VideoLabPreviewDiagnostics.logRebuildBuilding(
+            generation: generation,
+            input: prepared,
+            hostBounds: playerHostView?.bounds ?? .zero
+        )
         await VideoLabPreviewDiagnostics.logPerAssetTrackSummary(for: prepared)
 #endif
 
