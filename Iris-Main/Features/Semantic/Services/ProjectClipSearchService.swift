@@ -3,10 +3,12 @@ import Foundation
 /// Calls backend project-scoped semantic and transcript (sentence) search APIs.
 struct ProjectClipSearchService: Sendable {
     private let session: URLSession
+    private let authClient: AuthenticatedBackendClient
     private let decoder: JSONDecoder
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()) {
         self.session = session
+        self.authClient = authClient
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         self.decoder = decoder
@@ -56,6 +58,7 @@ struct ProjectClipSearchService: Sendable {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         let decoded = try decoder.decode(SearchResponseDTO.self, from: data)

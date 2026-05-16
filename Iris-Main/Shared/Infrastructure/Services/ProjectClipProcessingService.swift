@@ -19,10 +19,12 @@ enum ProjectClipProcessingError: LocalizedError {
 
 struct ProjectClipProcessingService {
     private let session: URLSession
+    private let authClient: AuthenticatedBackendClient
     private let decoder = JSONDecoder()
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()) {
         self.session = session
+        self.authClient = authClient
     }
 
     func createRemoteProject(displayName: String?) async throws -> RemoteProjectCreateResponse {
@@ -32,6 +34,7 @@ struct ProjectClipProcessingService {
         let body = ["name": displayName].compactMapValues { $0 }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(RemoteProjectCreateResponse.self, from: data)
@@ -44,6 +47,7 @@ struct ProjectClipProcessingService {
         let body = ["session_name": sessionName].compactMapValues { $0 }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(RemoteImportSessionResponse.self, from: data)
@@ -67,6 +71,7 @@ struct ProjectClipProcessingService {
             visualFramesByLocalKey: filteredFrames,
             boundary: boundary
         )
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.upload(for: request, from: body)
         try validate(response: response, data: data)
         return try decoder.decode(IngestResponse.self, from: data)
@@ -74,14 +79,16 @@ struct ProjectClipProcessingService {
 
     func fetchProjectClipStatus(projectID: String) async throws -> IngestResponse {
         let endpoint = AppConfiguration.projectClipStatusEndpoint(projectID: projectID)
-        let (data, response) = try await session.data(from: endpoint)
+        let request = try await authClient.authenticatedRequest(URLRequest(url: endpoint))
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(IngestResponse.self, from: data)
     }
 
     func fetchSessionStatus(sessionID: String) async throws -> IngestResponse {
         let endpoint = AppConfiguration.sessionStatusEndpoint(sessionID: sessionID)
-        let (data, response) = try await session.data(from: endpoint)
+        let request = try await authClient.authenticatedRequest(URLRequest(url: endpoint))
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(IngestResponse.self, from: data)
     }
@@ -95,6 +102,7 @@ struct ProjectClipProcessingService {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "DELETE"
 
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(CancelClipResponse.self, from: data)

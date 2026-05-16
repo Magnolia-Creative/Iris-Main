@@ -46,10 +46,12 @@ struct ClipTranscriptResponse: Decodable, Equatable, Sendable {
 
 struct ClipTranscriptService: Sendable {
     private let session: URLSession
+    private let authClient: AuthenticatedBackendClient
     private let decoder = JSONDecoder()
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()) {
         self.session = session
+        self.authClient = authClient
     }
 
     func transcribe(_ asset: ProcessedAudioAsset) async throws -> ClipTranscriptResponse {
@@ -66,6 +68,7 @@ struct ClipTranscriptService: Sendable {
         request.timeoutInterval = 180
 
         let body = try makeMultipartBody(asset: asset, boundary: boundary)
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.upload(for: request, from: body)
         if let httpResponse = response as? HTTPURLResponse {
             print(

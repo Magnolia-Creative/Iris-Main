@@ -90,10 +90,12 @@ struct CaptionsService: Sendable {
         category: "CaptionsService"
     )
     private let session: URLSession
+    private let authClient: AuthenticatedBackendClient
     private let decoder: JSONDecoder
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()) {
         self.session = session
+        self.authClient = authClient
         let d = JSONDecoder()
         d.keyDecodingStrategy = .useDefaultKeys
         self.decoder = d
@@ -115,6 +117,7 @@ struct CaptionsService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 120
+        request = try await authClient.authenticatedRequest(request)
         Self.logger.notice(
             "[CaptionsService] request projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public) url=\(url.absoluteString, privacy: .public)"
         )

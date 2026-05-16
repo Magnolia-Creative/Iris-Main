@@ -16,9 +16,11 @@ enum IngestUploadError: LocalizedError {
 
 struct IngestUploadService {
     private let session: URLSession
+    private let authClient: AuthenticatedBackendClient
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()) {
         self.session = session
+        self.authClient = authClient
     }
 
     func upload(_ assets: [ProcessedAudioAsset], to endpoint: URL) async throws -> UploadResponse {
@@ -29,6 +31,7 @@ struct IngestUploadService {
         request.timeoutInterval = 120
 
         let body = try makeMultipartBody(assets: assets, boundary: boundary)
+        request = try await authClient.authenticatedRequest(request)
         let (data, response) = try await session.upload(for: request, from: body)
 
         guard let httpResponse = response as? HTTPURLResponse else {

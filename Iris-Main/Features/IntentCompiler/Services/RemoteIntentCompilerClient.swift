@@ -10,15 +10,18 @@ final class RemoteIntentCompilerClient {
     )
 
     private let urlSession: URLSession
+    private let authClient: AuthenticatedBackendClient
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
     init(
         urlSession: URLSession = .shared,
+        authClient: AuthenticatedBackendClient = AuthenticatedBackendClient(),
         encoder: JSONEncoder = JSONEncoder(),
         decoder: JSONDecoder = JSONDecoder()
     ) {
         self.urlSession = urlSession
+        self.authClient = authClient
         self.encoder = encoder
         self.decoder = decoder
     }
@@ -38,6 +41,7 @@ final class RemoteIntentCompilerClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(RemoteIntentRunCreatePayload(prompt: prompt, context: context))
+        request = try await authClient.authenticatedRequest(request)
         Self.logger.info(
             "[IntentRun] POST \(AppConfiguration.intentRunsEndpoint.absoluteString, privacy: .public) promptChars=\(prompt.count, privacy: .public) timeline=\(context.timelineId, privacy: .public) selectedClip=\(context.selectedClipId ?? "nil", privacy: .public) clips=\(context.clipsById.count, privacy: .public) transcripts=\(context.transcriptContextsByClipId.count, privacy: .public)"
         )
