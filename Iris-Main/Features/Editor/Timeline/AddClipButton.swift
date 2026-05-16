@@ -8,35 +8,30 @@ struct AddClipButton: View {
     @State private var activeMenuOption: MenuOption?
 
     var body: some View {
-        VStack(spacing: .spacing(.sp2)) {
+        Button {
+            guard !isMenuOpen else { return }
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) { isMenuOpen = true }
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: .spacing(.sp2))
+                    .fill(Color.ds.bg.opacity(0.75))
+                    .frame(width: size, height: size)
+                    .overlay(RoundedRectangle(cornerRadius: .spacing(.sp2)).stroke(Color.ds.accentFg, lineWidth: 2))
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(Color.ds.accentFg)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+        }
+        .buttonStyle(.plain)
+        .frame(width: size, height: size)
+        .opacity(isMenuOpen ? 0 : 1)
+        .allowsHitTesting(!isMenuOpen)
+        .overlay(alignment: .trailing) {
             if isMenuOpen {
-                HStack {
-                    Spacer(minLength: 0)
-                    menuPanel
-                    Spacer(minLength: 0)
-                }
-            } else {
-                HStack {
-                    Spacer(minLength: 0)
-                    Button {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) { isMenuOpen = true }
-                    } label: {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: .spacing(.sp2))
-                                .fill(Color.ds.bg.opacity(0.75))
-                                .frame(width: size, height: size)
-                                .overlay(RoundedRectangle(cornerRadius: .spacing(.sp2)).stroke(Color.ds.accentFg, lineWidth: 2))
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(Color.ds.accentFg)
-                        }
-                        .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
-                    }
-                    .buttonStyle(.plain)
-                }
+                menuPanel
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topTrailing)
         .onChange(of: isMenuOpen) { _, isOpen in
             if !isOpen { activeMenuOption = nil }
         }
