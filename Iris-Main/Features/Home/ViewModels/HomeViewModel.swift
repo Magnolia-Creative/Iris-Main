@@ -38,6 +38,11 @@ final class HomeViewModel: ObservableObject {
         isPresentingProjectSetup = true
     }
 
+    func returnHomeFromEditor() {
+        selectedProject = nil
+        isPresentingProjectSetup = false
+    }
+
     func presentProfile() {
         isPresentingProfile = true
     }

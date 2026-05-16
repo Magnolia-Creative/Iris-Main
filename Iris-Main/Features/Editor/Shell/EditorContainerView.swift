@@ -5,6 +5,7 @@ internal import Combine
 struct EditorContainerView: View {
     let timelineId: String
     let initialImportSeed: ImportedTimelineSeed?
+    let onReturnHome: (() -> Void)?
     @StateObject private var controller: TimelineController
     @StateObject private var captionsFlow = CaptionsFlowController()
     @StateObject private var editorPromptBarViewModel: EditorPromptBarViewModel
@@ -22,10 +23,12 @@ struct EditorContainerView: View {
     init(
         timelineId: String,
         initialImportSeed: ImportedTimelineSeed? = nil,
-        agentSession: AgentViewModel? = nil
+        agentSession: AgentViewModel? = nil,
+        onReturnHome: (() -> Void)? = nil
     ) {
         self.timelineId = timelineId
         self.initialImportSeed = initialImportSeed
+        self.onReturnHome = onReturnHome
         let timelineController = TimelineController(timelineId: timelineId)
         self._controller = StateObject(wrappedValue: timelineController)
         self._editorPromptBarViewModel = StateObject(
@@ -446,9 +449,7 @@ struct EditorContainerView: View {
                 .foregroundColor(Color.ds.text)
 
             HStack {
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: returnHome) {
                     HStack(spacing: .spacing(.sp1)) {
                         Image(systemName: "arrow.left")
                             .font(.system(size: 12, weight: .regular))
@@ -474,9 +475,7 @@ struct EditorContainerView: View {
                 .foregroundColor(Color.ds.text)
 
             HStack {
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: returnHome) {
                     HStack(spacing: .spacing(.sp1)) {
                         Image(systemName: "arrow.left")
                             .font(.system(size: 12, weight: .regular))
@@ -500,6 +499,14 @@ struct EditorContainerView: View {
         .padding(.horizontal, .spacing(.sp5))
         .padding(.top, .spacing(.sp2))
         .padding(.bottom, .spacing(.sp1))
+    }
+
+    private func returnHome() {
+        if let onReturnHome {
+            onReturnHome()
+        } else {
+            dismiss()
+        }
     }
 
     private func photosFilter(for kind: TrackKind?) -> PHPickerFilter {

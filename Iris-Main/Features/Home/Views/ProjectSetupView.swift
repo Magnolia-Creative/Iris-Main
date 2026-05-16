@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProjectSetupView: View {
+    let onReturnHome: (() -> Void)?
     @State private var screen: Screen = .chooser
     @State private var navigateToEditor = false
     @State private var createdTimelineId: String?
@@ -27,7 +28,8 @@ struct ProjectSetupView: View {
         var label: String { "\(rawValue) fps" }
     }
 
-    init() {
+    init(onReturnHome: (() -> Void)? = nil) {
+        self.onReturnHome = onReturnHome
         _introTitle = State(initialValue: Self.introPhrases.randomElement() ?? "Begin your Magnum Opus")
     }
 
@@ -58,7 +60,7 @@ struct ProjectSetupView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $navigateToEditor) {
             if let id = createdTimelineId {
-                EditorContainerView(timelineId: id)
+                EditorContainerView(timelineId: id, onReturnHome: onReturnHome)
             }
         }
         .toolbar {
@@ -84,7 +86,7 @@ struct ProjectSetupView: View {
     private var automakeContent: some View {
         Group {
             if let timelineId = createdTimelineId {
-                ImportView(timelineId: timelineId)
+                ImportView(timelineId: timelineId, onReturnHome: onReturnHome)
             } else {
                 Spacer(minLength: 0)
             }

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ImportView: View {
     let timelineId: String?
+    let onReturnHome: (() -> Void)?
     @StateObject private var viewModel: ImportBrowserViewModel
     @StateObject private var agentViewModel = AgentViewModel()
     @State private var editorLaunchDestination: EditorLaunchDestination?
@@ -26,8 +27,9 @@ struct ImportView: View {
         Double(ctaFadeExtension / ctaContainerHeight)
     }
 
-    init(timelineId: String? = nil) {
+    init(timelineId: String? = nil, onReturnHome: (() -> Void)? = nil) {
         self.timelineId = timelineId
+        self.onReturnHome = onReturnHome
         _viewModel = StateObject(wrappedValue: ImportBrowserViewModel(timelineId: timelineId))
     }
 
@@ -57,7 +59,8 @@ struct ImportView: View {
             EditorContainerView(
                 timelineId: destination.timelineId,
                 initialImportSeed: destination.seed,
-                agentSession: agentViewModel
+                agentSession: agentViewModel,
+                onReturnHome: onReturnHome
             )
         }
         .sheet(isPresented: $showsImportSheet) {

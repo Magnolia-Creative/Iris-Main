@@ -22,7 +22,7 @@ struct HomeView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $viewModel.isPresentingProjectSetup) {
-                ProjectSetupView()
+                ProjectSetupView(onReturnHome: viewModel.returnHomeFromEditor)
             }
             .navigationDestination(item: $viewModel.selectedProject) { project in
                 editorDestination(for: project)
@@ -311,7 +311,10 @@ struct HomeView: View {
     @ViewBuilder
     private func editorDestination(for project: Project) -> some View {
         if let timeline = try? DatabaseManager.shared.getTimeline(forProjectId: project.projectId) {
-            EditorContainerView(timelineId: timeline.timelineId)
+            EditorContainerView(
+                timelineId: timeline.timelineId,
+                onReturnHome: viewModel.returnHomeFromEditor
+            )
         } else {
             Text("No timeline found")
                 .foregroundColor(Color.ds.textMuted)
