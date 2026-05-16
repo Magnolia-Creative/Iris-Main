@@ -47,6 +47,20 @@ final class ProjectCoverService {
         return await ensureCover(for: project, preferredMedia: preferredMedia, overwrite: overwrite)
     }
 
+    /// Removes cached preview and on-disk JPEG for this project (best-effort).
+    func removeStoredCover(forProjectId projectId: String, coverImagePath: String?) {
+        coverCache.removeObject(forKey: cacheKey(for: projectId))
+        if let path = coverImagePath,
+           let resolved = AppSandboxFileURI.resolveFileURL(storedURI: path),
+           FileManager.default.fileExists(atPath: resolved.path) {
+            try? FileManager.default.removeItem(at: resolved)
+        }
+        if let url = try? projectCoverURL(for: projectId),
+           FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     @discardableResult
     private func ensureCover(for project: Project, preferredMedia: Media?, overwrite: Bool) async -> UIImage? {
         if !overwrite, let cached = cachedCover(for: project.projectId) {
@@ -91,7 +105,7 @@ final class ProjectCoverService {
 
         do {
             try data.write(to: url, options: .atomic)
-            return url.path
+            return AppSandboxFileURI.canonicalStoredPath(forFileAt: url)
         } catch {
             return nil
         }
@@ -118,8 +132,9 @@ final class ProjectCoverService {
 
     private func storedCover(at path: String?, projectId: String) -> UIImage? {
         guard let path,
-              FileManager.default.fileExists(atPath: path),
-              let image = UIImage(contentsOfFile: path) else {
+              let resolved = AppSandboxFileURI.resolveFileURL(storedURI: path),
+              FileManager.default.fileExists(atPath: resolved.path),
+              let image = UIImage(contentsOfFile: resolved.path) else {
             return nil
         }
         coverCache.setObject(image, forKey: cacheKey(for: projectId))

@@ -13,12 +13,9 @@ extension TimelineState {
                 guard let media = mediaById[clip.mediaId] else { return nil }
 
                 let assetURL: URL
-                if let assetRef = try? DatabaseManager.shared.getAssetReference(assetRefId: media.assetRefId) {
-                    if assetRef.uri.hasPrefix("/") {
-                        assetURL = URL(fileURLWithPath: assetRef.uri)
-                    } else {
-                        return nil
-                    }
+                if let assetRef = try? DatabaseManager.shared.getAssetReference(assetRefId: media.assetRefId),
+                   let resolved = AppSandboxFileURI.resolveFileURL(storedURI: assetRef.uri) {
+                    assetURL = resolved
                 } else {
                     return nil
                 }
@@ -62,7 +59,7 @@ extension TimelineState {
         return RenderTimelineInput(
             tracks: renderTracks,
             captions: makeRenderCaptionInputs(),
-            outputSize: CGSize(width: 1920, height: 1080),
+            outputSize: (effectiveOutputAspect ?? OutputAspectRatio(width: 16, height: 9)).pixelSize(longSide: 1920),
             duration: timelineDurationSeconds
         )
     }
