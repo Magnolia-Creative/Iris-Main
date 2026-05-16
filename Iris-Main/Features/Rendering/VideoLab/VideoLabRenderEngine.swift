@@ -34,7 +34,9 @@ final class VideoLabRenderEngine: NSObject {
     private var captionSyncLayer: AVSynchronizedLayer?
     private var captionRenderSize: CGSize = .zero
     private var rebuildTask: Task<Void, Never>?
+    private var boundsRetryTask: Task<Void, Never>?
     private var rebuildGeneration: UInt64 = 0
+    private var waitingForNonzeroHostBounds = false
     private var isScrubbing: Bool = false
     /// Duration of the last built `AVPlayerItem` (after visual-track filtering). Used to clamp `currentTime` when it differs from `timeline.duration`.
     private var compositionDuration: Double = 0
@@ -83,6 +85,12 @@ final class VideoLabRenderEngine: NSObject {
         guard let view = playerHostView else { return }
         playerLayer?.frame = view.bounds
         layoutCaptionSyncLayer()
+        if waitingForNonzeroHostBounds, hasNonzeroHostBounds {
+            waitingForNonzeroHostBounds = false
+            boundsRetryTask?.cancel()
+            boundsRetryTask = nil
+            scheduleRebuild()
+        }
 #if DEBUG
         if view.bounds.width < 1 || view.bounds.height < 1 {
             VideoLabPreviewDiagnostics.logPlayerLayerReadyIfChanged(ready: playerLayer?.isReadyForDisplay ?? false, bounds: view.bounds)
@@ -117,6 +125,11 @@ final class VideoLabRenderEngine: NSObject {
         rebuildTask = Task { [weak self] in
             await self?.rebuildPlayer(from: snapshot, generation: generation)
         }
+    }
+
+    private var hasNonzeroHostBounds: Bool {
+        guard let bounds = playerHostView?.bounds else { return false }
+        return bounds.width > 0 && bounds.height > 0
     }
 
     func play() {
@@ -189,6 +202,9 @@ final class VideoLabRenderEngine: NSObject {
         isScrubbing = false
         compositionDuration = 0
         currentTime = 0
+        waitingForNonzeroHostBounds = false
+        boundsRetryTask?.cancel()
+        boundsRetryTask = nil
         removeObservers()
         removeCaptionSyncLayer()
         playerLayer?.player = nil
@@ -281,6 +297,11 @@ final class VideoLabRenderEngine: NSObject {
             player = AVPlayer()
         }
 
+        guard hasNonzeroHostBounds else {
+            deferRebuildUntilHostBounds(generation: generation, input: prepared)
+            return
+        }
+
         // Observe the new item before attaching it so status/videoComposition KVO is not missed during transition.
         addObservers(for: item)
 
@@ -320,6 +341,40 @@ final class VideoLabRenderEngine: NSObject {
 
         seekPlayer(to: min(currentTime, prepared.duration))
         onTimeChanged?(currentTime)
+    }
+
+    private func deferRebuildUntilHostBounds(generation: UInt64, input: RenderTimelineInput) {
+        guard isRebuildCurrent(generation, stage: "defer_zero_bounds") else { return }
+        waitingForNonzeroHostBounds = true
+#if DEBUG
+        VideoLabPreviewDiagnostics.logRebuildDeferredForBounds(
+            generation: generation,
+            input: input,
+            hostBounds: playerHostView?.bounds ?? .zero
+        )
+#endif
+        boundsRetryTask?.cancel()
+        boundsRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            await self?.retryRebuildAfterBoundsWait(generation: generation)
+        }
+    }
+
+    private func retryRebuildAfterBoundsWait(generation: UInt64) {
+        guard waitingForNonzeroHostBounds else { return }
+        guard isRebuildCurrent(generation, stage: "bounds_retry") else { return }
+        guard hasNonzeroHostBounds else {
+#if DEBUG
+            VideoLabPreviewDiagnostics.logRebuildStillWaitingForBounds(
+                generation: generation,
+                hostBounds: playerHostView?.bounds ?? .zero
+            )
+#endif
+            return
+        }
+        waitingForNonzeroHostBounds = false
+        boundsRetryTask = nil
+        scheduleRebuild()
     }
 
     private func seekPlayer(to seconds: Double) {

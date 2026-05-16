@@ -256,6 +256,25 @@ enum VideoLabPreviewDiagnostics {
         )
     }
 
+    static func logRebuildDeferredForBounds(
+        generation: UInt64,
+        input: RenderTimelineInput,
+        hostBounds: CGRect
+    ) {
+        logger.debug(
+            "VideoLab rebuild deferred for host bounds generation=\(generation) duration=\(input.duration) clips=\(clipCount(input)) output=\(Int(input.outputSize.width))x\(Int(input.outputSize.height)) hostBounds=\(String(describing: hostBounds), privacy: .public)"
+        )
+    }
+
+    static func logRebuildStillWaitingForBounds(
+        generation: UInt64,
+        hostBounds: CGRect
+    ) {
+        logger.debug(
+            "VideoLab rebuild still waiting for host bounds generation=\(generation) hostBounds=\(String(describing: hostBounds), privacy: .public)"
+        )
+    }
+
     private static func clipCount(_ input: RenderTimelineInput) -> Int {
         input.tracks.flatMap(\.clips).count
     }
