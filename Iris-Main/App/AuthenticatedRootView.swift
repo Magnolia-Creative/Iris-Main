@@ -20,17 +20,10 @@ struct AuthenticatedRootView: View {
 
     private var signedOutExperience: some View {
         GeometryReader { proxy in
-            let top = verticalCenteringPadding(proxy: proxy)
-            let bg = clerkTheme.colors.background
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(bg)
-                    .frame(height: top)
-
-                AuthView(isDismissable: false)
-                    .clerkAppIcon(Image("Iris_Outline"))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            AuthView(isDismissable: false)
+                .clerkAppIcon(Image("Iris_Outline"))
+                .contentMargins(.top, topScrollPadding(proxy: proxy), for: .scrollContent)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(clerkTheme.colors.background.ignoresSafeArea())
         .prefetchClerkImages()
@@ -56,9 +49,9 @@ struct AuthenticatedRootView: View {
         }
     }
 
-    private func verticalCenteringPadding(proxy: GeometryProxy) -> CGFloat {
+    private func topScrollPadding(proxy: GeometryProxy) -> CGFloat {
         let estimate = estimatedAuthFormHeight(for: dynamicTypeSize)
         let raw = (proxy.size.height - estimate) / 2
-        return max(0, raw)
+        return max(0, raw * 0.65)
     }
 }
