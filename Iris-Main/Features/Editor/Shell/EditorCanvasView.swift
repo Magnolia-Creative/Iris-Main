@@ -161,6 +161,7 @@ struct EditorCanvasView: View {
             captionCues: state.captionCues,
             selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
             onCaptionCueSelected: { cueId in
+                controller.clearSelection()
                 captionsFlow.openStyleEditor(forCueId: cueId)
             },
             onClipSelected: {
