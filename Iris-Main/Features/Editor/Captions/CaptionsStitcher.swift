@@ -49,19 +49,19 @@ enum CaptionsStitcher {
                 guard overlaps else { continue }
 
                 if fullyInside {
-                    if let cue = cueForSentence(
-                        text: sentence.text,
+                    appendChunks(
+                        sentenceText: sentence.text,
                         sourceStartSec: ss,
                         sourceEndSec: se,
+                        words: sentence.words,
                         clip: item.clip,
                         t0: t0,
                         s0: s0,
                         timelineDur: timelineDur,
                         sourceDur: sourceDur,
-                        clampRange: rangeStartUs...rangeEndUs
-                    ) {
-                        cues.append(cue)
-                    }
+                        clampRange: rangeStartUs...rangeEndUs,
+                        cues: &cues
+                    )
                     continue
                 }
 
@@ -70,38 +70,36 @@ enum CaptionsStitcher {
                     guard !trimmed.isEmpty else { continue }
                     let wStart = trimmed.first!.start
                     let wEnd = trimmed.last!.end
-                    let joined = trimmed.map(\.word).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !joined.isEmpty else { continue }
-                    if let cue = cueForSentence(
-                        text: joined,
+                    appendChunks(
+                        sentenceText: trimmed.map(\.word).joined(separator: " "),
                         sourceStartSec: wStart,
                         sourceEndSec: wEnd,
+                        words: trimmed,
                         clip: item.clip,
                         t0: t0,
                         s0: s0,
                         timelineDur: timelineDur,
                         sourceDur: sourceDur,
-                        clampRange: rangeStartUs...rangeEndUs
-                    ) {
-                        cues.append(cue)
-                    }
+                        clampRange: rangeStartUs...rangeEndUs,
+                        cues: &cues
+                    )
                 } else {
                     let clampedStart = max(ss, windowStartSec)
                     let clampedEnd = min(se, windowEndSec)
                     guard clampedEnd > clampedStart else { continue }
-                    if let cue = cueForSentence(
-                        text: sentence.text,
+                    appendChunks(
+                        sentenceText: sentence.text,
                         sourceStartSec: clampedStart,
                         sourceEndSec: clampedEnd,
+                        words: nil,
                         clip: item.clip,
                         t0: t0,
                         s0: s0,
                         timelineDur: timelineDur,
                         sourceDur: sourceDur,
-                        clampRange: rangeStartUs...rangeEndUs
-                    ) {
-                        cues.append(cue)
-                    }
+                        clampRange: rangeStartUs...rangeEndUs,
+                        cues: &cues
+                    )
                 }
             }
         }
@@ -118,7 +116,44 @@ enum CaptionsStitcher {
         words.filter { $0.end > windowStart && $0.start < windowEnd }
     }
 
-    private static func cueForSentence(
+    private static func appendChunks(
+        sentenceText: String,
+        sourceStartSec: Double,
+        sourceEndSec: Double,
+        words: [RemoteCaptionWord]?,
+        clip: Clip,
+        t0: Int64,
+        s0: Int64,
+        timelineDur: Double,
+        sourceDur: Double,
+        clampRange: ClosedRange<Int64>,
+        cues: inout [CaptionCue]
+    ) {
+        let chunks = CaptionSentenceChunker.chunk(
+            sentenceText: sentenceText,
+            sentenceStart: sourceStartSec,
+            sentenceEnd: sourceEndSec,
+            words: words
+        )
+
+        for chunk in chunks {
+            if let cue = cueForChunk(
+                text: chunk.text,
+                sourceStartSec: chunk.startSec,
+                sourceEndSec: chunk.endSec,
+                clip: clip,
+                t0: t0,
+                s0: s0,
+                timelineDur: timelineDur,
+                sourceDur: sourceDur,
+                clampRange: clampRange
+            ) {
+                cues.append(cue)
+            }
+        }
+    }
+
+    private static func cueForChunk(
         text: String,
         sourceStartSec: Double,
         sourceEndSec: Double,
@@ -141,9 +176,12 @@ enum CaptionsStitcher {
 
         return CaptionCue(
             groupId: "",
+            clipId: clip.clipId,
             text: text,
             timelineStartUs: clippedStart,
-            timelineEndUs: clippedEnd
+            timelineEndUs: clippedEnd,
+            sourceStartUs: srcStartUs,
+            sourceEndUs: srcEndUs
         )
     }
 }
