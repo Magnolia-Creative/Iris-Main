@@ -266,6 +266,16 @@ extension DatabaseManager {
             }
         }
 
+        migrator.registerMigration("v8_captionCueClipAnchors") { db in
+            try db.alter(table: "caption_cues") { t in
+                t.add(column: "clip_id", .text)
+                    .references("clips", column: "clip_id", onDelete: .cascade)
+                t.add(column: "source_start_us", .integer)
+                t.add(column: "source_end_us", .integer)
+            }
+            try db.create(index: "index_caption_cues_on_clip_id", on: "caption_cues", columns: ["clip_id"])
+        }
+
         return migrator
     }
 }

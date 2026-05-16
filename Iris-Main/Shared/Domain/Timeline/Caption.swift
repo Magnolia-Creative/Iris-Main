@@ -106,9 +106,12 @@ extension CaptionStyle: DatabaseValueConvertible {}
 struct CaptionCue: Codable, Equatable, Identifiable, FetchableRecord, PersistableRecord {
     let cueId: String
     let groupId: String
+    var clipId: String?
     var text: String
     var timelineStartUs: Int64
     var timelineEndUs: Int64
+    var sourceStartUs: Int64?
+    var sourceEndUs: Int64?
     let createdAt: Date
     var updatedAt: Date
 
@@ -117,17 +120,23 @@ struct CaptionCue: Codable, Equatable, Identifiable, FetchableRecord, Persistabl
     init(
         cueId: String = UUID().uuidString,
         groupId: String,
+        clipId: String? = nil,
         text: String,
         timelineStartUs: Int64,
         timelineEndUs: Int64,
+        sourceStartUs: Int64? = nil,
+        sourceEndUs: Int64? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
         self.cueId = cueId
         self.groupId = groupId
+        self.clipId = clipId
         self.text = text
         self.timelineStartUs = timelineStartUs
         self.timelineEndUs = timelineEndUs
+        self.sourceStartUs = sourceStartUs
+        self.sourceEndUs = sourceEndUs
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -135,9 +144,12 @@ struct CaptionCue: Codable, Equatable, Identifiable, FetchableRecord, Persistabl
     enum CodingKeys: String, CodingKey {
         case cueId = "cue_id"
         case groupId = "group_id"
+        case clipId = "clip_id"
         case text
         case timelineStartUs = "timeline_start_us"
         case timelineEndUs = "timeline_end_us"
+        case sourceStartUs = "source_start_us"
+        case sourceEndUs = "source_end_us"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -147,9 +159,12 @@ struct CaptionCue: Codable, Equatable, Identifiable, FetchableRecord, Persistabl
     enum Columns: String, ColumnExpression {
         case cueId = "cue_id"
         case groupId = "group_id"
+        case clipId = "clip_id"
         case text
         case timelineStartUs = "timeline_start_us"
         case timelineEndUs = "timeline_end_us"
+        case sourceStartUs = "source_start_us"
+        case sourceEndUs = "source_end_us"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -157,9 +172,12 @@ struct CaptionCue: Codable, Equatable, Identifiable, FetchableRecord, Persistabl
     init(row: Row) {
         cueId = row[Columns.cueId]
         groupId = row[Columns.groupId]
+        clipId = row[Columns.clipId]
         text = row[Columns.text]
         timelineStartUs = row[Columns.timelineStartUs]
         timelineEndUs = row[Columns.timelineEndUs]
+        sourceStartUs = row[Columns.sourceStartUs]
+        sourceEndUs = row[Columns.sourceEndUs]
         createdAt = row[Columns.createdAt]
         updatedAt = row[Columns.updatedAt]
     }
@@ -167,9 +185,12 @@ struct CaptionCue: Codable, Equatable, Identifiable, FetchableRecord, Persistabl
     func encode(to container: inout PersistenceContainer) {
         container[Columns.cueId] = cueId
         container[Columns.groupId] = groupId
+        container[Columns.clipId] = clipId
         container[Columns.text] = text
         container[Columns.timelineStartUs] = timelineStartUs
         container[Columns.timelineEndUs] = timelineEndUs
+        container[Columns.sourceStartUs] = sourceStartUs
+        container[Columns.sourceEndUs] = sourceEndUs
         container[Columns.createdAt] = createdAt
         container[Columns.updatedAt] = updatedAt
     }
