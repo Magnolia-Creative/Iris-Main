@@ -319,6 +319,24 @@ extension DatabaseManager {
         try get(Media.self, id: mediaId, keyColumn: "media_id")
     }
 
+    func updateMediaSpec(
+        mediaId: String,
+        mutate: (inout MediaSpec) -> Void
+    ) throws -> Media? {
+        try dbQueue.write { db in
+            guard var media = try Media
+                .filter(Media.Columns.mediaId == mediaId)
+                .fetchOne(db) else {
+                return nil
+            }
+
+            mutate(&media.spec)
+            media.updatedAt = Date()
+            try media.update(db)
+            return media
+        }
+    }
+
     func deleteAllMedia(forLibraryId libraryId: String) throws {
         _ = try dbQueue.write { db in
             try Media.filter(Media.Columns.mediaLibraryId == libraryId).deleteAll(db)
