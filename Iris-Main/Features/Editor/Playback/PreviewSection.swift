@@ -26,10 +26,15 @@ struct PreviewSection: View {
             }
         }
 
-        if let previewAspect {
-            preview.aspectRatio(previewAspect, contentMode: .fit)
-        } else {
-            preview.frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            Color.clear
+            if let previewAspect {
+                preview.aspectRatio(previewAspect, contentMode: .fit)
+            } else {
+                preview.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 2, minHeight: 2)
     }
 }
