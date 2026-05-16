@@ -5,6 +5,7 @@ import Foundation
 final class HomeViewModel: ObservableObject {
     @Published private(set) var projects: [Project] = []
     @Published private(set) var loadErrorMessage: String?
+    @Published private(set) var deleteProjectErrorMessage: String?
     @Published var isPresentingProjectSetup = false
     @Published var isPresentingProfile = false
     @Published var selectedProject: Project?
@@ -55,6 +56,23 @@ final class HomeViewModel: ObservableObject {
             selectedProject = updatedProject
         } catch {
             selectedProject = project
+        }
+    }
+
+    func deleteProject(_ project: Project) {
+        deleteProjectErrorMessage = nil
+        ProjectCoverService.shared.removeStoredCover(
+            forProjectId: project.projectId,
+            coverImagePath: project.coverImagePath
+        )
+        do {
+            try db.delete(Project.self, id: project.projectId, keyColumn: "project_id")
+            projects.removeAll { $0.projectId == project.projectId }
+            if selectedProject?.projectId == project.projectId {
+                selectedProject = nil
+            }
+        } catch {
+            deleteProjectErrorMessage = "Could not delete project."
         }
     }
 

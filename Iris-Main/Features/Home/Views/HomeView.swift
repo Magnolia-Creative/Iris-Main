@@ -206,46 +206,58 @@ struct HomeView: View {
                     subtitle: "Create your first project to start building edits and previews."
                 )
             } else {
-                VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+                    if let deleteError = viewModel.deleteProjectErrorMessage {
+                        Text(deleteError)
+                            .typography(.bodySmall)
+                            .foregroundStyle(Color.red.opacity(0.9))
+                    }
+
+                    VStack(spacing: 0) {
                     ForEach(Array(viewModel.allProjects.enumerated()), id: \.element.projectId) { index, project in
-                        Button {
-                            viewModel.openProject(project)
-                        } label: {
-                            HStack(spacing: .spacing(.sp4)) {
-                                ProjectCoverImageView(
-                                    project: project,
-                                    width: 112,
-                                    height: 64,
-                                    cornerRadius: .spacing(.sp3)
-                                )
+                        SwipeToDeleteProjectRow {
+                            viewModel.deleteProject(project)
+                        } content: {
+                            Button {
+                                viewModel.openProject(project)
+                            } label: {
+                                HStack(spacing: .spacing(.sp4)) {
+                                    ProjectCoverImageView(
+                                        project: project,
+                                        width: 112,
+                                        height: 64,
+                                        cornerRadius: .spacing(.sp3)
+                                    )
 
-                                VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-                                    Text(project.name)
-                                        .typography(.body)
-                                        .foregroundStyle(Color.ds.text)
-                                        .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+                                        Text(project.name)
+                                            .typography(.body)
+                                            .foregroundStyle(Color.ds.text)
+                                            .lineLimit(1)
 
-                                    Text(projectDetailText(for: project))
-                                        .typography(.bodySmall)
+                                        Text(projectDetailText(for: project))
+                                            .typography(.bodySmall)
+                                            .foregroundStyle(Color.ds.textMuted)
+                                            .lineLimit(1)
+                                    }
+
+                                    Spacer(minLength: .spacing(.sp3))
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
                                         .foregroundStyle(Color.ds.textMuted)
-                                        .lineLimit(1)
                                 }
-
-                                Spacer(minLength: .spacing(.sp3))
-
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.ds.textMuted)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, .sp4)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, .sp4)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
 
                         if index < viewModel.allProjects.count - 1 {
                             Divider()
                                 .padding(.leading, 128)
                         }
+                    }
                     }
                 }
             }
@@ -304,6 +316,59 @@ struct HomeView: View {
             Text("No timeline found")
                 .foregroundColor(Color.ds.textMuted)
         }
+    }
+}
+
+private struct SwipeToDeleteProjectRow<Content: View>: View {
+    private let revealWidth: CGFloat = 72
+    let onDelete: () -> Void
+    @ViewBuilder var content: () -> Content
+
+    @State private var offset: CGFloat = 0
+    @State private var lastCommittedOffset: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Button {
+                    onDelete()
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        offset = 0
+                        lastCommittedOffset = 0
+                    }
+                } label: {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: revealWidth)
+                        .frame(maxHeight: .infinity)
+                        .background(Color.red)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete project")
+            }
+
+            content()
+                .background(Color.ds.bg)
+                .offset(x: offset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            let combined = lastCommittedOffset + value.translation.width
+                            offset = min(0, max(-revealWidth, combined))
+                        }
+                        .onEnded { value in
+                            let combined = lastCommittedOffset + value.translation.width
+                            let target: CGFloat = combined < -revealWidth / 2 ? -revealWidth : 0
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                                offset = target
+                                lastCommittedOffset = target
+                            }
+                        }
+                )
+        }
+        .clipped()
     }
 }
 
