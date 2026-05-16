@@ -232,9 +232,12 @@ final class VideoLabRenderEngine: NSObject {
         VideoLabPreviewDiagnostics.logPlayerItemWired(item, timelineDuration: prepared.duration)
 #endif
 
-        if let animationLayer = videoLab.renderComposition.animationLayer,
-           let host = playerHostView {
-            animationLayer.removeFromSuperlayer()
+        if !prepared.captions.isEmpty, let host = playerHostView {
+            let animationLayer = VideoLabCaptionLayerFactory.makeAnimationLayer(
+                cues: prepared.captions,
+                timelineDuration: max(prepared.duration, 0.01),
+                renderSize: prepared.outputSize
+            )
             let sync = AVSynchronizedLayer(playerItem: item)
             sync.frame = host.bounds
             sync.addSublayer(animationLayer)
