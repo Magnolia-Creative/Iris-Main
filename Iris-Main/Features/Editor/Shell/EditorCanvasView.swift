@@ -86,24 +86,15 @@ struct EditorCanvasView: View {
             VStack(spacing: 0) {
                 timelineTopSection(playback: playback)
 
-                if activeSpace == .export {
-                    ExportTimelineOverview(state: state)
-                        .frame(height: 60)
-                        .padding(.horizontal, .sp3)
-                        .transition(.opacity)
-                } else {
-                    Color.clear
-                        .frame(height: timelineLayout.sectionHeight(for: state.orderedTracks))
-                        .transaction { transaction in
-                            transaction.animation = nil
-                        }
-                }
+                Color.clear
+                    .frame(height: timelineLayout.sectionHeight(for: state.editorDisplayTracks))
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
             }
 
-            if activeSpace != .export {
-                timelineViewContainer(state: state)
-                    .padding(.top, timelineTopInset)
-            }
+            timelineViewContainer(state: state)
+                .padding(.top, timelineTopInset)
 
             if showPlaybackAspectSettings {
                 aspectSettingsOverlay
@@ -239,50 +230,4 @@ struct EditorCanvasView: View {
         .animation(nil, value: layout.sectionHeight(for: displayTracks))
     }
 
-}
-
-private struct ExportTimelineOverview: View {
-    let state: TimelineState
-
-    var body: some View {
-        GeometryReader { geometry in
-            let totalWidth = geometry.size.width
-            let durationUs = max(1, state.calculatedTimelineDurationUs)
-            let pxPerUs = totalWidth / CGFloat(durationUs)
-
-            ZStack(alignment: .leading) {
-                ForEach(state.clips) { clip in
-                    let startX = CGFloat(clip.timelineRange.start) * pxPerUs
-                    let clipWidth = CGFloat(clip.duration) * pxPerUs
-
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.ds.accentBg)
-                        .frame(width: max(clipWidth, 2), height: 24)
-                        .offset(x: startX)
-                }
-                .frame(height: 24)
-                .offset(y: 20)
-
-                let playheadX = CGFloat(state.currentTimeAtCenter) * pxPerUs
-                Rectangle()
-                    .fill(Color.ds.text)
-                    .frame(width: 1, height: geometry.size.height)
-                    .offset(x: playheadX)
-
-                HStack(spacing: 0) {
-                    ForEach(0..<5, id: \.self) { i in
-                        let timeUs = Int64(Double(i) / 4.0 * Double(durationUs))
-                        VStack {
-                            Rectangle().fill(Color.ds.border).frame(width: 1, height: 8)
-                            Text(TimeFormatter.formatTime(timeUs))
-                                .typography(.bodySmall)
-                                .foregroundColor(Color.ds.textMuted)
-                                .fixedSize()
-                        }
-                        if i < 4 { Spacer() }
-                    }
-                }
-            }
-        }
-    }
 }
