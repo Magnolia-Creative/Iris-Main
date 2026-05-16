@@ -64,44 +64,19 @@ enum VideoLabCaptionLayerFactory {
             ).cgColor
             textLayer.opacity = 0
 
-            let tStart = min(max(cue.startTime / duration, 0), 1)
-            let tEnd = min(max(cue.endTime / duration, 0), 1)
-            guard tEnd > tStart else {
+            let start = min(max(cue.startTime, 0), duration)
+            let end = min(max(cue.endTime, 0), duration)
+            guard end > start else {
                 textLayer.opacity = 0
                 root.addSublayer(textLayer)
                 continue
             }
 
-            let opacityAnim = CAKeyframeAnimation(keyPath: "opacity")
-            opacityAnim.duration = duration
-            let op = Float(cue.opacity)
-            let almostOne = 1.0 - 1e-9
-
-            let keyTimes: [NSNumber]
-            let values: [Float]
-            if tStart > 1e-9 {
-                if tEnd < almostOne {
-                    keyTimes = [0, tStart, tEnd, 1].map(NSNumber.init(value:))
-                    values = [0, op, 0, 0]
-                } else {
-                    keyTimes = [0, tStart, 1].map(NSNumber.init(value:))
-                    values = [0, op, 0]
-                }
-            } else if tEnd < almostOne {
-                keyTimes = [0, tEnd, 1].map(NSNumber.init(value:))
-                values = [op, 0, 0]
-            } else {
-                let split = max(tEnd - 1e-6, 0)
-                keyTimes = [0, split, 1].map(NSNumber.init(value:))
-                values = [op, 0, 0]
-            }
-
-            opacityAnim.keyTimes = keyTimes
-            opacityAnim.values = values
-            opacityAnim.calculationMode = .discrete
-            opacityAnim.beginTime = AVCoreAnimationBeginTimeAtZero
-            opacityAnim.fillMode = .forwards
-            opacityAnim.isRemovedOnCompletion = false
+            let opacityAnim = CABasicAnimation(keyPath: "opacity")
+            opacityAnim.fromValue = Float(cue.opacity)
+            opacityAnim.toValue = Float(cue.opacity)
+            opacityAnim.beginTime = start
+            opacityAnim.duration = end - start
 
             textLayer.add(opacityAnim, forKey: "captionOpacity")
             root.addSublayer(textLayer)
