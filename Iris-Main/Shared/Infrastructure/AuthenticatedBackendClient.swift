@@ -60,7 +60,24 @@ struct AuthenticatedBackendClient: Sendable {
             throw AuthenticatedBackendClientError.missingSessionToken
         }
         Self.logger.info("[auth] Retrieved Clerk session token tokenChars=\(token.count, privacy: .public)")
+        Self.logTokenDebugClaims(token)
         return token
+    }
+
+    private static func logTokenDebugClaims(_ token: String) {
+        let claims = JWTDebugClaims(token: token)
+        logger.info(
+            """
+            [auth] Clerk token debug \
+            iss=\(claims.issuer ?? "nil", privacy: .public) \
+            sub=\(claims.subject ?? "nil", privacy: .public) \
+            sid=\(claims.sessionID ?? "nil", privacy: .public) \
+            azp=\(claims.authorizedParty ?? "nil", privacy: .public) \
+            exp=\(claims.expiresAt ?? "nil", privacy: .public) \
+            tokenChars=\(token.count, privacy: .public) \
+            tokenFingerprint=\(token.redactedTokenFingerprint, privacy: .public)
+            """
+        )
     }
 }
 
@@ -73,5 +90,59 @@ private extension URL {
             item.name == "token" ? URLQueryItem(name: item.name, value: "<redacted>") : item
         }
         return components.string ?? absoluteString
+    }
+}
+
+private struct JWTDebugClaims {
+    let issuer: String?
+    let subject: String?
+    let sessionID: String?
+    let authorizedParty: String?
+    let expiresAt: String?
+
+    init(token: String) {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2,
+              let payloadData = Data(base64URLString: String(parts[1])),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+            issuer = nil
+            subject = nil
+            sessionID = nil
+            authorizedParty = nil
+            expiresAt = nil
+            return
+        }
+
+        issuer = json["iss"] as? String
+        subject = json["sub"] as? String
+        sessionID = json["sid"] as? String
+        authorizedParty = json["azp"] as? String
+        if let exp = json["exp"] as? TimeInterval {
+            expiresAt = Date(timeIntervalSince1970: exp).ISO8601Format()
+        } else if let exp = json["exp"] as? Int {
+            expiresAt = Date(timeIntervalSince1970: TimeInterval(exp)).ISO8601Format()
+        } else {
+            expiresAt = nil
+        }
+    }
+}
+
+private extension Data {
+    init?(base64URLString: String) {
+        var base64 = base64URLString
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = (4 - base64.count % 4) % 4
+        base64.append(String(repeating: "=", count: padding))
+        self.init(base64Encoded: base64)
+    }
+}
+
+private extension String {
+    var redactedTokenFingerprint: String {
+        guard count > 12 else {
+            return "<short-token>"
+        }
+        return "\(prefix(6))...\(suffix(6))"
     }
 }
