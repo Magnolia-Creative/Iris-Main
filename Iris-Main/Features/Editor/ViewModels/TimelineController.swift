@@ -747,8 +747,14 @@ final class TimelineController: ObservableObject {
 
     func ingestMedia(_ media: [Media], kind: TrackKind) {
         let before = state.clips
+        let beforeOutputSize = state.effectiveOutputPixelSize
+        Self.logger.info(
+            "[TimelineImport] ingest start timeline=\(self.state.timelineId, privacy: .public) kind=\(kind.rawValue, privacy: .public) mediaCount=\(media.count, privacy: .public) beforeClipCount=\(before.count, privacy: .public) beforeOutput=\(Self.outputSizeSummary(beforeOutputSize), privacy: .public)"
+        )
         state.ingestImportedMedia(imported: media, matching: media, kind: kind)
         persistClipChanges(before: before, after: state.clips)
+        logImportStateTransition(before: before, after: state.clips, previousOutputSize: beforeOutputSize)
+        objectWillChange.send()
     }
 
     func updateMedia(_ media: Media) {
@@ -863,9 +869,12 @@ final class TimelineController: ObservableObject {
             let matching = imported.filter { state.mediaKinds(for: request.kind).contains($0.kind) }
             await MainActor.run {
                 let before = state.clips
+                let beforeOutputSize = state.effectiveOutputPixelSize
                 state.ingestImportedMedia(imported: imported, matching: matching, kind: request.kind)
                 persistClipChanges(before: before, after: state.clips)
                 syncSemanticIndexForImportedMedia()
+                logImportStateTransition(before: before, after: state.clips, previousOutputSize: beforeOutputSize)
+                objectWillChange.send()
             }
             generateThumbnailStrips(for: imported)
         } catch {
@@ -886,14 +895,33 @@ final class TimelineController: ObservableObject {
             let imported = try await importService.importFileURLsQuick(urls, to: library.id, preferredKind: preferredKind)
             await MainActor.run {
                 let before = state.clips
+                let beforeOutputSize = state.effectiveOutputPixelSize
                 state.ingestImportedMedia(imported: imported, matching: imported, kind: request.kind)
                 persistClipChanges(before: before, after: state.clips)
                 syncSemanticIndexForImportedMedia()
+                logImportStateTransition(before: before, after: state.clips, previousOutputSize: beforeOutputSize)
+                objectWillChange.send()
             }
             generateThumbnailStrips(for: imported)
         } catch {
             await MainActor.run { state.clearPendingImport() }
         }
+    }
+
+    private func logImportStateTransition(before: [Clip], after: [Clip], previousOutputSize: CGSize) {
+        let emptyToNonempty = before.isEmpty && !after.isEmpty
+        Self.logger.info(
+            "[TimelineImport] ingest complete timeline=\(self.state.timelineId, privacy: .public) beforeClipCount=\(before.count, privacy: .public) afterClipCount=\(after.count, privacy: .public) emptyToNonempty=\(emptyToNonempty, privacy: .public) aspect=\(Self.outputAspectSummary(self.state.effectiveOutputAspect), privacy: .public) output=\(Self.outputSizeSummary(self.state.effectiveOutputPixelSize), privacy: .public) previousOutput=\(Self.outputSizeSummary(previousOutputSize), privacy: .public)"
+        )
+    }
+
+    private static func outputAspectSummary(_ aspect: OutputAspectRatio?) -> String {
+        guard let aspect else { return "nil" }
+        return "\(aspect.width):\(aspect.height)"
+    }
+
+    private static func outputSizeSummary(_ size: CGSize) -> String {
+        "\(Int(size.width))x\(Int(size.height))"
     }
 
     // MARK: - Persistence
