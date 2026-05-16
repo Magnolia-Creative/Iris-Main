@@ -174,12 +174,11 @@ final class ThumbnailService {
         do {
             guard let url = try await loadVideoURL(for: media.assetRefId) else { return nil }
             guard let stripInfo = try await generateThumbnailStripIfNeeded(for: media, videoURL: url) else { return nil }
-            var updatedMedia = media
-            updatedMedia.spec.thumbnailStripPath = stripInfo.path
-            updatedMedia.spec.thumbnailStripHeight = stripInfo.height
-            updatedMedia.spec.thumbnailStripFrameCount = stripInfo.frameCount
-            updatedMedia.updatedAt = Date()
-            try db.update(updatedMedia)
+            _ = try db.updateMediaSpec(mediaId: media.mediaId) { spec in
+                spec.thumbnailStripPath = stripInfo.path
+                spec.thumbnailStripHeight = stripInfo.height
+                spec.thumbnailStripFrameCount = stripInfo.frameCount
+            }
             guard let resolvedStrip = AppSandboxFileURI.resolveFileURL(storedURI: stripInfo.path),
                   let image = UIImage(contentsOfFile: resolvedStrip.path) else { return nil }
             cacheThumbnailStrip(image, forPath: stripInfo.path)

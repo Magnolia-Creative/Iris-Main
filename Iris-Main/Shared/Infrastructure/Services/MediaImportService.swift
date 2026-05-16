@@ -253,13 +253,12 @@ class MediaImportService {
             guard let stripInfo = try await ThumbnailService.shared.generateThumbnailStripIfNeeded(
                 for: media, videoURL: url
             ) else { return media }
-            var updated = media
-            updated.spec.thumbnailStripPath = stripInfo.path
-            updated.spec.thumbnailStripHeight = stripInfo.height
-            updated.spec.thumbnailStripFrameCount = stripInfo.frameCount
-            updated.updatedAt = Date()
-            try db.update(updated)
-            return updated
+            let updated = try db.updateMediaSpec(mediaId: media.mediaId) { spec in
+                spec.thumbnailStripPath = stripInfo.path
+                spec.thumbnailStripHeight = stripInfo.height
+                spec.thumbnailStripFrameCount = stripInfo.frameCount
+            }
+            return updated ?? media
         } catch {
             return media
         }
