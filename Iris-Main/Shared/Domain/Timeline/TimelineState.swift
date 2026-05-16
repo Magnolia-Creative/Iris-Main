@@ -20,6 +20,15 @@ struct TimelineState {
     var projectTitle: String
     /// Numeric Iris backend project id when this local project is linked (for transcript/caption APIs).
     var backendProjectId: String?
+    /// Local project id for persisting playback/export settings.
+    var projectId: String?
+    /// Stored project export resolution (long edge semantics depend on orientation).
+    var projectResolutionWidth: Int
+    var projectResolutionHeight: Int
+    /// User-selected canvas aspect persisted on `Project` (nil = follow first clip automatically).
+    var manualOutputAspect: OutputAspectRatio?
+    /// Aspect inferred from the earliest timeline visual clip with known media dimensions.
+    var derivedOutputAspect: OutputAspectRatio?
 
     var pixelsPerSecond: CGFloat
     var currentTimeAtCenter: Int64
@@ -57,6 +66,11 @@ struct TimelineState {
         self.mediaById = [:]
         self.projectTitle = "Project"
         self.backendProjectId = nil
+        self.projectId = nil
+        self.projectResolutionWidth = 1920
+        self.projectResolutionHeight = 1080
+        self.manualOutputAspect = nil
+        self.derivedOutputAspect = nil
         self.pixelsPerSecond = 100
         self.currentTimeAtCenter = 0
         self.pendingImport = nil
@@ -90,6 +104,11 @@ struct TimelineState {
         }
     }
 
+    /// Playback / export canvas aspect: manual override, else first clip, else undetermined.
+    var effectiveOutputAspect: OutputAspectRatio? {
+        manualOutputAspect ?? derivedOutputAspect
+    }
+
     var calculatedTimelineDurationUs: Int64 {
         clips.map { $0.timelineRange.end }.max() ?? 0
     }
@@ -114,6 +133,7 @@ struct TimelineState {
         mediaLibrary: MediaLibrary?,
         mediaById: [String: Media],
         projectTitle: String,
+        project: Project?,
         backendProjectId: String? = nil,
         captionGroups: [CaptionGroup] = [],
         captionCues: [CaptionCue] = []
@@ -128,7 +148,18 @@ struct TimelineState {
         self.backendProjectId = backendProjectId
         self.captionGroups = captionGroups
         self.captionCues = captionCues
+        self.projectId = timeline.projectId
+        if let project {
+            self.projectResolutionWidth = project.resolutionWidth
+            self.projectResolutionHeight = project.resolutionHeight
+            self.manualOutputAspect = project.manualOutputAspect
+        } else {
+            self.projectResolutionWidth = 1920
+            self.projectResolutionHeight = 1080
+            self.manualOutputAspect = nil
+        }
         clearActionHistory()
+        refreshDerivedOutputAspect()
     }
 
     mutating func clearActionHistory() {
@@ -247,6 +278,7 @@ struct TimelineState {
             timelineRange: TimeRange(start: startUs, end: startUs + mediaDuration)
         )
         clips.append(newClip)
+        refreshDerivedOutputAspect()
     }
 
     mutating func addClipSegment(of kind: TrackKind, at timeUs: Int64, media: Media, sourceRange: TimeRange) {
@@ -299,6 +331,7 @@ struct TimelineState {
 
             clips.removeAll { $0.trackId == track.trackId }
             clips.append(contentsOf: finalizedTrackClips)
+            refreshDerivedOutputAspect()
             requestScrollTo(timeUs: newClip.timelineRange.start)
             return
         }
@@ -311,6 +344,7 @@ struct TimelineState {
             timelineRange: TimeRange(start: appendStartUs, end: appendStartUs + segmentDuration)
         )
         clips.append(newClip)
+        refreshDerivedOutputAspect()
         requestScrollTo(timeUs: appendStartUs)
     }
 
@@ -341,6 +375,7 @@ struct TimelineState {
             existingClips.append(newClip)
             cursor = startUs + mediaDuration
         }
+        refreshDerivedOutputAspect()
     }
 
     func clipDurationUs(for media: Media) -> Int64? {
@@ -477,6 +512,7 @@ struct TimelineState {
             return final
         }
         clips = updatedClipsState
+        refreshDerivedOutputAspect()
     }
 
     mutating func applySingleClipTrimState(_ updatedClip: Clip, animate: Bool) {

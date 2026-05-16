@@ -15,6 +15,9 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
     var lastAccessedAt: Date?
     var backendProjectId: String?
     var backendProjectName: String?
+    /// When both are non-nil and positive, playback/export use this aspect instead of auto-from-first-clip.
+    var manualOutputAspectWidth: Int?
+    var manualOutputAspectHeight: Int?
 
     var id: String { projectId }
 
@@ -31,7 +34,9 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         updatedAt: Date = Date(),
         lastAccessedAt: Date? = Date(),
         backendProjectId: String? = nil,
-        backendProjectName: String? = nil
+        backendProjectName: String? = nil,
+        manualOutputAspectWidth: Int? = nil,
+        manualOutputAspectHeight: Int? = nil
     ) {
         self.projectId = projectId
         self.name = name
@@ -46,6 +51,8 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         self.lastAccessedAt = lastAccessedAt
         self.backendProjectId = backendProjectId
         self.backendProjectName = backendProjectName
+        self.manualOutputAspectWidth = manualOutputAspectWidth
+        self.manualOutputAspectHeight = manualOutputAspectHeight
     }
 
     enum CodingKeys: String, CodingKey {
@@ -62,6 +69,8 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         case lastAccessedAt = "last_accessed_at"
         case backendProjectId = "backend_project_id"
         case backendProjectName = "backend_project_name"
+        case manualOutputAspectWidth = "manual_output_aspect_w"
+        case manualOutputAspectHeight = "manual_output_aspect_h"
     }
 
     static let databaseTableName = "projects"
@@ -80,6 +89,16 @@ struct Project: Codable, Hashable, Identifiable, FetchableRecord, PersistableRec
         static let lastAccessedAt = Column(CodingKeys.lastAccessedAt)
         static let backendProjectId = Column(CodingKeys.backendProjectId)
         static let backendProjectName = Column(CodingKeys.backendProjectName)
+        static let manualOutputAspectWidth = Column(CodingKeys.manualOutputAspectWidth)
+        static let manualOutputAspectHeight = Column(CodingKeys.manualOutputAspectHeight)
+    }
+
+    /// Manual canvas aspect from persisted columns, if both dimensions are valid.
+    var manualOutputAspect: OutputAspectRatio? {
+        guard let w = manualOutputAspectWidth, let h = manualOutputAspectHeight, w > 0, h > 0 else {
+            return nil
+        }
+        return OutputAspectRatio(width: w, height: h)
     }
 
     var resolutionLabel: String {

@@ -9,6 +9,9 @@ extension TimelineState {
             let inverse = apply(action)
             combinedInverse = inverse + combinedInverse
         }
+        if !actions.isEmpty {
+            refreshDerivedOutputAspect()
+        }
         return combinedInverse
     }
 

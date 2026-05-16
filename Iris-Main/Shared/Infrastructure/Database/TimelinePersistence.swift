@@ -20,6 +20,8 @@ struct TimelinePersistence {
         let mediaLibrary: MediaLibrary?
         let mediaById: [String: Media]
         let projectTitle: String
+        /// Full project row when present (resolution, manual aspect override, etc.).
+        let project: Project?
         let backendProjectId: String?
         let captionGroups: [CaptionGroup]
         let captionCues: [CaptionCue]
@@ -70,6 +72,7 @@ struct TimelinePersistence {
             mediaLibrary: mediaLibrary,
             mediaById: Dictionary(uniqueKeysWithValues: media.map { ($0.mediaId, $0) }),
             projectTitle: project?.name ?? "Project",
+            project: project,
             backendProjectId: backendProjectId,
             captionGroups: captionGroups,
             captionCues: captionCues

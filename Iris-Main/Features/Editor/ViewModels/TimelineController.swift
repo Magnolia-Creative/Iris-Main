@@ -54,6 +54,24 @@ final class TimelineController: ObservableObject {
         )
     }
 
+    /// Persists optional manual canvas aspect on the local project (`nil` = automatic from first clip).
+    @MainActor
+    func setManualPlaybackOutputAspect(_ aspect: OutputAspectRatio?) throws {
+        guard let projectId = state.projectId else { return }
+        guard var project = try db.get(Project.self, id: projectId, keyColumn: "project_id") else { return }
+        if let aspect {
+            project.manualOutputAspectWidth = aspect.width
+            project.manualOutputAspectHeight = aspect.height
+        } else {
+            project.manualOutputAspectWidth = nil
+            project.manualOutputAspectHeight = nil
+        }
+        project.updatedAt = Date()
+        try db.update(project)
+        state.manualOutputAspect = aspect
+        objectWillChange.send()
+    }
+
     /// Unit tests only: installs synthetic tracks/clips without touching persistence.
     internal func replaceTimelineContentForTesting(tracks: [Track], clips: [Clip]) {
         state.tracks = tracks
@@ -61,6 +79,7 @@ final class TimelineController: ObservableObject {
         state.captionGroups = []
         state.captionCues = []
         state.clearActionHistory()
+        state.refreshDerivedOutputAspect()
     }
 
     func loadTimelineData() async {
@@ -85,6 +104,7 @@ final class TimelineController: ObservableObject {
                     mediaLibrary: loaded.mediaLibrary,
                     mediaById: loaded.mediaById,
                     projectTitle: loaded.projectTitle,
+                    project: loaded.project,
                     backendProjectId: loaded.backendProjectId,
                     captionGroups: loaded.captionGroups,
                     captionCues: loaded.captionCues
@@ -698,6 +718,7 @@ final class TimelineController: ObservableObject {
 
     func updateMedia(_ media: Media) {
         state.mediaById[media.mediaId] = media
+        state.refreshDerivedOutputAspect()
     }
 
     /// Re-loads one `Media` row from the database when transcript (or other spec) was updated elsewhere (e.g. import browser background task).
@@ -1213,6 +1234,7 @@ final class TimelineController: ObservableObject {
     private func replaceTrackClips(trackId: String, with updatedTrackClips: [Clip]) {
         let otherClips = state.clips.filter { $0.trackId != trackId }
         state.clips = otherClips + updatedTrackClips
+        state.refreshDerivedOutputAspect()
     }
 
     private func rebuildCutReview(startingAt preferredIndex: Int) {
