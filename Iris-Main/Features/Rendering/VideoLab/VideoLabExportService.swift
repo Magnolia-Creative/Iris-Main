@@ -18,9 +18,7 @@ enum VideoLabExportError: Error, LocalizedError {
 
 enum VideoLabExportService {
     static func presetName(for outputWidth: CGFloat) -> String {
-        if outputWidth >= 3800 { return AVAssetExportPreset3840x2160 }
-        if outputWidth >= 1900 { return AVAssetExportPreset1920x1080 }
-        return AVAssetExportPreset1280x720
+        AVAssetExportPresetMediumQuality
     }
 
     static func export(
