@@ -9,6 +9,45 @@ extension ImportBrowserViewModel {
         category: "TranscriptPersistence"
     )
 
+    private static let backendMappingLog = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "ImportBrowser.BackendMapping"
+    )
+
+    /// Persists `projects.backend_project_id` for the timeline’s local project when `timelineId` is known.
+    private func persistBackendProjectMappingForTimelineIfPossible(
+        backendProjectId: String,
+        backendProjectName: String?,
+        context: String
+    ) {
+        guard let timelineId else {
+            Self.backendMappingLog.warning(
+                "[ImportBrowser] skip backend mapping (no timelineId) context=\(context, privacy: .public) backendProjectId=\(backendProjectId, privacy: .public)"
+            )
+            return
+        }
+        guard let timeline = try? db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") else {
+            Self.backendMappingLog.error(
+                "[ImportBrowser] skip backend mapping (timeline not found) context=\(context, privacy: .public) timelineId=\(timelineId, privacy: .public)"
+            )
+            return
+        }
+        do {
+            try db.saveBackendProjectMapping(
+                localProjectId: timeline.projectId,
+                backendProjectId: backendProjectId,
+                backendProjectName: backendProjectName
+            )
+            Self.backendMappingLog.notice(
+                "[ImportBrowser] saved backend mapping context=\(context, privacy: .public) localProjectId=\(timeline.projectId, privacy: .public) backendProjectId=\(backendProjectId, privacy: .public)"
+            )
+        } catch {
+            Self.backendMappingLog.error(
+                "[ImportBrowser] saveBackendProjectMapping failed context=\(context, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
     func reloadAlbums() {
         let collections = mediaImportService.fetchVideoAlbums()
         var albums = [ImportBrowserAlbum(id: ImportBrowserAlbum.allVideosID, title: "All Videos", count: mediaImportService.fetchVideos(in: nil).count)]
@@ -381,14 +420,11 @@ extension ImportBrowserViewModel {
                 projectID: projectID,
                 projectName: projectName
             )
-            if let timelineId,
-               let timeline = try? db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") {
-                try? db.saveBackendProjectMapping(
-                    localProjectId: timeline.projectId,
-                    backendProjectId: projectID,
-                    backendProjectName: projectName
-                )
-            }
+            persistBackendProjectMappingForTimelineIfPossible(
+                backendProjectId: projectID,
+                backendProjectName: projectName,
+                context: "applyServerResponse"
+            )
         }
 
         let responseByLocalKey: [String: IngestVideoResponse] = Dictionary(
@@ -500,14 +536,11 @@ extension ImportBrowserViewModel {
             projectName: created.projectName
         )
         model.remoteBackendProject = ctx
-        if let timelineId,
-           let timeline = try? db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") {
-            try? db.saveBackendProjectMapping(
-                localProjectId: timeline.projectId,
-                backendProjectId: ctx.projectID,
-                backendProjectName: ctx.projectName
-            )
-        }
+        persistBackendProjectMappingForTimelineIfPossible(
+            backendProjectId: ctx.projectID,
+            backendProjectName: ctx.projectName,
+            context: "ensureRemoteBackendProject-created"
+        )
         print("[ImportBrowser] ensureRemoteBackendProject: created projectID=\(ctx.projectID)")
         return ctx
     }
