@@ -39,7 +39,8 @@ enum VideoLabCaptionLayerFactory {
                 ),
                 .paragraphStyle: paragraph,
             ]
-            textLayer.string = NSAttributedString(string: cue.text, attributes: attrs)
+            let wrapped = wrapByWordCount(cue.text, maxWordsPerLine: 8)
+            textLayer.string = NSAttributedString(string: wrapped, attributes: attrs)
             let maxWidth = renderSize.width * 0.9
             let textSize = (textLayer.string as? NSAttributedString)?.boundingRect(
                 with: CGSize(width: maxWidth, height: renderSize.height),
@@ -51,6 +52,7 @@ enum VideoLabCaptionLayerFactory {
             let h = ceil(textSize.height) + cue.style.cornerRadius * 2
             let posX = CGFloat(cue.position.x) * renderSize.width
             let posY = CGFloat(cue.position.y) * renderSize.height
+            textLayer.anchorPoint = CGPoint(x: 0.5, y: 1.0)
             textLayer.bounds = CGRect(x: 0, y: 0, width: w, height: h)
             textLayer.position = CGPoint(x: posX, y: posY)
             textLayer.cornerRadius = cue.style.cornerRadius
@@ -106,5 +108,20 @@ enum VideoLabCaptionLayerFactory {
         }
 
         return root
+    }
+
+    /// Insert hard line breaks every `maxWordsPerLine` words so long cues wrap onto multiple lines.
+    private static func wrapByWordCount(_ text: String, maxWordsPerLine: Int) -> String {
+        guard maxWordsPerLine > 0 else { return text }
+        let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard words.count > maxWordsPerLine else { return text }
+        var lines: [String] = []
+        var index = 0
+        while index < words.count {
+            let end = min(index + maxWordsPerLine, words.count)
+            lines.append(words[index..<end].joined(separator: " "))
+            index = end
+        }
+        return lines.joined(separator: "\n")
     }
 }

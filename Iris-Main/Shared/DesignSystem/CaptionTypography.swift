@@ -24,7 +24,7 @@ extension CaptionStyle {
             : SIMD4<Float>(0, 0, 0, 0)
         return RenderCaptionStyle(
             fontName: IrisCaptionFont.uiFontName(for: self),
-            fontSize: 26,
+            fontSize: 18,
             fontWeight: 500,
             textColor: rgba,
             backgroundColor: bg,

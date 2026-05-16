@@ -80,7 +80,7 @@ extension TimelineState {
                         endTime: end,
                         text: cue.text,
                         style: style,
-                        position: SIMD2<Float>(0.5, 0.88),
+                        position: SIMD2<Float>(0.5, 0.95),
                         opacity: 1.0
                     )
                 )
