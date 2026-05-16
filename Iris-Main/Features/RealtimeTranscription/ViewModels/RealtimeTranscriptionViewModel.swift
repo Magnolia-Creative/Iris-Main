@@ -18,11 +18,16 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let urlSession: URLSession
+    private let authClient: AuthenticatedBackendClient
     private var stopFinalizationWaiter: CheckedContinuation<Void, Never>?
     private var isAwaitingStopFinalization = false
 
-    init(urlSession: URLSession = .shared) {
+    init(
+        urlSession: URLSession = .shared,
+        authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()
+    ) {
         self.urlSession = urlSession
+        self.authClient = authClient
     }
 
     func toggleRecording() async {
@@ -94,7 +99,17 @@ final class RealtimeTranscriptionViewModel: ObservableObject {
             return
         }
 
-        let task = urlSession.webSocketTask(with: socketURL)
+        let authenticatedSocketURL: URL
+        do {
+            authenticatedSocketURL = try await authClient.authenticatedWebSocketURL(socketURL)
+        } catch {
+            tearDown()
+            errorMessage = error.localizedDescription
+            statusMessage = "Could not authenticate the transcription socket."
+            return
+        }
+
+        let task = urlSession.webSocketTask(with: authenticatedSocketURL)
         webSocketTask = task
         task.resume()
         isSocketActive = true

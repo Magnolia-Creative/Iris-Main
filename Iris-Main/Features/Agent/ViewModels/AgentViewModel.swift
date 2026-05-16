@@ -11,6 +11,7 @@ final class AgentViewModel: ObservableObject {
         category: "AgentView"
     )
     let urlSession: URLSession
+    let authClient: AuthenticatedBackendClient
     let decoder = JSONDecoder()
     let encoder = JSONEncoder()
 
@@ -23,8 +24,12 @@ final class AgentViewModel: ObservableObject {
     var webSocketTask: URLSessionWebSocketTask?
     var receiveTask: Task<Void, Never>?
 
-    init(urlSession: URLSession = .shared) {
+    init(
+        urlSession: URLSession = .shared,
+        authClient: AuthenticatedBackendClient = AuthenticatedBackendClient()
+    ) {
         self.urlSession = urlSession
+        self.authClient = authClient
     }
 
     func configure(

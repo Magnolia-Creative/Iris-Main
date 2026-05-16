@@ -16,15 +16,18 @@ final class VoiceIntentCompilerViewModel: ObservableObject {
     private var receiveTask: Task<Void, Never>?
     private let audioCapture = RealtimeAudioCaptureService()
     private let urlSession: URLSession
+    private let authClient: AuthenticatedBackendClient
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let context: IntentCompilerContext
 
     init(
         urlSession: URLSession = .shared,
+        authClient: AuthenticatedBackendClient = AuthenticatedBackendClient(),
         context: IntentCompilerContext? = nil
     ) {
         self.urlSession = urlSession
+        self.authClient = authClient
         self.context = context ?? Self.makeSampleContext()
         self.encoder = JSONEncoder()
         self.decoder = JSONDecoder()
@@ -71,7 +74,16 @@ final class VoiceIntentCompilerViewModel: ObservableObject {
         tearDown()
         statusMessage = "Connecting to backend..."
 
-        let task = urlSession.webSocketTask(with: socketURL)
+        let authenticatedSocketURL: URL
+        do {
+            authenticatedSocketURL = try await authClient.authenticatedWebSocketURL(socketURL)
+        } catch {
+            errorMessage = error.localizedDescription
+            tearDown()
+            return
+        }
+
+        let task = urlSession.webSocketTask(with: authenticatedSocketURL)
         webSocketTask = task
         task.resume()
         isSocketActive = true

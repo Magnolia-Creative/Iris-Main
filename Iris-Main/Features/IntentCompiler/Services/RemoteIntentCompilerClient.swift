@@ -80,10 +80,11 @@ final class RemoteIntentCompilerClient {
         statusHandler: StatusHandler?
     ) async throws -> IntentCompileResult {
         let socketURL = AppConfiguration.intentRunWebSocketEndpoint(runID: run.runID) ?? run.websocketURL
+        let authenticatedSocketURL = try await authClient.authenticatedWebSocketURL(socketURL)
         Self.logger.info(
             "[IntentRun] Opening websocket run=\(run.runID, privacy: .public) url=\(socketURL.absoluteString, privacy: .public) backendURL=\(run.websocketURL.absoluteString, privacy: .public)"
         )
-        let task = urlSession.webSocketTask(with: socketURL)
+        let task = urlSession.webSocketTask(with: authenticatedSocketURL)
         task.resume()
         defer {
             Self.logger.info("[IntentRun] Cancelling websocket run=\(run.runID, privacy: .public)")

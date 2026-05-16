@@ -171,7 +171,8 @@ extension AgentViewModel {
     func openSocket(at url: URL) async throws {
         closeSocket(sendDoneMessage: false)
 
-        let task = urlSession.webSocketTask(with: url)
+        let authenticatedURL = try await authClient.authenticatedWebSocketURL(url)
+        let task = urlSession.webSocketTask(with: authenticatedURL)
         webSocketTask = task
         task.resume()
 
