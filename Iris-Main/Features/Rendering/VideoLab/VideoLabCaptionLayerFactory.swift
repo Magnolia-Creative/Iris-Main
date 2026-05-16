@@ -41,17 +41,24 @@ enum VideoLabCaptionLayerFactory {
                 ),
                 .paragraphStyle: paragraph,
             ]
-            let wrapped = wrapByWordCount(cue.text, maxWordsPerLine: 8)
-            textLayer.string = NSAttributedString(string: wrapped, attributes: attrs)
-            let maxWidth = renderSize.width * 0.9
-            let textSize = (textLayer.string as? NSAttributedString)?.boundingRect(
-                with: CGSize(width: maxWidth, height: renderSize.height),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                context: nil
-            ).size ?? .zero
-
             let horizontalPadding = cornerRadius * 2
             let verticalPadding = cornerRadius
+            let maxWidth = renderSize.width * 0.9
+            let maxTextWidth = max(1, maxWidth - horizontalPadding * 2)
+            let attributedText = NSAttributedString(string: cue.text, attributes: attrs)
+            textLayer.string = attributedText
+            let singleLineSize = attributedText.boundingRect(
+                with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: renderSize.height),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).size
+            let measureWidth = min(maxTextWidth, ceil(singleLineSize.width))
+            let textSize = attributedText.boundingRect(
+                with: CGSize(width: measureWidth, height: renderSize.height),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).size
+
             let w = min(maxWidth, ceil(textSize.width) + horizontalPadding * 2)
             let h = ceil(textSize.height) + verticalPadding * 2
             let posX = CGFloat(cue.position.x) * renderSize.width
@@ -129,20 +136,5 @@ enum VideoLabCaptionLayerFactory {
         let shortSide = min(renderSize.width, renderSize.height)
         guard shortSide.isFinite, shortSide > 0 else { return 1 }
         return max(1, shortSide / 240)
-    }
-
-    /// Insert hard line breaks every `maxWordsPerLine` words so long cues wrap onto multiple lines.
-    private static func wrapByWordCount(_ text: String, maxWordsPerLine: Int) -> String {
-        guard maxWordsPerLine > 0 else { return text }
-        let words = text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        guard words.count > maxWordsPerLine else { return text }
-        var lines: [String] = []
-        var index = 0
-        while index < words.count {
-            let end = min(index + maxWordsPerLine, words.count)
-            lines.append(words[index..<end].joined(separator: " "))
-            index = end
-        }
-        return lines.joined(separator: "\n")
     }
 }
