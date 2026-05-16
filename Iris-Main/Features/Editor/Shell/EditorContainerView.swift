@@ -14,6 +14,7 @@ struct EditorContainerView: View {
     @State private var activeSpace: EditorSpace = .edit
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var editorImportRequest: EditorImportRequest?
+    @State private var showPlaybackAspectSettings = false
     @Namespace private var bottomChromeNamespace
     @Environment(\.dismiss) private var dismiss
     private let hasAgentSession: Bool
@@ -195,6 +196,7 @@ struct EditorContainerView: View {
                 renderBridge: renderBridge,
                 activeSpace: activeSpace,
                 captionsFlow: captionsFlow,
+                showPlaybackAspectSettings: $showPlaybackAspectSettings,
                 onAddSelection: handleEditorAddSelection(kind:source:),
                 reviewFocusedClipIds: reviewFocusedClipIds,
                 isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
