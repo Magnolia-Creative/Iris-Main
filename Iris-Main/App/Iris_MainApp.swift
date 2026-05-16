@@ -14,6 +14,7 @@ struct Iris_MainApp: App {
             AuthenticatedRootView()
                 .environment(Clerk.shared)
                 .environment(\.clerkTheme, .iris)
+                .preferredColorScheme(.dark)
         }
     }
 }
