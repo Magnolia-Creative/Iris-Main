@@ -598,7 +598,12 @@ extension AgentViewModel {
         }
 
         guard !segments.isEmpty else { return nil }
-        return ImportedTimelineSeed(sourceVideos: sourceVideos, segments: segments)
+        return ImportedTimelineSeed(
+            sourceVideos: sourceVideos,
+            segments: segments,
+            backendProjectID: ingestResponse?.projectID?.rawValue,
+            backendProjectName: ingestResponse?.projectName
+        )
     }
 
     func sourceClip(for entry: AgentTimelineEntry) -> AgentSourceClip? {

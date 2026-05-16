@@ -96,9 +96,21 @@ struct ImportView: View {
         }
         .onChange(of: agentViewModel.model.canLaunchEditorReview) { _, canLaunchEditorReview in
             guard canLaunchEditorReview, let seed = agentViewModel.model.pendingEditorSeed else { return }
-            guard let resolvedTimelineID = resolveEditorTimelineID(preferredTimelineID: timelineId) else {
+            let backendProjectID = resolvedBackendProjectIDFromImportModel()
+            let backendProjectName = resolvedBackendProjectNameFromImportModel()
+            guard let resolvedTimelineID = resolveEditorTimelineID(
+                preferredTimelineID: timelineId,
+                backendProjectID: backendProjectID,
+                backendProjectName: backendProjectName
+            ) else {
                 return
             }
+
+            linkIngestedBackendProjectToTimelineIfNeeded(
+                timelineId: resolvedTimelineID,
+                backendProjectID: backendProjectID,
+                backendProjectName: backendProjectName
+            )
 
             editorLaunchDestination = EditorLaunchDestination(
                 timelineId: resolvedTimelineID,
@@ -267,13 +279,57 @@ struct ImportView: View {
         return "\(committed) video\(committed == 1 ? "" : "s") ready for compression and upload."
     }
 
+    private func resolvedBackendProjectIDFromImportModel() -> String? {
+        if let remote = viewModel.model.remoteBackendProject?.projectID.trimmingCharacters(in: .whitespacesAndNewlines),
+           !remote.isEmpty {
+            return remote
+        }
+        if let ingest = viewModel.model.ingestResponse?.projectID?.rawValue.trimmingCharacters(in: .whitespacesAndNewlines),
+           !ingest.isEmpty {
+            return ingest
+        }
+        return nil
+    }
+
+    private func resolvedBackendProjectNameFromImportModel() -> String? {
+        viewModel.model.remoteBackendProject?.projectName
+            ?? viewModel.model.ingestResponse?.projectName
+    }
+
+    /// Ensures the local `Project` for this timeline has `backend_project_id` after ingest, including when `ImportView` had no `timelineId` during upload.
+    private func linkIngestedBackendProjectToTimelineIfNeeded(
+        timelineId: String,
+        backendProjectID: String?,
+        backendProjectName: String?
+    ) {
+        guard let bid = backendProjectID?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty else { return }
+        guard let timeline = try? DatabaseManager.shared.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") else {
+            print("[ImportView] linkIngestedBackendProjectToTimelineIfNeeded: timeline not found id=\(timelineId)")
+            return
+        }
+        let name = backendProjectName ?? viewModel.localProjectName() ?? "Iris Project"
+        do {
+            try DatabaseManager.shared.saveBackendProjectMapping(
+                localProjectId: timeline.projectId,
+                backendProjectId: bid,
+                backendProjectName: name
+            )
+        } catch {
+            print("[ImportView] linkIngestedBackendProjectToTimelineIfNeeded save failed: \(error)")
+        }
+    }
+
     private func startEditing() {
         guard viewModel.model.canRequestAgentStart else { return }
         isPromptFocused = false
         viewModel.requestAgentStart()
     }
 
-    private func resolveEditorTimelineID(preferredTimelineID: String?) -> String? {
+    private func resolveEditorTimelineID(
+        preferredTimelineID: String?,
+        backendProjectID: String?,
+        backendProjectName: String?
+    ) -> String? {
         if let preferredTimelineID {
             return preferredTimelineID
         }
@@ -284,6 +340,19 @@ struct ImportView: View {
             let library = MediaLibrary(projectId: project.projectId)
             try DatabaseManager.shared.create(library)
             let timeline = try DatabaseManager.shared.createTimeline(forProjectId: project.projectId)
+
+            if let bid = backendProjectID?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty {
+                do {
+                    try DatabaseManager.shared.saveBackendProjectMapping(
+                        localProjectId: project.projectId,
+                        backendProjectId: bid,
+                        backendProjectName: backendProjectName ?? project.name
+                    )
+                } catch {
+                    print("[ImportView] saveBackendProjectMapping after AI Assembly create failed: \(error)")
+                }
+            }
+
             return timeline.timelineId
         } catch {
             return nil

@@ -988,6 +988,8 @@ final class TimelineController: ObservableObject {
     private func applyImportedTimelineSeed(_ seed: ImportedTimelineSeed) async {
         guard let mediaLibrary = state.mediaLibrary else { return }
 
+        persistBackendProjectMappingFromImportedSeedIfPresent(seed)
+
         do {
             let resolution = try await resolveSeedMedia(
                 for: seed.sourceVideos,
@@ -1013,6 +1015,39 @@ final class TimelineController: ObservableObject {
             }
         } catch {
             print("Failed to apply imported timeline seed: \(error)")
+        }
+    }
+
+    @MainActor
+    private func persistBackendProjectMappingFromImportedSeedIfPresent(_ seed: ImportedTimelineSeed) {
+        guard let bid = seed.backendProjectID?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty else { return }
+        guard let timeline = state.timeline else {
+            Self.logger.error("[TimelineController] skip seed backend mapping: timeline not loaded timelineId=\(self.state.timelineId, privacy: .public)")
+            return
+        }
+        let existing = state.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !existing.isEmpty, existing != bid {
+            Self.logger.warning(
+                "[TimelineController] seed backend project \(bid, privacy: .public) differs from loaded \(existing, privacy: .public); keeping loaded"
+            )
+            return
+        }
+        let localProjectId = timeline.projectId
+        let displayName = seed.backendProjectName ?? state.projectTitle
+        do {
+            try db.saveBackendProjectMapping(
+                localProjectId: localProjectId,
+                backendProjectId: bid,
+                backendProjectName: displayName
+            )
+            state.backendProjectId = bid
+            Self.logger.notice(
+                "[TimelineController] persisted backend project from import seed localProject=\(localProjectId, privacy: .public) backend=\(bid, privacy: .public)"
+            )
+        } catch {
+            Self.logger.error(
+                "[TimelineController] persist backend mapping from seed failed error=\(String(describing: error), privacy: .public)"
+            )
         }
     }
 
