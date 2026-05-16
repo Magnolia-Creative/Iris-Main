@@ -52,21 +52,17 @@ struct HomeView: View {
                 .foregroundStyle(Color.ds.accentBg)
                 .frame(width: 36, height: 36)
 
-            Text("Iris")
-                .typography(.heading)
+            HStack(alignment: .center, spacing: .spacing(.sp2)) {
+                Text("Iris")
+                .typography(.title)
                 .foregroundStyle(Color.ds.text)
 
-            Text("by Magnolia Creative")
-                .typography(.bodySmall)
-                .foregroundStyle(Color.ds.textMuted)
-                .padding(.horizontal, .sp3)
-                .padding(.vertical, .sp1)
-                .background(Color.ds.surface)
-                .clipShape(Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(Color.ds.border, lineWidth: 1)
-                }
+                Text("by Magnolia Creative")
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+                    .padding(.top, 22)
+            }
+            
 
             Spacer(minLength: 0)
 

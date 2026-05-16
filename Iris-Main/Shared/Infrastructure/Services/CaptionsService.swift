@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum CaptionsServiceError: LocalizedError, Equatable {
     case invalidResponse
@@ -84,6 +85,10 @@ struct RemoteClipCaptions: Decodable, Equatable, Sendable {
 }
 
 struct CaptionsService: Sendable {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "CaptionsService"
+    )
     private let session: URLSession
     private let decoder: JSONDecoder
 
@@ -96,6 +101,7 @@ struct CaptionsService: Sendable {
 
     func fetchCaptions(projectId: String, localKey: String) async throws -> RemoteClipCaptions {
         guard let projectInt = Int(projectId) else {
+            Self.logger.error("[CaptionsService] invalid project id raw=\(projectId, privacy: .public) localKey=\(localKey, privacy: .public)")
             throw CaptionsServiceError.requestFailed(statusCode: 400, body: "Invalid project id")
         }
         var components = URLComponents(url: AppConfiguration.captionsEndpoint, resolvingAgainstBaseURL: false)
@@ -109,18 +115,49 @@ struct CaptionsService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 120
+        Self.logger.notice(
+            "[CaptionsService] request projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public) url=\(url.absoluteString, privacy: .public)"
+        )
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
+            Self.logger.error("[CaptionsService] non-http response projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public)")
             throw CaptionsServiceError.invalidResponse
         }
         let body = String(data: data, encoding: .utf8) ?? ""
+        Self.logger.notice(
+            "[CaptionsService] response projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public) status=\(http.statusCode, privacy: .public) bytes=\(data.count, privacy: .public)"
+        )
         switch http.statusCode {
         case 200 ..< 300:
-            return try decoder.decode(RemoteClipCaptions.self, from: data)
+            do {
+                let decoded = try decoder.decode(RemoteClipCaptions.self, from: data)
+                Self.logger.notice(
+                    """
+                    [CaptionsService] decoded projectId=\(decoded.projectId, privacy: .public) \
+                    localKey=\(decoded.localKey, privacy: .public) \
+                    clipId=\(decoded.clipId, privacy: .public) \
+                    transcriptId=\(decoded.transcriptId ?? -1, privacy: .public) \
+                    status=\(decoded.processingStatus, privacy: .public) \
+                    sentenceCount=\(decoded.sentences.count, privacy: .public)
+                    """
+                )
+                return decoded
+            } catch {
+                Self.logger.error(
+                    "[CaptionsService] decode failed projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public) error=\(String(describing: error), privacy: .public) body=\(body, privacy: .public)"
+                )
+                throw error
+            }
         case 409:
+            Self.logger.error(
+                "[CaptionsService] transcript not ready projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public) body=\(body, privacy: .public)"
+            )
             throw CaptionsServiceError.transcriptNotReady(statusCode: http.statusCode, body: body)
         default:
+            Self.logger.error(
+                "[CaptionsService] request failed projectId=\(projectInt, privacy: .public) localKey=\(localKey, privacy: .public) status=\(http.statusCode, privacy: .public) body=\(body, privacy: .public)"
+            )
             throw CaptionsServiceError.requestFailed(statusCode: http.statusCode, body: body)
         }
     }

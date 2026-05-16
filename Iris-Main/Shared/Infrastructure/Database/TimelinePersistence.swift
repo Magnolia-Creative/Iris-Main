@@ -1,6 +1,11 @@
 import Foundation
+import OSLog
 
 struct TimelinePersistence {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "TimelinePersistence"
+    )
     let db: DatabaseManager
 
     init(db: DatabaseManager = .shared) {
@@ -44,6 +49,18 @@ struct TimelinePersistence {
 
         let trimmedBackendId = project?.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let backendProjectId: String? = trimmedBackendId.isEmpty ? nil : trimmedBackendId
+        Self.logger.notice(
+            """
+            [TimelinePersistence] loaded timeline=\(timeline.timelineId, privacy: .public) \
+            localProject=\(timeline.projectId, privacy: .public) \
+            projectFound=\(project != nil, privacy: .public) \
+            backendProjectRaw=\(project?.backendProjectId ?? "nil", privacy: .public) \
+            backendProjectTrimmed=\(backendProjectId ?? "nil", privacy: .public) \
+            mediaLibrary=\(mediaLibrary?.id ?? "nil", privacy: .public) \
+            mediaCount=\(media.count, privacy: .public) \
+            clipCount=\(clips.count, privacy: .public)
+            """
+        )
 
         return LoadedData(
             timeline: timeline,

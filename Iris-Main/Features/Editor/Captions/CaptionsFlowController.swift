@@ -1,9 +1,15 @@
 internal import Combine
 import Foundation
+import OSLog
 import SwiftUI
 
 @MainActor
 final class CaptionsFlowController: ObservableObject {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "CaptionsFlow"
+    )
+
     enum Phase: Equatable {
         case idle
         case processing
@@ -99,17 +105,48 @@ final class CaptionsFlowController: ObservableObject {
 
     private func runProcessing(controller: TimelineController) async {
         guard let start = rangeStartUs, let end = rangeEndUs, end > start else {
+            Self.logger.error("[CaptionsFlow] invalid range start=\(self.rangeStartUs ?? -1, privacy: .public) end=\(self.rangeEndUs ?? -1, privacy: .public)")
             failToIdle("Invalid caption range.")
             return
         }
 
         let backendProjectId = controller.state.backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let timelineId = controller.state.timelineId
+        let localProjectId = controller.state.timeline?.projectId ?? "nil"
+        let mediaWithUploadKeys = controller.state.mediaById.values.reduce(into: [String]()) { result, media in
+            let key = media.spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !key.isEmpty {
+                result.append(key)
+            }
+        }
+        let mediaWithUploadKeysSummary = mediaWithUploadKeys.joined(separator: ",")
+        Self.logger.notice(
+            """
+            [CaptionsFlow] start timeline=\(timelineId, privacy: .public) \
+            localProject=\(localProjectId, privacy: .public) \
+            backendProject=\(backendProjectId.isEmpty ? "nil" : backendProjectId, privacy: .public) \
+            totalTracks=\(controller.state.tracks.count, privacy: .public) \
+            totalClips=\(controller.state.clips.count, privacy: .public) \
+            mediaCount=\(controller.state.mediaById.count, privacy: .public) \
+            mediaUploadKeys=\(mediaWithUploadKeysSummary, privacy: .public) \
+            rangeUs=\(start, privacy: .public)...\(end, privacy: .public)
+            """
+        )
         guard !backendProjectId.isEmpty else {
+            Self.logger.error(
+                """
+                [CaptionsFlow] missing backend project mapping timeline=\(timelineId, privacy: .public) \
+                localProject=\(localProjectId, privacy: .public) \
+                overlappingClipCandidates=\(controller.state.clips.count, privacy: .public) \
+                mediaUploadKeys=\(mediaWithUploadKeysSummary, privacy: .public)
+                """
+            )
             failToIdle("This project is not linked to the cloud yet. Open it from import or wait until processing finishes so captions can load.")
             return
         }
 
         guard let videoTrack = controller.state.tracks.first(where: { $0.kind == .video }) else {
+            Self.logger.error("[CaptionsFlow] no video track timeline=\(timelineId, privacy: .public)")
             failToIdle("Add a video clip first.")
             return
         }
@@ -122,6 +159,9 @@ final class CaptionsFlowController: ObservableObject {
         }
 
         guard !overlapping.isEmpty else {
+            Self.logger.error(
+                "[CaptionsFlow] no overlapping video clips timeline=\(timelineId, privacy: .public) videoTrack=\(videoTrack.trackId, privacy: .public) rangeUs=\(start, privacy: .public)...\(end, privacy: .public)"
+            )
             failToIdle("No video clips in this range.")
             return
         }
@@ -130,7 +170,16 @@ final class CaptionsFlowController: ObservableObject {
             guard let key = pair.1.spec.clipUploadLocalKey else { return false }
             return !key.isEmpty
         }
+        let overlappingSummary = overlapping.map { clip, media in
+            "\(clip.clipId):\(media.mediaId):\(media.spec.clipUploadLocalKey ?? "nil")"
+        }.joined(separator: ",")
+        Self.logger.notice(
+            "[CaptionsFlow] overlapping clips timeline=\(timelineId, privacy: .public) clips=\(overlappingSummary, privacy: .public)"
+        )
         guard !clipsWithUploadKeys.isEmpty else {
+            Self.logger.error(
+                "[CaptionsFlow] overlapping clips missing upload keys timeline=\(timelineId, privacy: .public) clips=\(overlappingSummary, privacy: .public)"
+            )
             failToIdle("These clips are not linked to processed uploads yet. Re-import the video or finish backend processing before adding captions.")
             return
         }
@@ -143,23 +192,57 @@ final class CaptionsFlowController: ObservableObject {
         for (clip, media) in overlapping {
             guard let key = media.spec.clipUploadLocalKey, !key.isEmpty else { continue }
             guard seenKeys.insert(key).inserted else { continue }
+            Self.logger.notice(
+                """
+                [CaptionsFlow] requesting captions timeline=\(timelineId, privacy: .public) \
+                backendProject=\(backendProjectId, privacy: .public) \
+                localKey=\(key, privacy: .public) \
+                clipId=\(clip.clipId, privacy: .public) \
+                mediaId=\(media.mediaId, privacy: .public) \
+                clipRangeUs=\(clip.timelineRange.start, privacy: .public)...\(clip.timelineRange.end, privacy: .public)
+                """
+            )
             do {
                 let remote = try await captionsService.fetchCaptions(projectId: backendProjectId, localKey: key)
+                Self.logger.notice(
+                    """
+                    [CaptionsFlow] captions loaded timeline=\(timelineId, privacy: .public) \
+                    localKey=\(key, privacy: .public) \
+                    clipId=\(remote.clipId, privacy: .public) \
+                    transcriptId=\(remote.transcriptId ?? -1, privacy: .public) \
+                    status=\(remote.processingStatus, privacy: .public) \
+                    sentenceCount=\(remote.sentences.count, privacy: .public)
+                    """
+                )
                 inputs.append(CaptionsStitcher.ClipTranscriptInput(clip: clip, media: media, captions: remote))
             } catch let captionsError as CaptionsServiceError {
                 hadFetchFailure = true
                 if case .transcriptNotReady = captionsError {
                     sawTranscriptNotReady = true
                 }
+                Self.logger.error(
+                    "[CaptionsFlow] captions request failed localKey=\(key, privacy: .public) error=\(String(describing: captionsError), privacy: .public)"
+                )
                 print("[CaptionsFlow] skip local_key=\(key) error=\(captionsError)")
             } catch {
                 hadFetchFailure = true
+                Self.logger.error(
+                    "[CaptionsFlow] captions request failed localKey=\(key, privacy: .public) error=\(String(describing: error), privacy: .public)"
+                )
                 print("[CaptionsFlow] skip local_key=\(key) error=\(error)")
             }
         }
 
         let cues = CaptionsStitcher.stitch(inputs: inputs, rangeStartUs: start, rangeEndUs: end)
         guard !cues.isEmpty else {
+            Self.logger.error(
+                """
+                [CaptionsFlow] produced no cues timeline=\(timelineId, privacy: .public) \
+                transcriptInputs=\(inputs.count, privacy: .public) \
+                hadFetchFailure=\(hadFetchFailure, privacy: .public) \
+                sawTranscriptNotReady=\(sawTranscriptNotReady, privacy: .public)
+                """
+            )
             if sawTranscriptNotReady {
                 failToIdle("Transcript is still processing. Try adding captions again in a few moments.")
             } else if hadFetchFailure {
@@ -177,10 +260,16 @@ final class CaptionsFlowController: ObservableObject {
                 cues: cues,
                 style: CaptionStyle.modern
             )
+            Self.logger.notice(
+                "[CaptionsFlow] finalized captions timeline=\(timelineId, privacy: .public) groupId=\(groupId, privacy: .public) cueCount=\(cues.count, privacy: .public)"
+            )
             rangeStartUs = nil
             rangeEndUs = nil
             phase = .editingStyle(groupId: groupId)
         } catch {
+            Self.logger.error(
+                "[CaptionsFlow] persist failed timeline=\(timelineId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
             failToIdle("Could not save captions.")
             print("[CaptionsFlow] persist error: \(error)")
         }

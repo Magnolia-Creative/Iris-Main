@@ -66,6 +66,16 @@ final class TimelineController: ObservableObject {
     func loadTimelineData() async {
         do {
             let loaded = try persistence.loadTimelineData(timelineId: state.timelineId)
+            Self.logger.notice(
+                """
+                [TimelineLoad] loaded timeline=\(self.state.timelineId, privacy: .public) \
+                localProject=\(loaded.timeline.projectId, privacy: .public) \
+                backendProject=\(loaded.backendProjectId ?? "nil", privacy: .public) \
+                tracks=\(loaded.tracks.count, privacy: .public) \
+                clips=\(loaded.clips.count, privacy: .public) \
+                media=\(loaded.mediaById.count, privacy: .public)
+                """
+            )
             await MainActor.run {
                 state.applyLoadedData(
                     timeline: loaded.timeline,
