@@ -558,10 +558,10 @@ struct TimelineState {
 
     private static func trackDisplayOrder(for kind: TrackKind) -> Int {
         switch kind {
-        case .overlay: return 0
-        case .video: return 1
-        case .audio: return 2
-        case .captions: return 3
+        case .captions: return 0
+        case .overlay: return 1
+        case .video: return 2
+        case .audio: return 3
         }
     }
 

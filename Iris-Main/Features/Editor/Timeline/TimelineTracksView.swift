@@ -23,18 +23,27 @@ struct TimelineTracksContent: View {
     var captionHighlightRangeUs: ClosedRange<Int64>? = nil
     var onSelectCaptionCue: ((String) -> Void)? = nil
 
+    private var displayTracks: [Track] {
+        let hasOverlayClips = tracks.contains { track in
+            track.kind == .overlay && !(clipsByTrackId[track.trackId] ?? []).isEmpty
+        }
+        return tracks.filter { track in
+            track.kind != .overlay || hasOverlayClips
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             if let captionHighlightRangeUs {
                 TimelineCaptionRangeHighlight(
                     rangeUs: captionHighlightRangeUs,
                     pixelsPerSecond: pixelsPerSecond,
-                    height: layout.trackStackHeight(for: tracks)
+                    height: layout.trackStackHeight(for: displayTracks)
                 )
             }
 
             VStack(spacing: layout.trackSpacing) {
-                ForEach(tracks) { track in
+                ForEach(displayTracks) { track in
                     if track.kind == .captions {
                         let groupIds = Set(captionGroups.filter { $0.trackId == track.trackId }.map(\.groupId))
                         let cues = captionCues.filter { groupIds.contains($0.groupId) }

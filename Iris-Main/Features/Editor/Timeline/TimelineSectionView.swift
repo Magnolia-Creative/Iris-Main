@@ -56,9 +56,10 @@ struct TimelineSectionView: View {
     var body: some View {
         GeometryReader { geometry in
             let centerX = geometry.size.width / 2
-            let stackHeight = layout.trackStackHeight(for: tracks)
+            let displayTracks = Self.timelineDisplayTracks(tracks: tracks, clipsByTrackId: clipsByTrackId)
+            let stackHeight = layout.trackStackHeight(for: displayTracks)
             let timelineWidth = CGFloat(max(0, scrollableDurationUs)) / 1_000_000 * pixelsPerSecond
-            let addButtonTopOffset = addButtonTopOffset(for: tracks)
+            let addButtonTopOffset = addButtonTopOffset(for: displayTracks)
 
             ZStack(alignment: .topLeading) {
                 Color.ds.bg
@@ -199,12 +200,12 @@ struct TimelineSectionView: View {
 
                 // Track kind icons
                 ZStack(alignment: .topLeading) {
-                    ForEach(Array(tracks.enumerated()), id: \.element.trackId) { index, track in
+                    ForEach(Array(displayTracks.enumerated()), id: \.element.trackId) { index, track in
                         let trackHeight = layout.trackHeight(for: track.kind)
                         iconView(for: track.kind, trackHeight: trackHeight)
                             .position(
                                 x: trackIconX(for: geometry.size.width),
-                                y: iconYPosition(for: index, in: tracks)
+                                y: iconYPosition(for: index, in: displayTracks)
                             )
                     }
                 }
@@ -361,12 +362,21 @@ struct TimelineSectionView: View {
         }
     }
 
+    private static func timelineDisplayTracks(tracks: [Track], clipsByTrackId: [String: [Clip]]) -> [Track] {
+        let hasOverlayClips = tracks.contains { track in
+            track.kind == .overlay && !(clipsByTrackId[track.trackId] ?? []).isEmpty
+        }
+        return tracks.filter { track in
+            track.kind != .overlay || hasOverlayClips
+        }
+    }
+
     private func iconName(for kind: TrackKind) -> String {
         switch kind {
         case .video: return "video.fill"
         case .audio: return "waveform"
-        case .overlay: return "textformat"
-        case .captions: return "captions.bubble"
+        case .overlay: return "square.on.square"
+        case .captions: return "textformat"
         }
     }
 
