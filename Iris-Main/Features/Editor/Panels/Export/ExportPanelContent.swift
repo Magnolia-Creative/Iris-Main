@@ -15,6 +15,13 @@ struct ExportPanelContent: View {
         case hd1080 = "1080p"
         case uhd4k = "4K"
         var id: String { rawValue }
+
+        var longSide: Int {
+            switch self {
+            case .hd1080: return 1920
+            case .uhd4k: return 3840
+            }
+        }
     }
 
     enum FrameRateOption: Int, CaseIterable, Identifiable {
@@ -83,16 +90,19 @@ struct ExportPanelContent: View {
                 ShareSheet(activityItems: [url])
             }
         }
+        .onAppear {
+            let projectLongSide = max(
+                controller.state.projectResolutionWidth ?? 1920,
+                controller.state.projectResolutionHeight ?? 1080
+            )
+            selectedResolution = projectLongSide >= ResolutionOption.uhd4k.longSide ? .uhd4k : .hd1080
+        }
     }
 
     private func makeExportInput() -> RenderTimelineInput {
         var input = controller.state.makeRenderTimelineInput()
-        switch selectedResolution {
-        case .hd1080:
-            input.outputSize = CGSize(width: 1920, height: 1080)
-        case .uhd4k:
-            input.outputSize = CGSize(width: 3840, height: 2160)
-        }
+        let outputAspect = controller.state.effectiveOutputAspect ?? OutputAspectRatio(width: 16, height: 9)
+        input.outputSize = outputAspect.pixelSize(longSide: selectedResolution.longSide)
         return input
     }
 
