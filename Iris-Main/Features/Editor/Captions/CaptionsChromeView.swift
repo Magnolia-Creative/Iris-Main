@@ -32,13 +32,9 @@ private struct CaptionStyleEditorView: View {
     @ObservedObject var controller: TimelineController
     let groupId: String
 
-    @Environment(\.colorScheme) private var colorScheme
-
     @State private var style: CaptionStyle = .modern
     @State private var hasBackground: Bool = false
     @State private var showDeleteConfirmation: Bool = false
-
-    private let toolItemWidth: CGFloat = 48
 
     private var expandedTool: CaptionTool? {
         guard let raw = flow.expandedStyleTool else { return nil }
@@ -49,7 +45,7 @@ private struct CaptionStyleEditorView: View {
         HStack(spacing: .spacing(.sp2)) {
             deselectButton
 
-            promptDivider
+            EditorToolDivider()
 
             ZStack(alignment: .leading) {
                 if let tool = expandedTool {
@@ -85,22 +81,10 @@ private struct CaptionStyleEditorView: View {
                 flow.finishStyleEditing()
             }
         } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(Color.ds.textMuted)
-                .frame(width: toolItemWidth, height: toolItemWidth)
-                .contentShape(Rectangle())
+            EditorToolCloseLabel(title: "Done editing caption style")
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Done editing caption style"))
-    }
-
-    private var promptDivider: some View {
-        RoundedRectangle(cornerRadius: 0.75, style: .continuous)
-            .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.20))
-            .frame(width: 1.5, height: 28)
-            .padding(.horizontal, .spacing(.sp1))
-            .accessibilityHidden(true)
     }
 
     // MARK: - Collapsed tools
@@ -109,11 +93,7 @@ private struct CaptionStyleEditorView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: .spacing(.sp1)) {
                 Button { showDeleteConfirmation = true } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundColor(Color.ds.danger)
-                        .frame(width: toolItemWidth, height: toolItemWidth)
-                        .contentShape(Rectangle())
+                    EditorToolIconLabel(systemImage: "trash", title: "Delete captions", foreground: Color.ds.danger)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Delete captions"))
@@ -135,12 +115,7 @@ private struct CaptionStyleEditorView: View {
         systemImage: String,
         title: String
     ) -> some View {
-        Image(systemName: systemImage)
-            .font(.system(size: 22, weight: .medium))
-            .foregroundColor(Color.ds.textMuted)
-            .frame(width: toolItemWidth, height: toolItemWidth)
-            .contentShape(Rectangle())
-            .accessibilityLabel(Text(title))
+        EditorToolIconLabel(systemImage: systemImage, title: title)
     }
 
     private func handleToolTap(_ tool: CaptionTool) {
@@ -175,20 +150,11 @@ private struct CaptionStyleEditorView: View {
     }
 
     private var backToToolsButton: some View {
-        Button {
+        EditorToolBackButton(accessibilityLabel: "Back to caption tools") {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 flow.expandedStyleTool = nil
             }
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Color.ds.textMuted)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Back to caption tools"))
     }
 
     // MARK: - Option pills
@@ -220,19 +186,7 @@ private struct CaptionStyleEditorView: View {
     }
 
     private func pillLabel(_ title: String, selected: Bool) -> some View {
-        Text(title)
-            .typography(.bodySmall)
-            .foregroundColor(selected ? Color.ds.accentFg : Color.ds.text)
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.vertical, .spacing(.sp2))
-            .editorRegularGlassEffect(
-                tint: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.14),
-                in: Capsule()
-            )
-            .overlay(
-                Capsule()
-                    .stroke(selected ? Color.ds.accentFg : Color.ds.border, lineWidth: selected ? 2 : 1)
-            )
+        EditorToolPillLabel(title: title, selected: selected)
     }
 
     // MARK: - State sync

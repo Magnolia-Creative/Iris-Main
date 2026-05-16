@@ -49,7 +49,6 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     @State private var expandedToolId: Int = -1
     @State private var activeColorProperty: ColorProperty = .temperature
 
-    private let toolItemWidth: CGFloat = 48
     private let outerCornerRadius: CGFloat = 24
 
     init(
@@ -234,7 +233,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
             if clipIdle {
                 if !isClipToolSliderExpanded {
-                    promptDivider
+                    EditorToolDivider()
                         .transition(.opacity)
                 }
                 if let selected = clipTools.first(where: { $0.id == expandedToolId }) {
@@ -260,14 +259,6 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: promptReviewReplacementSlotIdentity)
     }
 
-    private var promptDivider: some View {
-        RoundedRectangle(cornerRadius: 0.75, style: .continuous)
-            .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.20))
-            .frame(width: 1.5, height: 28)
-            .padding(.horizontal, .spacing(.sp1))
-            .accessibilityHidden(true)
-    }
-
     private var clipDeselectButton: some View {
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -275,11 +266,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 onDeselectClip()
             }
         } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(Color.ds.textMuted)
-                .frame(width: toolItemWidth, height: toolItemWidth)
-                .contentShape(Rectangle())
+            EditorToolCloseLabel(title: "Deselect clip")
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Deselect clip"))
@@ -323,12 +310,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
 
                     ForEach(subItems) { sub in
                         Button { sub.action() } label: {
-                            Image(systemName: sub.systemImage)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(Color.ds.textMuted)
-                                .frame(width: 40, height: 40)
-                                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+                            EditorToolRoundedIconLabel(systemImage: sub.systemImage, title: sub.title)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(Text(sub.title))
@@ -366,13 +348,13 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         foreground: Color,
         matchedId: String? = nil
     ) -> some View {
-        Image(systemName: systemImage)
-            .font(.system(size: 22, weight: .medium))
-            .modifier(ToolIconMatchModifier(id: matchedId, namespace: toolNamespace))
-            .foregroundColor(foreground)
-            .frame(width: toolItemWidth, height: toolItemWidth)
-            .contentShape(Rectangle())
-            .accessibilityLabel(Text(title))
+        EditorToolIconLabel(
+            systemImage: systemImage,
+            title: title,
+            foreground: foreground,
+            matchedId: matchedId,
+            namespace: toolNamespace
+        )
     }
 
     private func handleToolTap(_ item: ToolItem) {
@@ -435,32 +417,18 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         Button {
             onResetClipVolume()
         } label: {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Color.ds.textMuted)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+            EditorToolRoundedIconLabel(systemImage: "arrow.counterclockwise", title: "Reset volume to 100%")
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Reset volume to 100%"))
     }
 
     private var backToToolsButton: some View {
-        Button {
+        EditorToolBackButton(accessibilityLabel: "Back to clip tools") {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 expandedToolId = -1
             }
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Color.ds.textMuted)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Back to clip tools"))
     }
 
     private var colorPropertyMenu: some View {
@@ -498,12 +466,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
                 activeColorProperty.set(0, on: &filter)
             }
         } label: {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Color.ds.textMuted)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
-                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+            EditorToolRoundedIconLabel(systemImage: "arrow.counterclockwise", title: "Reset \(activeColorProperty.title)")
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Reset \(activeColorProperty.title)"))
@@ -615,21 +578,6 @@ private struct ChromeMaxWidthModifier: ViewModifier {
     func body(content: Content) -> some View {
         if let maxWidth {
             content.frame(maxWidth: maxWidth, alignment: .center)
-        } else {
-            content
-        }
-    }
-}
-
-/// Applies `matchedGeometryEffect` only when `id` is non-nil.
-private struct ToolIconMatchModifier: ViewModifier {
-    let id: String?
-    let namespace: Namespace.ID
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let id {
-            content.matchedGeometryEffect(id: id, in: namespace)
         } else {
             content
         }
