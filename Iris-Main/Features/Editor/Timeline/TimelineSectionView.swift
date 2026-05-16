@@ -61,6 +61,8 @@ struct TimelineSectionView: View {
             let addButtonTopOffset = addButtonTopOffset(for: tracks)
 
             ZStack(alignment: .topLeading) {
+                Color.ds.bg
+
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         ZStack(alignment: .topLeading) {
