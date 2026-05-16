@@ -94,6 +94,18 @@ struct VideoLabCaptionLayerFactoryTests {
         #expect(composition.animationLayer?.bounds.size == CGSize(width: 1920, height: 1080))
     }
 
+    @Test func renderCompositionCaptionLayerFollowsOutputSize() throws {
+        let cue = makeCue()
+        let landscape = makeCaptionInput(cue: cue, outputSize: CGSize(width: 1920, height: 1080))
+        let portrait = makeCaptionInput(cue: cue, outputSize: CGSize(width: 1080, height: 1920))
+
+        let landscapeComposition = VideoLabTimelineAdapter.makeRenderComposition(from: landscape)
+        let portraitComposition = VideoLabTimelineAdapter.makeRenderComposition(from: portrait)
+
+        #expect(landscapeComposition.animationLayer?.bounds.size == CGSize(width: 1920, height: 1080))
+        #expect(portraitComposition.animationLayer?.bounds.size == CGSize(width: 1080, height: 1920))
+    }
+
     private func makeCue(
         startTime: Double = 1,
         endTime: Double = 3,
@@ -115,6 +127,15 @@ struct VideoLabCaptionLayerFactoryTests {
             ),
             position: position,
             opacity: opacity
+        )
+    }
+
+    private func makeCaptionInput(cue: RenderCaptionCueInput, outputSize: CGSize) -> RenderTimelineInput {
+        RenderTimelineInput(
+            tracks: [],
+            captions: [cue],
+            outputSize: outputSize,
+            duration: 5
         )
     }
 }
