@@ -37,9 +37,13 @@ private struct CaptionStyleEditorView: View {
 
     @State private var style: CaptionStyle = .modern
     @State private var hasBackground: Bool = false
-    @State private var expandedTool: CaptionTool? = nil
 
     private let toolItemWidth: CGFloat = 48
+
+    private var expandedTool: CaptionTool? {
+        guard let raw = flow.expandedStyleTool else { return nil }
+        return CaptionTool(rawValue: raw)
+    }
 
     var body: some View {
         HStack(spacing: .spacing(.sp2)) {
@@ -47,17 +51,22 @@ private struct CaptionStyleEditorView: View {
 
             promptDivider
 
-            if let tool = expandedTool {
-                expandedRow(for: tool)
-            } else {
-                collapsedToolsStrip
+            ZStack(alignment: .leading) {
+                if let tool = expandedTool {
+                    expandedRow(for: tool)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
+                } else {
+                    collapsedToolsStrip
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
+                }
             }
+            .contentTransition(.opacity)
 
             Spacer(minLength: 0)
         }
         .frame(minHeight: .spacing(.sp8))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedTool)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: flow.expandedStyleTool)
         .onAppear { syncFromState() }
         .onChange(of: flow.phase) { _, _ in syncFromState() }
     }
@@ -66,10 +75,9 @@ private struct CaptionStyleEditorView: View {
 
     private var deselectButton: some View {
         Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                expandedTool = nil
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                flow.finishStyleEditing()
             }
-            flow.finishStyleEditing()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 20, weight: .semibold))
@@ -126,7 +134,7 @@ private struct CaptionStyleEditorView: View {
 
     private func handleToolTap(_ tool: CaptionTool) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            expandedTool = (expandedTool == tool) ? nil : tool
+            flow.expandedStyleTool = (expandedTool == tool) ? nil : tool.rawValue
         }
     }
 
@@ -159,7 +167,7 @@ private struct CaptionStyleEditorView: View {
     private var backToToolsButton: some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                expandedTool = nil
+                flow.expandedStyleTool = nil
             }
         } label: {
             Image(systemName: "chevron.left")

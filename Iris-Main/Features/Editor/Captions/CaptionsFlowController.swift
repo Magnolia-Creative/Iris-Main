@@ -23,6 +23,9 @@ final class CaptionsFlowController: ObservableObject {
     /// Shown in an alert when the flow returns to `idle` (e.g. generation failed).
     @Published var captionsAlert: String?
     @Published var selectedCaptionCueId: String?
+    /// Identifier of the currently expanded caption style tool (e.g. "style", "background").
+    /// `nil` when the editor row is showing the collapsed tool icons.
+    @Published var expandedStyleTool: String?
 
     weak var timelineController: TimelineController?
     private let captionsService = CaptionsService()
@@ -67,6 +70,7 @@ final class CaptionsFlowController: ObservableObject {
         rangeEndUs = nil
         validationMessage = nil
         captionsAlert = nil
+        expandedStyleTool = nil
     }
 
     func openStyleEditor(forGroupId groupId: String) {
@@ -95,11 +99,13 @@ final class CaptionsFlowController: ObservableObject {
 
     func finishStyleEditing() {
         phase = .idle
+        expandedStyleTool = nil
     }
 
     /// Clears caption cue selection and dismisses the style chrome (e.g. when the user selects a clip).
     func cancelStyleEditing() {
         selectedCaptionCueId = nil
+        expandedStyleTool = nil
         if case .editingStyle = phase {
             phase = .idle
         }
@@ -109,6 +115,7 @@ final class CaptionsFlowController: ObservableObject {
         validationMessage = nil
         captionsAlert = message
         phase = .idle
+        expandedStyleTool = nil
     }
 
     private func runProcessing(controller: TimelineController) async {
