@@ -12,10 +12,13 @@ struct AuthenticatedRootView: View {
         Group {
             if clerk.user != nil {
                 HomeView()
+                    .transition(.opacity)
             } else {
                 signedOutExperience
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.35), value: clerk.user != nil)
     }
 
     private var signedOutExperience: some View {
