@@ -11,16 +11,25 @@ struct ExportPanelContent: View {
     @State private var showShareSheet = false
     @State private var exportedFileURL: URL?
 
-    enum ResolutionOption: String, CaseIterable, Identifiable {
-        case hd1080 = "1080p"
-        case uhd4k = "4K"
-        var id: String { rawValue }
+    struct ResolutionOption: Identifiable, Hashable {
+        let label: String
+        let longSide: Int
 
-        var longSide: Int {
-            switch self {
-            case .hd1080: return 1920
-            case .uhd4k: return 3840
+        var id: Int { longSide }
+
+        static let hd720 = ResolutionOption(label: "720p", longSide: 1280)
+        static let hd1080 = ResolutionOption(label: "1080p", longSide: 1920)
+        static let uhd4k = ResolutionOption(label: "4K", longSide: 3840)
+
+        static let presets: [ResolutionOption] = [.hd720, .hd1080, .uhd4k]
+
+        static func available(for outputSize: CGSize) -> [ResolutionOption] {
+            let currentLongSide = max(Int(outputSize.width.rounded()), Int(outputSize.height.rounded()))
+            let matchingPresets = presets.filter { $0.longSide <= currentLongSide }
+            if matchingPresets.isEmpty {
+                return [ResolutionOption(label: "\(currentLongSide)p", longSide: currentLongSide)]
             }
+            return matchingPresets
         }
     }
 
@@ -45,8 +54,8 @@ struct ExportPanelContent: View {
                         .typography(.bodySmall)
                         .foregroundColor(Color.ds.textMuted)
                     Picker("Resolution", selection: $selectedResolution) {
-                        ForEach(ResolutionOption.allCases) { option in
-                            Text(option.rawValue).tag(option)
+                        ForEach(availableResolutions) { option in
+                            Text(option.label).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -85,18 +94,21 @@ struct ExportPanelContent: View {
             }
         }
         .padding(.horizontal, .sp2)
+        .onChange(of: controller.state.effectiveOutputPixelSize) { _, _ in
+            clampSelectedResolution()
+        }
         .sheet(isPresented: $showShareSheet) {
             if let url = exportedFileURL {
                 ShareSheet(activityItems: [url])
             }
         }
         .onAppear {
-            let projectLongSide = max(
-                controller.state.projectResolutionWidth ?? 1920,
-                controller.state.projectResolutionHeight ?? 1080
-            )
-            selectedResolution = projectLongSide >= ResolutionOption.uhd4k.longSide ? .uhd4k : .hd1080
+            clampSelectedResolution()
         }
+    }
+
+    private var availableResolutions: [ResolutionOption] {
+        ResolutionOption.available(for: controller.state.effectiveOutputPixelSize)
     }
 
     private func makeExportInput() -> RenderTimelineInput {
@@ -104,6 +116,13 @@ struct ExportPanelContent: View {
         let outputAspect = controller.state.effectiveOutputAspect ?? OutputAspectRatio(width: 16, height: 9)
         input.outputSize = outputAspect.pixelSize(longSide: selectedResolution.longSide)
         return input
+    }
+
+    private func clampSelectedResolution() {
+        let available = availableResolutions
+        if !available.contains(selectedResolution), let best = available.last {
+            selectedResolution = best
+        }
     }
 
     private func startExport() {
