@@ -123,13 +123,22 @@ final class ThumbnailService {
             return immediateThumbnailStream(with: nil)
         }
 
+        if AppSandboxFileURI.isLikelySandboxFile(assetRef.uri) {
+            if let fileURL = AppSandboxFileURI.resolveFileURL(storedURI: assetRef.uri) {
+                return loadThumbnailStream(for: fileURL, size: size, cacheKey: cacheKey)
+            }
+            return immediateThumbnailStream(with: nil)
+        }
+
         let results = PHAsset.fetchAssets(withLocalIdentifiers: [assetRef.uri], options: nil)
         if let asset = results.firstObject {
             return loadThumbnailStream(for: asset, size: size, cacheKey: cacheKey)
         }
 
-        let fileURL = URL(fileURLWithPath: assetRef.uri)
-        return loadThumbnailStream(for: fileURL, size: size, cacheKey: cacheKey)
+        if let fileURL = AppSandboxFileURI.resolveFileURL(storedURI: assetRef.uri) {
+            return loadThumbnailStream(for: fileURL, size: size, cacheKey: cacheKey)
+        }
+        return immediateThumbnailStream(with: nil)
     }
 
     func loadThumbnail(for assetRefId: String, size: CGSize) async throws -> UIImage? {
@@ -171,7 +180,8 @@ final class ThumbnailService {
             updatedMedia.spec.thumbnailStripFrameCount = stripInfo.frameCount
             updatedMedia.updatedAt = Date()
             try db.update(updatedMedia)
-            guard let image = UIImage(contentsOfFile: stripInfo.path) else { return nil }
+            guard let resolvedStrip = AppSandboxFileURI.resolveFileURL(storedURI: stripInfo.path),
+                  let image = UIImage(contentsOfFile: resolvedStrip.path) else { return nil }
             cacheThumbnailStrip(image, forPath: stripInfo.path)
             return image
         } catch {
@@ -216,8 +226,8 @@ final class ThumbnailService {
     func loadVideoURL(for assetRefId: String) async throws -> URL? {
         guard let assetRef = try db.getAssetReference(assetRefId: assetRefId) else { return nil }
 
-        if assetRef.uri.hasPrefix("/"), FileManager.default.fileExists(atPath: assetRef.uri) {
-            return URL(fileURLWithPath: assetRef.uri)
+        if AppSandboxFileURI.isLikelySandboxFile(assetRef.uri) {
+            return AppSandboxFileURI.resolveFileURL(storedURI: assetRef.uri)
         }
 
         let results = PHAsset.fetchAssets(withLocalIdentifiers: [assetRef.uri], options: nil)
@@ -344,14 +354,15 @@ final class ThumbnailService {
     }
 
     private func existingThumbnailStripInfo(for media: Media) -> ThumbnailStripInfo? {
-        guard let path = media.spec.thumbnailStripPath,
-              FileManager.default.fileExists(atPath: path),
+        guard let rawPath = media.spec.thumbnailStripPath,
+              let resolved = AppSandboxFileURI.resolveFileURL(storedURI: rawPath),
+              FileManager.default.fileExists(atPath: resolved.path),
               let height = media.spec.thumbnailStripHeight,
               let frameCount = media.spec.thumbnailStripFrameCount else {
             return nil
         }
 
-        return ThumbnailStripInfo(path: path, height: height, frameCount: frameCount)
+        return ThumbnailStripInfo(path: resolved.path, height: height, frameCount: frameCount)
     }
 
     private func generateThumbnailStripImage(
@@ -454,8 +465,9 @@ final class ThumbnailService {
 
                 do {
                     try data.write(to: url, options: .atomic)
+                    let storedPath = AppSandboxFileURI.canonicalStoredPath(forFileAt: url)
                     continuation.resume(
-                        returning: ThumbnailStripInfo(path: url.path, height: height, frameCount: frameCount)
+                        returning: ThumbnailStripInfo(path: storedPath, height: height, frameCount: frameCount)
                     )
                 } catch {
                     continuation.resume(throwing: error)
@@ -493,8 +505,9 @@ final class ThumbnailService {
         if let image = thumbnailStripCache.object(forKey: path as NSString) {
             return image
         }
-        guard FileManager.default.fileExists(atPath: path),
-              let image = UIImage(contentsOfFile: path) else {
+        guard let resolved = AppSandboxFileURI.resolveFileURL(storedURI: path),
+              FileManager.default.fileExists(atPath: resolved.path),
+              let image = UIImage(contentsOfFile: resolved.path) else {
             return nil
         }
         cacheThumbnailStrip(image, forPath: path)
