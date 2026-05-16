@@ -36,6 +36,7 @@ private struct CaptionStyleEditorView: View {
 
     @State private var style: CaptionStyle = .modern
     @State private var hasBackground: Bool = false
+    @State private var showDeleteConfirmation: Bool = false
 
     private let toolItemWidth: CGFloat = 48
 
@@ -68,6 +69,12 @@ private struct CaptionStyleEditorView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: flow.expandedStyleTool)
         .onAppear { syncFromState() }
         .onChange(of: flow.phase) { _, _ in syncFromState() }
+        .alert("Delete all captions?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) { deleteAllCaptions() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove every caption in this group from your timeline. This action cannot be undone.")
+        }
     }
 
     // MARK: - Leading
@@ -101,6 +108,17 @@ private struct CaptionStyleEditorView: View {
     private var collapsedToolsStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: .spacing(.sp1)) {
+                Button { showDeleteConfirmation = true } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundColor(Color.ds.danger)
+                        .frame(width: toolItemWidth, height: toolItemWidth)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Delete captions"))
+                .transition(.opacity.combined(with: .scale))
+
                 ForEach(CaptionTool.allCases) { tool in
                     Button { handleToolTap(tool) } label: {
                         toolLabel(systemImage: tool.systemImage, title: tool.title)
@@ -223,6 +241,17 @@ private struct CaptionStyleEditorView: View {
         guard let g = controller.state.captionGroups.first(where: { $0.groupId == groupId }) else { return }
         style = g.style
         hasBackground = g.hasBackground
+    }
+
+    private func deleteAllCaptions() {
+        do {
+            try controller.deleteCaptionGroup(groupId: groupId)
+        } catch {
+            print("[CaptionsChrome] failed to delete caption group \(groupId): \(error)")
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            flow.finishStyleEditing()
+        }
     }
 }
 
