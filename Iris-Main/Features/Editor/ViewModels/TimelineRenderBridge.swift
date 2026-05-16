@@ -22,6 +22,7 @@ final class TimelineRenderBridge: ObservableObject {
                     && old.clips.map(\.timelineRange.end) == new.clips.map(\.timelineRange.end)
                     && old.clips.map(\.sourceRange.start) == new.clips.map(\.sourceRange.start)
                     && old.clips.map(\.sourceRange.end) == new.clips.map(\.sourceRange.end)
+                    && old.effectiveOutputAspect == new.effectiveOutputAspect
                     && Self.clipColorFiltersByClipId(from: old.effects) == Self.clipColorFiltersByClipId(from: new.effects)
                     && Self.clipVolumesByClipId(from: old.effects) == Self.clipVolumesByClipId(from: new.effects)
                     && old.captionGroups == new.captionGroups
