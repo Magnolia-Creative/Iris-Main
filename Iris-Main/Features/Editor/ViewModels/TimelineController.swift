@@ -68,8 +68,9 @@ final class TimelineController: ObservableObject {
         }
         project.updatedAt = Date()
         try db.update(project)
-        state.manualOutputAspect = aspect
-        objectWillChange.send()
+        var nextState = state
+        nextState.manualOutputAspect = aspect
+        state = nextState
     }
 
     /// Unit tests only: installs synthetic tracks/clips without touching persistence.
