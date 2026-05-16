@@ -6,7 +6,6 @@ enum VideoLabCaptionLayerFactory {
     static func makeAnimationLayer(cues: [RenderCaptionCueInput], timelineDuration: Double, renderSize: CGSize) -> CALayer {
         let root = CALayer()
         root.frame = CGRect(origin: .zero, size: renderSize)
-        root.isGeometryFlipped = true
         root.beginTime = AVCoreAnimationBeginTimeAtZero
 
         let duration = max(timelineDuration, 0.01)
