@@ -199,8 +199,22 @@ final class VideoLabRenderEngine: NSObject {
         onTimeChanged?(0)
     }
 
+    private func isRebuildCurrent(_ generation: UInt64, stage: String) -> Bool {
+        guard !Task.isCancelled, generation == rebuildGeneration else {
+#if DEBUG
+            VideoLabPreviewDiagnostics.logRebuildSuperseded(
+                generation: generation,
+                currentGeneration: rebuildGeneration,
+                stage: stage
+            )
+#endif
+            return false
+        }
+        return true
+    }
+
     private func rebuildPlayer(from timeline: RenderTimelineInput, generation: UInt64) async {
-        guard !Task.isCancelled else { return }
+        guard isRebuildCurrent(generation, stage: "start") else { return }
 
 #if DEBUG
         VideoLabPreviewDiagnostics.logRebuildStarted(
@@ -227,7 +241,7 @@ final class VideoLabRenderEngine: NSObject {
         }
 
         let prepared = await timeline.preparedForVideoLabPreview()
-        guard !Task.isCancelled else { return }
+        guard isRebuildCurrent(generation, stage: "prepared") else { return }
 
         guard prepared.duration > 0 else {
 #if DEBUG
@@ -253,11 +267,12 @@ final class VideoLabRenderEngine: NSObject {
             hostBounds: playerHostView?.bounds ?? .zero
         )
         await VideoLabPreviewDiagnostics.logPerAssetTrackSummary(for: prepared)
+        guard isRebuildCurrent(generation, stage: "asset_summary") else { return }
 #endif
 
         let fps = max(1, previewFrameRate)
         let videoLab = await VideoLabTimelineAdapter.makeVideoLabAsync(from: prepared, frameRate: fps)
-        guard !Task.isCancelled else { return }
+        guard isRebuildCurrent(generation, stage: "video_lab") else { return }
 
         let item = videoLab.makePlayerItem()
         item.seekingWaitsForVideoCompositionRendering = true
@@ -301,7 +316,7 @@ final class VideoLabRenderEngine: NSObject {
             layoutCaptionSyncLayer()
         }
 
-        guard !Task.isCancelled else { return }
+        guard isRebuildCurrent(generation, stage: "final_seek") else { return }
 
         seekPlayer(to: min(currentTime, prepared.duration))
         onTimeChanged?(currentTime)

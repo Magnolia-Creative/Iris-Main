@@ -246,6 +246,16 @@ enum VideoLabPreviewDiagnostics {
         )
     }
 
+    static func logRebuildSuperseded(
+        generation: UInt64,
+        currentGeneration: UInt64,
+        stage: String
+    ) {
+        logger.debug(
+            "VideoLab rebuild superseded generation=\(generation) currentGeneration=\(currentGeneration) stage=\(stage, privacy: .public)"
+        )
+    }
+
     private static func clipCount(_ input: RenderTimelineInput) -> Int {
         input.tracks.flatMap(\.clips).count
     }
