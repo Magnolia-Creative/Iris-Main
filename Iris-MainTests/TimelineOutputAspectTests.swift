@@ -54,6 +54,38 @@ struct TimelineOutputAspectTests {
         #expect(size == CGSize(width: 1080, height: 1920))
     }
 
+    @Test func derivedAspectRecoversAfterTimelineBecomesEmpty() {
+        let timelineId = "timeline"
+        let videoTrack = Track(trackId: "video-track", timelineId: timelineId, kind: .video)
+        let firstClip = makeClip(id: "first", trackId: videoTrack.trackId, mediaId: "first-media", start: 0)
+        let secondClip = makeClip(id: "second", trackId: videoTrack.trackId, mediaId: "second-media", start: 0)
+        var state = TimelineState(timelineId: timelineId)
+        state.tracks = [videoTrack]
+        state.clips = [firstClip]
+        state.mediaById = [
+            "first-media": makeMedia(id: "first-media", kind: .video, width: 1620, height: 1080),
+            "second-media": makeMedia(id: "second-media", kind: .video, width: 720, height: 1280),
+        ]
+        state.refreshDerivedOutputAspect()
+
+        #expect(state.derivedOutputPixelSize?.width == 1620)
+        #expect(state.derivedOutputPixelSize?.height == 1080)
+
+        _ = state.apply([Action.removeClip(timelineId: timelineId, clipId: firstClip.clipId)])
+
+        #expect(state.derivedOutputAspect == nil)
+        #expect(state.derivedOutputPixelSize == nil)
+        #expect(state.effectiveOutputPixelSize.width == 1920)
+        #expect(state.effectiveOutputPixelSize.height == 1080)
+
+        _ = state.apply([Action.addClip(timelineId: timelineId, clip: secondClip)])
+
+        #expect(state.derivedOutputPixelSize?.width == 720)
+        #expect(state.derivedOutputPixelSize?.height == 1280)
+        #expect(state.effectiveOutputPixelSize.width == 720)
+        #expect(state.effectiveOutputPixelSize.height == 1280)
+    }
+
     private func makeClip(id: String, trackId: String, mediaId: String, start: Int64) -> Clip {
         Clip(
             clipId: id,
