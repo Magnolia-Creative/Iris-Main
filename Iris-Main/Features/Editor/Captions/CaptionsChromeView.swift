@@ -33,121 +33,235 @@ private struct CaptionStyleEditorView: View {
     let groupId: String
 
     @Environment(\.colorScheme) private var colorScheme
+    @Namespace private var toolNamespace
 
     @State private var style: CaptionStyle = .modern
     @State private var hasBackground: Bool = false
-    @State private var carouselPage: Int = 0
+    @State private var expandedTool: CaptionTool? = nil
+
+    private let toolItemWidth: CGFloat = 48
 
     var body: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            Text("Caption style")
-                .typography(.heading)
-                .foregroundColor(Color.ds.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+        HStack(spacing: .spacing(.sp2)) {
+            deselectButton
 
-            TabView(selection: $carouselPage) {
-                stylePage
-                    .tag(0)
-                backgroundPage
-                    .tag(1)
+            promptDivider
+
+            if let tool = expandedTool {
+                expandedRow(for: tool)
+            } else {
+                collapsedToolsStrip
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 72)
 
-            HStack(alignment: .center, spacing: .spacing(.sp3)) {
-                HStack(spacing: 6) {
-                    ForEach(0..<2, id: \.self) { index in
-                        Capsule()
-                            .fill(carouselPage == index ? Color.ds.accentFg : Color.ds.textMuted.opacity(0.35))
-                            .frame(width: carouselPage == index ? 14 : 6, height: 6)
-                            .animation(.easeInOut(duration: 0.2), value: carouselPage)
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: .spacing(.sp8))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: expandedTool)
+        .onAppear { syncFromState() }
+        .onChange(of: flow.phase) { _, _ in syncFromState() }
+    }
+
+    // MARK: - Leading
+
+    private var deselectButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                expandedTool = nil
+            }
+            flow.finishStyleEditing()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(Color.ds.textMuted)
+                .frame(width: toolItemWidth, height: toolItemWidth)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Done editing caption style"))
+    }
+
+    private var promptDivider: some View {
+        RoundedRectangle(cornerRadius: 0.75, style: .continuous)
+            .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.20))
+            .frame(width: 1.5, height: 28)
+            .padding(.horizontal, .spacing(.sp1))
+            .accessibilityHidden(true)
+    }
+
+    // MARK: - Collapsed tools
+
+    private var collapsedToolsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: .spacing(.sp1)) {
+                ForEach(CaptionTool.allCases) { tool in
+                    Button { handleToolTap(tool) } label: {
+                        toolLabel(
+                            systemImage: tool.systemImage,
+                            title: tool.title,
+                            matchedId: "captool-\(tool.rawValue)"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .scale))
+                }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func toolLabel(
+        systemImage: String,
+        title: String,
+        matchedId: String
+    ) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 22, weight: .medium))
+            .matchedGeometryEffect(id: matchedId, in: toolNamespace)
+            .foregroundColor(Color.ds.textMuted)
+            .frame(width: toolItemWidth, height: toolItemWidth)
+            .contentShape(Rectangle())
+            .accessibilityLabel(Text(title))
+    }
+
+    private func handleToolTap(_ tool: CaptionTool) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            expandedTool = (expandedTool == tool) ? nil : tool
+        }
+    }
+
+    // MARK: - Expanded rows
+
+    @ViewBuilder
+    private func expandedRow(for tool: CaptionTool) -> some View {
+        HStack(spacing: .spacing(.sp2)) {
+            backToToolsButton
+            expandedToolTitleButton(for: tool)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: .spacing(.sp2)) {
+                    switch tool {
+                    case .style:
+                        ForEach(CaptionStyle.allCases, id: \.self) { option in
+                            stylePill(option)
+                        }
+                    case .background:
+                        backgroundPill(on: false)
+                        backgroundPill(on: true)
                     }
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text("Caption settings page \(carouselPage + 1) of 2"))
-
-                Spacer(minLength: 0)
-
-                Button {
-                    flow.finishStyleEditing()
-                } label: {
-                    Text("Done")
-                        .typography(.action)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, .spacing(.sp4))
-                        .padding(.vertical, .spacing(.sp2))
-                        .background(Color.ds.accentBg)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Done"))
+                .padding(.vertical, 2)
             }
         }
-        .onAppear {
-            syncFromState()
-        }
-        .onChange(of: flow.phase) { _, _ in
-            syncFromState()
-        }
+        .transition(.opacity)
     }
 
-    private var stylePage: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+    private var backToToolsButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                expandedTool = nil
+            }
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Color.ds.textMuted)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Back to caption tools"))
+    }
+
+    private func expandedToolTitleButton(for tool: CaptionTool) -> some View {
+        Button { handleToolTap(tool) } label: {
             HStack(spacing: .spacing(.sp2)) {
-                ForEach(CaptionStyle.allCases, id: \.self) { option in
-                    styleOptionPill(option)
-                }
+                Image(systemName: tool.systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                    .matchedGeometryEffect(id: "captool-\(tool.rawValue)", in: toolNamespace)
+                Text(tool.title)
+                    .typography(.body)
+                    .lineLimit(1)
             }
-            .frame(maxHeight: .infinity, alignment: .center)
-            .padding(.vertical, 2)
+            .foregroundColor(Color.ds.textMuted)
+            .padding(.horizontal, .spacing(.sp3))
+            .padding(.vertical, .spacing(.sp2))
+            .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
+            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
         }
+        .buttonStyle(.plain)
     }
 
-    private func styleOptionPill(_ option: CaptionStyle) -> some View {
+    // MARK: - Option pills
+
+    private func stylePill(_ option: CaptionStyle) -> some View {
         let selected = style == option
         return Button {
             style = option
             flow.updateEditingGroup(style: option, hasBackground: hasBackground)
         } label: {
-            Text(option.rawValue.capitalized)
-                .typography(.bodySmall)
-                .foregroundColor(selected ? Color.ds.accentFg : Color.ds.text)
-                .padding(.horizontal, .spacing(.sp3))
-                .padding(.vertical, .spacing(.sp2))
-                .editorRegularGlassEffect(
-                    tint: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.14),
-                    in: Capsule()
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(selected ? Color.ds.accentFg : Color.ds.border, lineWidth: selected ? 2 : 1)
-                )
+            pillLabel(option.rawValue.capitalized, selected: selected)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(option.rawValue.capitalized))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private var backgroundPage: some View {
-        HStack(alignment: .center, spacing: .spacing(.sp2)) {
-            Text("Background for readability")
-                .typography(.bodySmall)
-                .foregroundColor(Color.ds.text)
-                .multilineTextAlignment(.leading)
-            Spacer(minLength: .spacing(.sp2))
-            Toggle("", isOn: $hasBackground)
-                .labelsHidden()
-                .tint(Color.ds.accentFg)
-                .onChange(of: hasBackground) { _, newValue in
-                    flow.updateEditingGroup(style: style, hasBackground: newValue)
-                }
+    private func backgroundPill(on: Bool) -> some View {
+        let selected = hasBackground == on
+        return Button {
+            hasBackground = on
+            flow.updateEditingGroup(style: style, hasBackground: on)
+        } label: {
+            pillLabel(on ? "On" : "Off", selected: selected)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .padding(.horizontal, .spacing(.sp1))
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(on ? "Background on" : "Background off"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
+
+    private func pillLabel(_ title: String, selected: Bool) -> some View {
+        Text(title)
+            .typography(.bodySmall)
+            .foregroundColor(selected ? Color.ds.accentFg : Color.ds.text)
+            .padding(.horizontal, .spacing(.sp3))
+            .padding(.vertical, .spacing(.sp2))
+            .editorRegularGlassEffect(
+                tint: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.14),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .stroke(selected ? Color.ds.accentFg : Color.ds.border, lineWidth: selected ? 2 : 1)
+            )
+    }
+
+    // MARK: - State sync
 
     private func syncFromState() {
         guard let g = controller.state.captionGroups.first(where: { $0.groupId == groupId }) else { return }
         style = g.style
         hasBackground = g.hasBackground
+    }
+}
+
+private enum CaptionTool: String, CaseIterable, Identifiable {
+    case style
+    case background
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .style: return "Style"
+        case .background: return "Background"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .style: return "textformat"
+        case .background: return "rectangle.fill.on.rectangle.fill"
+        }
     }
 }
