@@ -3,17 +3,16 @@ import SwiftUI
 struct PreviewSection: View {
     @ObservedObject var controller: PlaybackController
     var renderBridge: TimelineRenderBridge?
+    var previewAspect: CGFloat?
 
     var body: some View {
-        Group {
+        let preview = Group {
             if let bridge = renderBridge {
                 VideoLabPreviewView(engine: bridge.engine)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             } else {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.ds.surface)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .overlay(
                         VStack(spacing: .spacing(.sp2)) {
                             Text("Preview")
@@ -25,6 +24,12 @@ struct PreviewSection: View {
                         }
                     )
             }
+        }
+
+        if let previewAspect {
+            preview.aspectRatio(previewAspect, contentMode: .fit)
+        } else {
+            preview.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
