@@ -30,6 +30,7 @@ final class VideoLabRenderEngine: NSObject {
     private weak var playerHostView: UIView?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var playerLayerVideoRectObservation: NSKeyValueObservation?
     private var captionSyncLayer: AVSynchronizedLayer?
     private var captionRenderSize: CGSize = .zero
     private var rebuildTask: Task<Void, Never>?
@@ -62,12 +63,15 @@ final class VideoLabRenderEngine: NSObject {
 
         let hostIdentityChanged = !(playerHostView === view)
         if let oldLayer = playerLayer, oldLayer !== avLayer {
+            playerLayerVideoRectObservation?.invalidate()
+            playerLayerVideoRectObservation = nil
             oldLayer.removeFromSuperlayer()
         }
 
         playerHostView = view
         playerLayer = avLayer
         avLayer.videoGravity = .resizeAspect
+        installPlayerLayerVideoRectObserverIfNeeded(for: avLayer)
 
         layoutPlayerHost()
         if player == nil {
@@ -406,6 +410,15 @@ final class VideoLabRenderEngine: NSObject {
         captionLayer.bounds = CGRect(origin: .zero, size: captionRenderSize)
         captionLayer.position = visibleVideoRect.origin
         captionLayer.setAffineTransform(CGAffineTransform(scaleX: scaleX, y: scaleY))
+    }
+
+    private func installPlayerLayerVideoRectObserverIfNeeded(for layer: AVPlayerLayer) {
+        guard playerLayerVideoRectObservation == nil else { return }
+        playerLayerVideoRectObservation = layer.observe(\.videoRect, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.layoutCaptionSyncLayer()
+            }
+        }
     }
 
     private func removeCaptionSyncLayer() {
