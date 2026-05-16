@@ -287,11 +287,11 @@ class MediaImportService {
     }
 
     private func createAssetReference(from fileURL: URL) throws -> AssetReference {
-        let uri = fileURL.path
-        if let existing = try db.assetReferenceExists(uri: uri) {
+        let storedURI = AppSandboxFileURI.canonicalStoredPath(forFileAt: fileURL)
+        if let existing = try db.assetReferenceExists(uri: storedURI) {
             return existing
         }
-        let assetRef = AssetReference(locationType: .local, uri: uri)
+        let assetRef = AssetReference(locationType: .local, uri: storedURI)
         try db.create(assetRef)
         return assetRef
     }

@@ -259,6 +259,13 @@ extension DatabaseManager {
             try db.create(index: "index_caption_cues_on_group_id", on: "caption_cues", columns: ["group_id", "timeline_start_us"])
         }
 
+        migrator.registerMigration("v7_projectManualOutputAspect") { db in
+            try db.alter(table: "projects") { t in
+                t.add(column: "manual_output_aspect_w", .integer)
+                t.add(column: "manual_output_aspect_h", .integer)
+            }
+        }
+
         return migrator
     }
 }
@@ -317,7 +324,12 @@ extension DatabaseManager {
 
     func assetReferenceExists(uri: String) throws -> AssetReference? {
         try dbQueue.read { db in
-            try AssetReference.filter(Column("uri") == uri).fetchOne(db)
+            for candidate in AppSandboxFileURI.lookupCandidateStoredURIs(forStoredURI: uri) {
+                if let ref = try AssetReference.filter(Column("uri") == candidate).fetchOne(db) {
+                    return ref
+                }
+            }
+            return nil
         }
     }
 }
