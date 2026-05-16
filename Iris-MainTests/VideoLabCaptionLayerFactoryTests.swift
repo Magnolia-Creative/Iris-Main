@@ -1,6 +1,8 @@
+import AVFoundation
 import QuartzCore
 import Testing
 import UIKit
+import VideoLab
 @testable import Iris_Main
 
 struct VideoLabCaptionLayerFactoryTests {
