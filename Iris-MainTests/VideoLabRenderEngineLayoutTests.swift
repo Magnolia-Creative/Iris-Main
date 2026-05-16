@@ -3,6 +3,7 @@ import Testing
 @testable import Iris_Main
 
 struct VideoLabRenderEngineLayoutTests {
+    @MainActor
     @Test func captionLayerLayoutScalesToVisibleVideoRect() {
         let layout = VideoLabRenderEngine.captionLayerLayout(
             captionRenderSize: CGSize(width: 1920, height: 1080),
@@ -14,6 +15,7 @@ struct VideoLabRenderEngineLayoutTests {
         #expect(layout.transform == CGAffineTransform(scaleX: 0.5, y: 0.5))
     }
 
+    @MainActor
     @Test func captionLayerLayoutUpdatesForPortraitVideoRect() {
         let layout = VideoLabRenderEngine.captionLayerLayout(
             captionRenderSize: CGSize(width: 1080, height: 1920),
