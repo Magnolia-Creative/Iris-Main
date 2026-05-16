@@ -59,7 +59,7 @@ extension TimelineState {
         return RenderTimelineInput(
             tracks: renderTracks,
             captions: makeRenderCaptionInputs(),
-            outputSize: (effectiveOutputAspect ?? OutputAspectRatio(width: 16, height: 9)).pixelSize(longSide: 1920),
+            outputSize: effectiveOutputPixelSize,
             duration: timelineDurationSeconds
         )
     }
