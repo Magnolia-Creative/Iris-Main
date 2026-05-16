@@ -51,6 +51,7 @@ struct TimelineTracksContent: View {
                         TimelineCaptionsTrackRow(
                             track: track,
                             cues: cues,
+                            clipsById: Dictionary(uniqueKeysWithValues: clipsByTrackId.values.flatMap { $0 }.map { ($0.clipId, $0) }),
                             layout: layout,
                             pixelsPerSecond: pixelsPerSecond,
                             selectedCaptionCueId: $selectedCaptionCueId,

@@ -66,12 +66,14 @@ extension TimelineState {
 
     private func makeRenderCaptionInputs() -> [RenderCaptionCueInput] {
         var result: [RenderCaptionCueInput] = []
+        let clipsById = Dictionary(uniqueKeysWithValues: clips.map { ($0.clipId, $0) })
         for group in captionGroups {
             let style = group.style.renderCaptionStyle(textColorHex: group.textColor, hasBackground: group.hasBackground)
             let groupCues = captionCues.filter { $0.groupId == group.groupId }
             for cue in groupCues {
-                let start = Double(cue.timelineStartUs) / 1_000_000.0
-                let end = Double(cue.timelineEndUs) / 1_000_000.0
+                guard let timelineRange = CaptionCueProjection.currentTimelineRange(for: cue, clips: clipsById) else { continue }
+                let start = Double(timelineRange.start) / 1_000_000.0
+                let end = Double(timelineRange.end) / 1_000_000.0
                 guard end > start else { continue }
                 result.append(
                     RenderCaptionCueInput(
