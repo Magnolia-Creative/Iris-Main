@@ -71,10 +71,10 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         bottomReservedSpace: CGFloat = 0,
         chromeMaxWidth: CGFloat? = nil,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
-        @ViewBuilder spaceExtension: () -> SpaceExtension,
         captionsEditContent: AnyView? = nil,
         isCaptionsChromeActive: Bool = false,
-        isCaptionsToolExpanded: Bool = false
+        isCaptionsToolExpanded: Bool = false,
+        @ViewBuilder spaceExtension: () -> SpaceExtension
     ) {
         self._activeSpace = activeSpace
         self.isClipSelected = isClipSelected

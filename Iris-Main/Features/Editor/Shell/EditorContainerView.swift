@@ -150,7 +150,9 @@ struct EditorContainerView: View {
                     },
                     captionsEditContent: captionsFlow.isCaptionsChromeActive
                         ? AnyView(CaptionsChromeView(flow: captionsFlow, controller: controller))
-                        : nil
+                        : nil,
+                    isCaptionsChromeActive: captionsFlow.isCaptionsChromeActive,
+                    isCaptionsToolExpanded: captionsFlow.expandedStyleTool != nil
                 ) {
                     ZStack {
                         switch activeSpace {
