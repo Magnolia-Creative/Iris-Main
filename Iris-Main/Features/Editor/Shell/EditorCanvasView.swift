@@ -162,6 +162,9 @@ struct EditorCanvasView: View {
             selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
             onCaptionCueSelected: { cueId in
                 captionsFlow.openStyleEditor(forCueId: cueId)
+            },
+            onClipSelected: {
+                captionsFlow.cancelStyleEditing()
             }
         )
         .frame(height: layout.sectionHeight(for: state.orderedTracks))

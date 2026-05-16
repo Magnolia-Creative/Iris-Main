@@ -22,6 +22,7 @@ struct TimelineTracksContent: View {
     var promptActionPreview: TimelinePromptActionPreview? = nil
     var captionHighlightRangeUs: ClosedRange<Int64>? = nil
     var onSelectCaptionCue: ((String) -> Void)? = nil
+    var onClipSelected: (() -> Void)? = nil
 
     private var displayTracks: [Track] {
         let hasOverlayClips = tracks.contains { track in
@@ -73,7 +74,8 @@ struct TimelineTracksContent: View {
                             isUserScrolling: isUserScrolling,
                             reviewFocusedClipIds: reviewFocusedClipIds,
                             isReviewInteractionDisabled: isReviewInteractionDisabled,
-                            promptActionPreview: promptActionPreview
+                            promptActionPreview: promptActionPreview,
+                            onClipSelected: onClipSelected
                         )
                     }
                 }

@@ -16,6 +16,8 @@ struct TimelineTrackRow: View {
     let reviewFocusedClipIds: Set<String>
     let isReviewInteractionDisabled: Bool
     var promptActionPreview: TimelinePromptActionPreview? = nil
+    /// Invoked when the user selects a clip on this row (mutually exclusive with caption selection).
+    var onClipSelected: (() -> Void)? = nil
 
     private var trackHeight: CGFloat { layout.trackHeight(for: track.kind) }
     private let swapThresholdPx: CGFloat = 75
@@ -96,6 +98,7 @@ struct TimelineTrackRow: View {
                         guard !isUserScrolling, !isReviewInteractionDisabled else { return }
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                             selectedClipId = clip.clipId
+                            onClipSelected?()
                         }
                     }
                 )

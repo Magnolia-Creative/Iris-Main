@@ -97,6 +97,14 @@ final class CaptionsFlowController: ObservableObject {
         phase = .idle
     }
 
+    /// Clears caption cue selection and dismisses the style chrome (e.g. when the user selects a clip).
+    func cancelStyleEditing() {
+        selectedCaptionCueId = nil
+        if case .editingStyle = phase {
+            phase = .idle
+        }
+    }
+
     private func failToIdle(_ message: String) {
         validationMessage = nil
         captionsAlert = message

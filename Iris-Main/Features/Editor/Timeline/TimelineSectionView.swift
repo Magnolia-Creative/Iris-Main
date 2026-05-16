@@ -33,6 +33,7 @@ struct TimelineSectionView: View {
     var captionCues: [CaptionCue] = []
     @Binding var selectedCaptionCueId: String?
     var onCaptionCueSelected: ((String) -> Void)? = nil
+    var onClipSelected: (() -> Void)? = nil
 
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var lastScrollOffsetX: CGFloat = 0
@@ -98,7 +99,8 @@ struct TimelineSectionView: View {
                                     isReviewInteractionDisabled: isReviewInteractionDisabled,
                                     promptActionPreview: promptActionPreview,
                                     captionHighlightRangeUs: captionHighlightRangeUs,
-                                    onSelectCaptionCue: onCaptionCueSelected
+                                    onSelectCaptionCue: onCaptionCueSelected,
+                                    onClipSelected: onClipSelected
                                 )
                                 .padding(.top, layout.trackTopOffset)
                                 .transaction { transaction in
