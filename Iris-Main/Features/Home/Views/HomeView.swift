@@ -214,50 +214,50 @@ struct HomeView: View {
                     }
 
                     VStack(spacing: 0) {
-                    ForEach(Array(viewModel.allProjects.enumerated()), id: \.element.projectId) { index, project in
-                        SwipeToDeleteProjectRow {
-                            viewModel.deleteProject(project)
-                        } content: {
-                            Button {
-                                viewModel.openProject(project)
-                            } label: {
-                                HStack(spacing: .spacing(.sp4)) {
-                                    ProjectCoverImageView(
-                                        project: project,
-                                        width: 112,
-                                        height: 64,
-                                        cornerRadius: .spacing(.sp3)
-                                    )
+                        ForEach(Array(viewModel.allProjects.enumerated()), id: \.element.projectId) { index, project in
+                            SwipeToDeleteProjectRow {
+                                viewModel.deleteProject(project)
+                            } content: {
+                                Button {
+                                    viewModel.openProject(project)
+                                } label: {
+                                    HStack(spacing: .spacing(.sp4)) {
+                                        ProjectCoverImageView(
+                                            project: project,
+                                            width: 112,
+                                            height: 64,
+                                            cornerRadius: .spacing(.sp3)
+                                        )
 
-                                    VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-                                        Text(project.name)
-                                            .typography(.body)
-                                            .foregroundStyle(Color.ds.text)
-                                            .lineLimit(1)
+                                        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+                                            Text(project.name)
+                                                .typography(.body)
+                                                .foregroundStyle(Color.ds.text)
+                                                .lineLimit(1)
 
-                                        Text(projectDetailText(for: project))
-                                            .typography(.bodySmall)
+                                            Text(projectDetailText(for: project))
+                                                .typography(.bodySmall)
+                                                .foregroundStyle(Color.ds.textMuted)
+                                                .lineLimit(1)
+                                        }
+
+                                        Spacer(minLength: .spacing(.sp3))
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
                                             .foregroundStyle(Color.ds.textMuted)
-                                            .lineLimit(1)
                                     }
-
-                                    Spacer(minLength: .spacing(.sp3))
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.ds.textMuted)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, .sp4)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, .sp4)
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
-                        }
 
-                        if index < viewModel.allProjects.count - 1 {
-                            Divider()
-                                .padding(.leading, 128)
+                            if index < viewModel.allProjects.count - 1 {
+                                Divider()
+                                    .padding(.leading, 128)
+                            }
                         }
-                    }
                     }
                 }
             }
