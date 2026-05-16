@@ -180,6 +180,7 @@ struct EditorCanvasView: View {
 
     private func timelineView(state: TimelineState, layout: TimelineLayout) -> some View {
         let allowsTimelineAdditions = layout == .expanded
+        let displayTracks = state.editorDisplayTracks
         let addSelection: (TrackKind, ImportSource) -> Void
         if allowsTimelineAdditions {
             addSelection = onAddSelection ?? controller.handleAddSelection(kind:source:)
@@ -191,7 +192,7 @@ struct EditorCanvasView: View {
         let playheadTint = captionsFlow.playheadUsesAccentTint ? Color.ds.accentFg : Color.ds.text
 
         return TimelineSectionView(
-            tracks: state.orderedTracks,
+            tracks: displayTracks,
             clipsByTrackId: state.clipsByTrackId,
             mediaById: state.mediaById,
             layout: layout,
@@ -234,8 +235,8 @@ struct EditorCanvasView: View {
                 captionsFlow.cancelStyleEditing()
             }
         )
-        .frame(height: layout.sectionHeight(for: state.orderedTracks))
-        .animation(nil, value: layout.sectionHeight(for: state.orderedTracks))
+        .frame(height: layout.sectionHeight(for: displayTracks))
+        .animation(nil, value: layout.sectionHeight(for: displayTracks))
     }
 
 }

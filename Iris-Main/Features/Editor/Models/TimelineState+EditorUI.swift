@@ -3,6 +3,27 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension TimelineState {
+    var editorDisplayTracks: [Track] {
+        let hasOverlayClips = tracks.contains { track in
+            track.kind == .overlay && !(clipsByTrackId[track.trackId] ?? []).isEmpty
+        }
+        var displayTracks = orderedTracks.filter { track in
+            track.kind != .overlay || hasOverlayClips
+        }
+        if !displayTracks.contains(where: { $0.kind == .captions }) {
+            displayTracks.insert(
+                Track(
+                    trackId: "\(timelineId)-captions-display-track",
+                    timelineId: timelineId,
+                    kind: .captions,
+                    sortIndex: Int.min
+                ),
+                at: 0
+            )
+        }
+        return displayTracks
+    }
+
     mutating func beginImport(kind: TrackKind, source: ImportSource) {
         pendingImport = ImportRequest(kind: kind, source: source)
         switch source {
