@@ -105,14 +105,13 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         return .infinity
     }
 
-    /// Clip idle or prompt-action review: shell sizes to content; the pinned
-    /// nav bar below is unaffected by this hug.
+    /// Clip idle or prompt-action review: shell sizes to content; caption style
+    /// chrome uses full width and fixed vertical footprint (see `topChrome`).
     private var hugChromeToContent: Bool {
         activeSpace == .edit
             && !isClipToolSliderExpanded
             && (
-                captionsEditContent != nil
-                    || isPromptActionReviewActive
+                isPromptActionReviewActive
                     || (isClipSelected && !promptBarIsTakingOver)
             )
     }
@@ -152,6 +151,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         Group {
             if activeSpace == .edit, let captionsEditContent {
                 captionsEditContent
+                    .frame(minHeight: .spacing(.sp8))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if activeSpace == .edit {
                 toolsRow
             } else {
