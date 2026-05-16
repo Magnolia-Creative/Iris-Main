@@ -10,6 +10,7 @@ enum VideoLabCaptionLayerFactory {
         root.beginTime = AVCoreAnimationBeginTimeAtZero
 
         let duration = max(timelineDuration, 0.01)
+        let styleScale = captionStyleScale(for: renderSize)
 
         for cue in cues {
             let textLayer = CATextLayer()
@@ -17,7 +18,8 @@ enum VideoLabCaptionLayerFactory {
             textLayer.alignmentMode = .center
             textLayer.isWrapped = true
 
-            let baseSize = cue.style.fontSize
+            let baseSize = max(1, cue.style.fontSize * styleScale)
+            let cornerRadius = cue.style.cornerRadius * styleScale
             let font: UIFont = {
                 let name = cue.style.fontName.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !name.isEmpty, let named = UIFont(name: name, size: baseSize) {
@@ -48,14 +50,16 @@ enum VideoLabCaptionLayerFactory {
                 context: nil
             ).size ?? .zero
 
-            let w = min(maxWidth, ceil(textSize.width) + cue.style.cornerRadius * 2)
-            let h = ceil(textSize.height) + cue.style.cornerRadius * 2
+            let horizontalPadding = cornerRadius * 2
+            let verticalPadding = cornerRadius
+            let w = min(maxWidth, ceil(textSize.width) + horizontalPadding * 2)
+            let h = ceil(textSize.height) + verticalPadding * 2
             let posX = CGFloat(cue.position.x) * renderSize.width
             let posY = CGFloat(cue.position.y) * renderSize.height
             textLayer.anchorPoint = CGPoint(x: 0.5, y: 1.0)
             textLayer.bounds = CGRect(x: 0, y: 0, width: w, height: h)
             textLayer.position = CGPoint(x: posX, y: posY)
-            textLayer.cornerRadius = cue.style.cornerRadius
+            textLayer.cornerRadius = cornerRadius
             textLayer.backgroundColor = UIColor(
                 red: CGFloat(bg.x),
                 green: CGFloat(bg.y),
@@ -72,17 +76,59 @@ enum VideoLabCaptionLayerFactory {
                 continue
             }
 
-            let opacityAnim = CABasicAnimation(keyPath: "opacity")
-            opacityAnim.fromValue = Float(cue.opacity)
-            opacityAnim.toValue = Float(cue.opacity)
-            opacityAnim.beginTime = start
-            opacityAnim.duration = end - start
+            let opacityAnim = makeOpacityAnimation(
+                start: start,
+                end: end,
+                timelineDuration: duration,
+                opacity: cue.opacity
+            )
 
             textLayer.add(opacityAnim, forKey: "captionOpacity")
             root.addSublayer(textLayer)
         }
 
         return root
+    }
+
+    private static func makeOpacityAnimation(
+        start: Double,
+        end: Double,
+        timelineDuration: Double,
+        opacity: Float
+    ) -> CAKeyframeAnimation {
+        let duration = max(timelineDuration, 0.01)
+        let clampedStart = min(max(start, 0), duration)
+        let clampedEnd = min(max(end, clampedStart), duration)
+        let startKey = clampedStart / duration
+        let endKey = clampedEnd / duration
+
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        animation.beginTime = AVCoreAnimationBeginTimeAtZero
+        animation.duration = duration
+        animation.calculationMode = .discrete
+        animation.fillMode = .both
+        animation.isRemovedOnCompletion = false
+
+        if startKey <= 0, endKey >= 1 {
+            animation.keyTimes = [0, 1]
+            animation.values = [opacity, opacity]
+        } else if startKey <= 0 {
+            animation.keyTimes = [0, NSNumber(value: endKey), 1]
+            animation.values = [opacity, Float(0), Float(0)]
+        } else if endKey >= 1 {
+            animation.keyTimes = [0, NSNumber(value: startKey), 1]
+            animation.values = [Float(0), opacity, opacity]
+        } else {
+            animation.keyTimes = [0, NSNumber(value: startKey), NSNumber(value: endKey), 1]
+            animation.values = [Float(0), opacity, Float(0), Float(0)]
+        }
+        return animation
+    }
+
+    private static func captionStyleScale(for renderSize: CGSize) -> CGFloat {
+        let shortSide = min(renderSize.width, renderSize.height)
+        guard shortSide.isFinite, shortSide > 0 else { return 1 }
+        return max(1, shortSide / 240)
     }
 
     /// Insert hard line breaks every `maxWordsPerLine` words so long cues wrap onto multiple lines.
