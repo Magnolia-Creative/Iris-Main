@@ -210,6 +210,7 @@ extension TimelineState {
         let before = orderedClips(for: trackId)
 
         clips.removeAll { $0.clipId == clipId }
+        captionCues.removeAll { $0.clipId == clipId }
         packTrackClips(trackId: trackId, animate: true)
 
         let maxScrollTimeUs = max(0, calculatedTimelineDurationUs) + scrollBufferUs
