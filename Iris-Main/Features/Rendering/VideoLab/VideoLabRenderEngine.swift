@@ -1,5 +1,4 @@
 import AVFoundation
-import QuartzCore
 import UIKit
 import VideoLab
 
@@ -31,8 +30,6 @@ final class VideoLabRenderEngine: NSObject {
     private weak var playerHostView: UIView?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
-    private var captionSyncLayer: AVSynchronizedLayer?
-    private var captionRenderSize: CGSize = .zero
     private var rebuildTask: Task<Void, Never>?
     private var boundsRetryTask: Task<Void, Never>?
     private var rebuildGeneration: UInt64 = 0
@@ -84,7 +81,6 @@ final class VideoLabRenderEngine: NSObject {
     func layoutPlayerHost() {
         guard let view = playerHostView else { return }
         playerLayer?.frame = view.bounds
-        layoutCaptionSyncLayer()
         if waitingForNonzeroHostBounds, hasNonzeroHostBounds {
             waitingForNonzeroHostBounds = false
             boundsRetryTask?.cancel()
@@ -206,7 +202,6 @@ final class VideoLabRenderEngine: NSObject {
         boundsRetryTask?.cancel()
         boundsRetryTask = nil
         removeObservers()
-        removeCaptionSyncLayer()
         playerLayer?.player = nil
         player?.replaceCurrentItem(with: nil)
         if wasPlaying {
@@ -241,7 +236,6 @@ final class VideoLabRenderEngine: NSObject {
 #endif
 
         removeObservers()
-        removeCaptionSyncLayer()
 
         guard timeline.duration > 0 else {
 #if DEBUG
@@ -287,7 +281,13 @@ final class VideoLabRenderEngine: NSObject {
 #endif
 
         let fps = max(1, previewFrameRate)
-        let videoLab = await VideoLabTimelineAdapter.makeVideoLabAsync(from: prepared, frameRate: fps)
+        let previewInput = RenderTimelineInput(
+            tracks: prepared.tracks,
+            captions: [],
+            outputSize: prepared.outputSize,
+            duration: prepared.duration
+        )
+        let videoLab = await VideoLabTimelineAdapter.makeVideoLabAsync(from: previewInput, frameRate: fps)
         guard isRebuildCurrent(generation, stage: "video_lab") else { return }
 
         let item = videoLab.makePlayerItem()
@@ -321,21 +321,6 @@ final class VideoLabRenderEngine: NSObject {
         )
         VideoLabPreviewDiagnostics.logPlayerItemWired(item, timelineDuration: prepared.duration)
 #endif
-
-        if !prepared.captions.isEmpty, let host = playerHostView {
-            let animationLayer = VideoLabCaptionLayerFactory.makeAnimationLayer(
-                cues: prepared.captions,
-                timelineDuration: max(prepared.duration, 0.01),
-                renderSize: prepared.outputSize
-            )
-            let sync = AVSynchronizedLayer(playerItem: item)
-            sync.frame = host.bounds
-            sync.addSublayer(animationLayer)
-            host.layer.addSublayer(sync)
-            captionSyncLayer = sync
-            captionRenderSize = prepared.outputSize
-            layoutCaptionSyncLayer()
-        }
 
         guard isRebuildCurrent(generation, stage: "final_seek") else { return }
 
@@ -385,39 +370,6 @@ final class VideoLabRenderEngine: NSObject {
         } else {
             player?.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
         }
-    }
-
-    private func layoutCaptionSyncLayer() {
-        guard let host = playerHostView,
-              let sync = captionSyncLayer,
-              let captionLayer = sync.sublayers?.first,
-              captionRenderSize.width > 0,
-              captionRenderSize.height > 0 else {
-            return
-        }
-
-        sync.frame = host.bounds
-        let visibleVideoRect: CGRect = {
-            guard let rect = playerLayer?.videoRect,
-                  rect.width > 0,
-                  rect.height > 0 else {
-                return host.bounds
-            }
-            return rect
-        }()
-
-        let scaleX = visibleVideoRect.width / captionRenderSize.width
-        let scaleY = visibleVideoRect.height / captionRenderSize.height
-        captionLayer.anchorPoint = CGPoint(x: 0, y: 0)
-        captionLayer.bounds = CGRect(origin: .zero, size: captionRenderSize)
-        captionLayer.position = visibleVideoRect.origin
-        captionLayer.setAffineTransform(CGAffineTransform(scaleX: scaleX, y: scaleY))
-    }
-
-    private func removeCaptionSyncLayer() {
-        captionSyncLayer?.removeFromSuperlayer()
-        captionSyncLayer = nil
-        captionRenderSize = .zero
     }
 
     private func syncCurrentTimeFromPlayer() {
