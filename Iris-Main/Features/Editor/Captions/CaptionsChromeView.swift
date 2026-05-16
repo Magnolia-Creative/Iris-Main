@@ -33,7 +33,6 @@ private struct CaptionStyleEditorView: View {
     let groupId: String
 
     @Environment(\.colorScheme) private var colorScheme
-    @Namespace private var toolNamespace
 
     @State private var style: CaptionStyle = .modern
     @State private var hasBackground: Bool = false
@@ -104,11 +103,7 @@ private struct CaptionStyleEditorView: View {
             HStack(spacing: .spacing(.sp1)) {
                 ForEach(CaptionTool.allCases) { tool in
                     Button { handleToolTap(tool) } label: {
-                        toolLabel(
-                            systemImage: tool.systemImage,
-                            title: tool.title,
-                            matchedId: "captool-\(tool.rawValue)"
-                        )
+                        toolLabel(systemImage: tool.systemImage, title: tool.title)
                     }
                     .buttonStyle(.plain)
                     .transition(.opacity.combined(with: .scale))
@@ -120,12 +115,10 @@ private struct CaptionStyleEditorView: View {
 
     private func toolLabel(
         systemImage: String,
-        title: String,
-        matchedId: String
+        title: String
     ) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 22, weight: .medium))
-            .matchedGeometryEffect(id: matchedId, in: toolNamespace)
             .foregroundColor(Color.ds.textMuted)
             .frame(width: toolItemWidth, height: toolItemWidth)
             .contentShape(Rectangle())
@@ -144,7 +137,6 @@ private struct CaptionStyleEditorView: View {
     private func expandedRow(for tool: CaptionTool) -> some View {
         HStack(spacing: .spacing(.sp2)) {
             backToToolsButton
-            expandedToolTitleButton(for: tool)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: .spacing(.sp2)) {
@@ -179,25 +171,6 @@ private struct CaptionStyleEditorView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Back to caption tools"))
-    }
-
-    private func expandedToolTitleButton(for tool: CaptionTool) -> some View {
-        Button { handleToolTap(tool) } label: {
-            HStack(spacing: .spacing(.sp2)) {
-                Image(systemName: tool.systemImage)
-                    .font(.system(size: 18, weight: .medium))
-                    .matchedGeometryEffect(id: "captool-\(tool.rawValue)", in: toolNamespace)
-                Text(tool.title)
-                    .typography(.body)
-                    .lineLimit(1)
-            }
-            .foregroundColor(Color.ds.textMuted)
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.vertical, .spacing(.sp2))
-            .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
-            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Option pills
