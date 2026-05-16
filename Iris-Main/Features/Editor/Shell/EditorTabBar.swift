@@ -36,6 +36,11 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     let spaceExtension: SpaceExtension
     /// When set and `activeSpace == .edit`, replaces the edit tools row (same chrome as import/export).
     let captionsEditContent: AnyView?
+    /// True while the captions style chrome is mounted (drives entry/exit transition + width gating).
+    let isCaptionsChromeActive: Bool
+    /// True while a caption style tool (style, background, …) is expanded inline.
+    /// Causes the chrome to drop its width cap so the expanded options have room.
+    let isCaptionsToolExpanded: Bool
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -67,7 +72,9 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         chromeMaxWidth: CGFloat? = nil,
         @ViewBuilder promptBar: @escaping (Bool, Namespace.ID) -> PromptBar,
         @ViewBuilder spaceExtension: () -> SpaceExtension,
-        captionsEditContent: AnyView? = nil
+        captionsEditContent: AnyView? = nil,
+        isCaptionsChromeActive: Bool = false,
+        isCaptionsToolExpanded: Bool = false
     ) {
         self._activeSpace = activeSpace
         self.isClipSelected = isClipSelected
@@ -89,6 +96,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
         self.promptBar = promptBar
         self.spaceExtension = spaceExtension()
         self.captionsEditContent = captionsEditContent
+        self.isCaptionsChromeActive = isCaptionsChromeActive
+        self.isCaptionsToolExpanded = isCaptionsToolExpanded
     }
 
     private var rowMaxWidth: CGFloat? {
@@ -110,6 +119,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     private var hugChromeToContent: Bool {
         activeSpace == .edit
             && !isClipToolSliderExpanded
+            && !isCaptionsToolExpanded
             && (
                 isPromptActionReviewActive
                     || (isClipSelected && !promptBarIsTakingOver)
@@ -123,7 +133,7 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     var body: some View {
         topChrome
             .modifier(ChromeMaxWidthModifier(
-                maxWidth: (hugChromeToContent || isClipToolSliderExpanded) ? nil : chromeMaxWidth
+                maxWidth: (hugChromeToContent || isClipToolSliderExpanded || isCaptionsToolExpanded) ? nil : chromeMaxWidth
             ))
             .editorRegularGlassEffect(
                 tint: shellTint,
@@ -131,6 +141,8 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
             )
             .shadow(color: outerShadowColor, radius: 20, x: 0, y: 14)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: activeSpace)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isCaptionsChromeActive)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isCaptionsToolExpanded)
             .onChange(of: isClipSelected) { _, _ in
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { expandedToolId = -1 }
             }
@@ -148,13 +160,25 @@ struct EditorTabBar<PromptBar: View, SpaceExtension: View>: View {
     }
 
     private var topChrome: some View {
-        Group {
+        ZStack {
             if activeSpace == .edit, let captionsEditContent {
                 captionsEditContent
                     .frame(minHeight: .spacing(.sp8))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .center)),
+                            removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .center))
+                        )
+                    )
             } else if activeSpace == .edit {
                 toolsRow
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .center)),
+                            removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .center))
+                        )
+                    )
             } else {
                 spaceExtension
             }
