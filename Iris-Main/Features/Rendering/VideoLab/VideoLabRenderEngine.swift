@@ -95,7 +95,11 @@ final class VideoLabRenderEngine: NSObject {
         avLayer.player = player
 
         if hostIdentityChanged, timeline.duration > 0 {
-            scheduleRebuild()
+            if hasNonzeroHostBounds {
+                scheduleRebuild()
+            } else {
+                deferRebuildUntilHostBounds(input: timeline)
+            }
         }
     }
 
@@ -360,15 +364,20 @@ final class VideoLabRenderEngine: NSObject {
 
     private func deferRebuildUntilHostBounds(generation: UInt64, input: RenderTimelineInput) {
         guard isRebuildCurrent(generation, stage: "defer_zero_bounds") else { return }
+        deferRebuildUntilHostBounds(input: input)
+    }
+
+    private func deferRebuildUntilHostBounds(input: RenderTimelineInput) {
         waitingForNonzeroHostBounds = true
 #if DEBUG
         VideoLabPreviewDiagnostics.logRebuildDeferredForBounds(
-            generation: generation,
+            generation: rebuildGeneration,
             input: input,
             hostBounds: playerHostView?.bounds ?? .zero
         )
 #endif
         boundsRetryTask?.cancel()
+        let generation = rebuildGeneration
         boundsRetryTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 50_000_000)
             await self?.retryRebuildAfterBoundsWait(generation: generation)
