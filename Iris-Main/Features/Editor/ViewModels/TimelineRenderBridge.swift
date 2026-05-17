@@ -103,6 +103,7 @@ final class TimelineRenderBridge: ObservableObject {
 
     private func seek(to timeUs: Int64, scrollVelocity: Double?) {
         let seconds = Double(timeUs) / 1_000_000.0
+        guard engine.playableDuration > 0 || seconds > 0 else { return }
         let now = CACurrentMediaTime()
         let dt = now - lastSeekTime
         let velocity: Double

@@ -48,6 +48,10 @@ final class VideoLabRenderEngine: NSObject {
         return timeline.duration
     }
 
+    var playableDuration: Double {
+        max(0, effectiveTimelineDuration)
+    }
+
 #if DEBUG
     private var debugItemStatusObservation: NSKeyValueObservation?
     private var debugItemVideoCompositionObservation: NSKeyValueObservation?
