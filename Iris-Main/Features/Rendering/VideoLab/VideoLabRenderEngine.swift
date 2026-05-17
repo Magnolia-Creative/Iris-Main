@@ -95,7 +95,10 @@ final class VideoLabRenderEngine: NSObject {
         avLayer.player = player
 
         if hostIdentityChanged, timeline.duration > 0 {
-            if hasNonzeroHostBounds {
+            if Self.shouldRebuildImmediatelyForHostChange(
+                timelineDuration: timeline.duration,
+                hostBounds: view.bounds
+            ) {
                 scheduleRebuild()
             } else {
                 deferRebuildUntilHostBounds(input: timeline)
@@ -152,6 +155,16 @@ final class VideoLabRenderEngine: NSObject {
     private var hasNonzeroHostBounds: Bool {
         guard let bounds = playerHostView?.bounds else { return false }
         return bounds.width > 0 && bounds.height > 0
+    }
+
+    static func shouldRebuildImmediatelyForHostChange(
+        timelineDuration: Double,
+        hostBounds: CGRect
+    ) -> Bool {
+        timelineDuration > 0
+            && timelineDuration.isFinite
+            && hostBounds.width > 0
+            && hostBounds.height > 0
     }
 
     func play() {

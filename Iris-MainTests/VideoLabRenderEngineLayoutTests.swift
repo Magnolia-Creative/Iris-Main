@@ -44,4 +44,20 @@ struct VideoLabRenderEngineLayoutTests {
         #expect(VideoLabRenderEngine.clampedPlaybackTime(5, duration: 4) == 4)
         #expect(VideoLabRenderEngine.clampedPlaybackTime(5, duration: .nan) == 0)
     }
+
+    @MainActor
+    @Test func hostChangeRebuildWaitsForNonzeroBounds() {
+        #expect(!VideoLabRenderEngine.shouldRebuildImmediatelyForHostChange(
+            timelineDuration: 45,
+            hostBounds: .zero
+        ))
+        #expect(!VideoLabRenderEngine.shouldRebuildImmediatelyForHostChange(
+            timelineDuration: 0,
+            hostBounds: CGRect(x: 0, y: 0, width: 378, height: 220)
+        ))
+        #expect(VideoLabRenderEngine.shouldRebuildImmediatelyForHostChange(
+            timelineDuration: 45,
+            hostBounds: CGRect(x: 0, y: 0, width: 378, height: 220)
+        ))
+    }
 }
