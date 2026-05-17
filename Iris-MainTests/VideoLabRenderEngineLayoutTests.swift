@@ -26,4 +26,22 @@ struct VideoLabRenderEngineLayoutTests {
         #expect(layout.position == CGPoint(x: 100, y: 10))
         #expect(layout.transform == CGAffineTransform(scaleX: 0.25, y: 0.25))
     }
+
+    @MainActor
+    @Test func playbackDurationRejectsNonPlayableValues() {
+        #expect(VideoLabRenderEngine.normalizedPlaybackDuration(.nan) == 0)
+        #expect(VideoLabRenderEngine.normalizedPlaybackDuration(.infinity) == 0)
+        #expect(VideoLabRenderEngine.normalizedPlaybackDuration(-1) == 0)
+        #expect(VideoLabRenderEngine.normalizedPlaybackDuration(0) == 0)
+        #expect(VideoLabRenderEngine.normalizedPlaybackDuration(2.5) == 2.5)
+    }
+
+    @MainActor
+    @Test func playbackTimeClampsToPreparedDuration() {
+        #expect(VideoLabRenderEngine.clampedPlaybackTime(.nan, duration: 4) == 0)
+        #expect(VideoLabRenderEngine.clampedPlaybackTime(-1, duration: 4) == 0)
+        #expect(VideoLabRenderEngine.clampedPlaybackTime(3, duration: 4) == 3)
+        #expect(VideoLabRenderEngine.clampedPlaybackTime(5, duration: 4) == 4)
+        #expect(VideoLabRenderEngine.clampedPlaybackTime(5, duration: .nan) == 0)
+    }
 }

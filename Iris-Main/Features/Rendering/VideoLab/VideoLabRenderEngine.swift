@@ -49,7 +49,18 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     var playableDuration: Double {
-        max(0, effectiveTimelineDuration)
+        Self.normalizedPlaybackDuration(effectiveTimelineDuration)
+    }
+
+    static func normalizedPlaybackDuration(_ duration: Double) -> Double {
+        guard duration.isFinite, duration > 0 else { return 0 }
+        return duration
+    }
+
+    static func clampedPlaybackTime(_ time: Double, duration: Double) -> Double {
+        let duration = normalizedPlaybackDuration(duration)
+        guard time.isFinite else { return 0 }
+        return max(0, min(time, duration))
     }
 
 #if DEBUG
@@ -140,9 +151,10 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     func play() {
-        guard !isPlaying, effectiveTimelineDuration > 0 else { return }
+        let duration = playableDuration
+        guard !isPlaying, duration > 0 else { return }
         isScrubbing = false
-        if currentTime >= effectiveTimelineDuration {
+        if currentTime >= duration {
             currentTime = 0
             seekPlayer(to: 0)
         }
@@ -160,7 +172,7 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     func seek(to time: Double, intent: RenderIntent = .scrub(velocity: 0)) {
-        let clamped = max(0, min(time, effectiveTimelineDuration))
+        let clamped = Self.clampedPlaybackTime(time, duration: effectiveTimelineDuration)
         switch intent {
         case .playback:
             currentTime = clamped
@@ -174,7 +186,7 @@ final class VideoLabRenderEngine: NSObject {
                 return 1.0 / 60.0
             }()
             let quantized = (clamped / quantum).rounded() * quantum
-            currentTime = max(0, min(quantized, effectiveTimelineDuration))
+            currentTime = Self.clampedPlaybackTime(quantized, duration: effectiveTimelineDuration)
         }
         seekPlayer(to: currentTime)
         if isScrubbing {
@@ -341,7 +353,7 @@ final class VideoLabRenderEngine: NSObject {
 
         guard isRebuildCurrent(generation, stage: "final_seek") else { return }
 
-        currentTime = max(0, min(currentTime, prepared.duration))
+        currentTime = Self.clampedPlaybackTime(currentTime, duration: prepared.duration)
         seekPlayer(to: currentTime)
         onTimeChanged?(currentTime)
     }
