@@ -293,16 +293,16 @@ final class VideoLabRenderEngine: NSObject {
         let videoLab = await VideoLabTimelineAdapter.makeVideoLabAsync(from: prepared, frameRate: fps)
         guard isRebuildCurrent(generation, stage: "video_lab") else { return }
 
+        guard hasNonzeroHostBounds else {
+            deferRebuildUntilHostBounds(generation: generation, input: prepared)
+            return
+        }
+
         let item = videoLab.makePlayerItem()
         item.seekingWaitsForVideoCompositionRendering = true
 
         if player == nil {
             player = AVPlayer()
-        }
-
-        guard hasNonzeroHostBounds else {
-            deferRebuildUntilHostBounds(generation: generation, input: prepared)
-            return
         }
 
         // Observe the new item before attaching it so status/videoComposition KVO is not missed during transition.
@@ -337,7 +337,8 @@ final class VideoLabRenderEngine: NSObject {
 
         guard isRebuildCurrent(generation, stage: "final_seek") else { return }
 
-        seekPlayer(to: min(currentTime, prepared.duration))
+        currentTime = max(0, min(currentTime, prepared.duration))
+        seekPlayer(to: currentTime)
         onTimeChanged?(currentTime)
     }
 
@@ -376,6 +377,7 @@ final class VideoLabRenderEngine: NSObject {
     }
 
     private func seekPlayer(to seconds: Double) {
+        guard seconds.isFinite else { return }
         let t = CMTime(seconds: seconds, preferredTimescale: 600)
         if isScrubbing {
             let tol = CMTime(value: 1, timescale: 15)
