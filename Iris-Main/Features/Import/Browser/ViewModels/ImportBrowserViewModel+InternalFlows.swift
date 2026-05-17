@@ -443,6 +443,11 @@ extension ImportBrowserViewModel {
             let localKey = model.clips[index].localKey
             guard let responseVideo = responseByLocalKey[localKey] else { continue }
             model.clips[index].remoteClipID = responseVideo.clipID.rawValue
+            persistRemoteTranscriptIDIfAvailable(
+                responseVideo.transcriptID?.rawValue,
+                localKey: localKey,
+                mediaID: model.clips[index].localMediaID
+            )
 
             switch responseVideo.processingStatus {
             case "ready":
@@ -456,6 +461,52 @@ extension ImportBrowserViewModel {
             default:
                 model.clips[index].uploadState = .queued("Waiting for server registration")
             }
+        }
+    }
+
+    private func persistRemoteTranscriptIDIfAvailable(
+        _ transcriptID: String?,
+        localKey: String,
+        mediaID: String?
+    ) {
+        let trimmedTranscriptID = transcriptID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmedTranscriptID.isEmpty else { return }
+        guard let mediaID else {
+            Self.transcriptPersistenceLog.warning(
+                "remote transcript id sync skipped: no local media localKey=\(localKey, privacy: .public) transcriptID=\(trimmedTranscriptID, privacy: .public)"
+            )
+            return
+        }
+
+        do {
+            let updated = try db.updateMediaSpec(mediaId: mediaID) { spec in
+                let existing = spec.transcriptID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if existing.isEmpty {
+                    spec.transcriptID = trimmedTranscriptID
+                }
+                let existingKey = spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if existingKey.isEmpty {
+                    spec.clipUploadLocalKey = localKey
+                }
+            }
+            if let updated {
+                NotificationCenter.default.post(
+                    name: .irisMediaTranscriptDidPersist,
+                    object: nil,
+                    userInfo: ["mediaId": mediaID]
+                )
+                Self.transcriptPersistenceLog.notice(
+                    "remote transcript id synced localKey=\(localKey, privacy: .public) mediaID=\(mediaID, privacy: .public) transcriptID=\(updated.spec.transcriptID ?? "nil", privacy: .public) sentences=\(updated.spec.transcriptSentences?.count ?? 0, privacy: .public)"
+                )
+            } else {
+                Self.transcriptPersistenceLog.error(
+                    "remote transcript id sync failed: media missing localKey=\(localKey, privacy: .public) mediaID=\(mediaID, privacy: .public) transcriptID=\(trimmedTranscriptID, privacy: .public)"
+                )
+            }
+        } catch {
+            Self.transcriptPersistenceLog.error(
+                "remote transcript id sync failed localKey=\(localKey, privacy: .public) mediaID=\(mediaID, privacy: .public) transcriptID=\(trimmedTranscriptID, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
         }
     }
 

@@ -9,6 +9,10 @@ final class CaptionsFlowController: ObservableObject {
         subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
         category: "CaptionsFlow"
     )
+    private static let transcriptSyncLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Magnolia-Creative.Iris-Main",
+        category: "CaptionsTranscriptSync"
+    )
 
     enum Phase: Equatable {
         case idle
@@ -237,6 +241,7 @@ final class CaptionsFlowController: ObservableObject {
                     )
                 }
 
+                syncRemoteTranscriptMetadata(remote, media: media)
                 inputs.append(CaptionsStitcher.ClipTranscriptInput(clip: clip, media: media, captions: remote))
             } catch let captionsError as CaptionsServiceError {
                 hadFetchFailure = true
@@ -295,6 +300,55 @@ final class CaptionsFlowController: ObservableObject {
             )
             failToIdle("Could not save captions.")
             print("[CaptionsFlow] persist error: \(error)")
+        }
+    }
+
+    private func syncRemoteTranscriptMetadata(_ remote: RemoteClipCaptions, media: Media) {
+        guard let transcriptId = remote.transcriptId else { return }
+        let transcriptID = String(transcriptId)
+        do {
+            guard let updated = try DatabaseManager.shared.updateMediaSpec(mediaId: media.mediaId, mutate: { spec in
+                let existing = spec.transcriptID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if existing.isEmpty {
+                    spec.transcriptID = transcriptID
+                }
+                if spec.transcriptFullText?.isEmpty ?? true {
+                    spec.transcriptFullText = remote.fullText
+                }
+                if spec.transcriptSentences?.isEmpty ?? true {
+                    spec.transcriptSentences = remote.sentences.map {
+                        MediaTranscriptSentence(
+                            text: $0.text,
+                            startTimeSeconds: $0.start,
+                            endTimeSeconds: $0.end,
+                            confidence: $0.confidence,
+                            speaker: nil,
+                            channel: nil
+                        )
+                    }
+                }
+                let existingKey = spec.clipUploadLocalKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if existingKey.isEmpty {
+                    spec.clipUploadLocalKey = remote.localKey
+                }
+            }) else {
+                Self.transcriptSyncLogger.error(
+                    "[CaptionsFlow] transcript sync skipped missing media mediaId=\(media.mediaId, privacy: .public) transcriptID=\(transcriptID, privacy: .public)"
+                )
+                return
+            }
+            NotificationCenter.default.post(
+                name: .irisMediaTranscriptDidPersist,
+                object: nil,
+                userInfo: ["mediaId": media.mediaId]
+            )
+            Self.transcriptSyncLogger.notice(
+                "[CaptionsFlow] transcript synced mediaId=\(media.mediaId, privacy: .public) transcriptID=\(updated.spec.transcriptID ?? "nil", privacy: .public) sentences=\(updated.spec.transcriptSentences?.count ?? 0, privacy: .public)"
+            )
+        } catch {
+            Self.transcriptSyncLogger.error(
+                "[CaptionsFlow] transcript sync failed mediaId=\(media.mediaId, privacy: .public) transcriptID=\(transcriptID, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
         }
     }
 }
