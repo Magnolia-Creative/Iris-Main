@@ -17,6 +17,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     typealias ActionApplier = @MainActor ([Action]) -> Bool
     /// Returns `true` when sequence-edit preview/review owns the action batch (do not apply immediately).
     typealias PromptActionReviewStarter = @MainActor (_ actions: [Action], _ prompt: String) -> Bool
+    typealias IntentCompiledHandler = @MainActor (_ prompt: String, _ result: IntentCompileResult) -> Void
     /// When transcript DB id is not ready yet for transcript-heavy prompts, await before starting the intent run. Returns true if a wait loop ran.
     typealias TranscriptReadinessWaiter = @MainActor (String) async throws -> Bool
 
@@ -37,6 +38,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     private let waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter?
     private let applyActions: ActionApplier
     private let attemptStartPromptActionReview: PromptActionReviewStarter?
+    private let onIntentCompiled: IntentCompiledHandler?
     private var cancellables: Set<AnyCancellable> = []
     private var resetTask: Task<Void, Never>?
     /// Owns the in-flight intent compile so the user can cancel from the prompt bar.
@@ -54,7 +56,8 @@ final class EditorPromptBarViewModel: ObservableObject {
         needsIntentTranscriptDatabaseWait: (@MainActor (String) -> Bool)? = nil,
         waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter? = nil,
         applyActions: @escaping ActionApplier,
-        attemptStartPromptActionReview: PromptActionReviewStarter? = nil
+        attemptStartPromptActionReview: PromptActionReviewStarter? = nil,
+        onIntentCompiled: IntentCompiledHandler? = nil
     ) {
         self.transcription = transcription ?? RealtimeTranscriptionViewModel()
         self.remoteCompiler = remoteCompiler ?? RemoteIntentCompilerClient()
@@ -63,6 +66,7 @@ final class EditorPromptBarViewModel: ObservableObject {
         self.waitForTranscriptReadinessIfNeeded = waitForTranscriptReadinessIfNeeded
         self.applyActions = applyActions
         self.attemptStartPromptActionReview = attemptStartPromptActionReview
+        self.onIntentCompiled = onIntentCompiled
 
         self.transcription.$inputLevel
             .receive(on: DispatchQueue.main)
@@ -230,6 +234,8 @@ final class EditorPromptBarViewModel: ObservableObject {
                 showClarification(result.unresolvedText ?? "I need a little more detail before I can apply that edit.")
                 return
             }
+
+            onIntentCompiled?(trimmedPrompt, result)
 
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")

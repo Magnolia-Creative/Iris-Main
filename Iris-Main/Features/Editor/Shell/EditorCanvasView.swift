@@ -12,6 +12,7 @@ struct EditorCanvasView: View {
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
     var promptActionPreview: TimelinePromptActionPreview? = nil
+    var jitTimelinePresentation: JITTimelinePresentation = .full
     @Binding var showPlaybackAspectSettings: Bool
 
     init(
@@ -24,7 +25,8 @@ struct EditorCanvasView: View {
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         reviewFocusedClipIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
-        promptActionPreview: TimelinePromptActionPreview? = nil
+        promptActionPreview: TimelinePromptActionPreview? = nil,
+        jitTimelinePresentation: JITTimelinePresentation = .full
     ) {
         self.controller = controller
         self.playbackController = playbackController
@@ -36,6 +38,7 @@ struct EditorCanvasView: View {
         self.reviewFocusedClipIds = reviewFocusedClipIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
         self.promptActionPreview = promptActionPreview
+        self.jitTimelinePresentation = jitTimelinePresentation
     }
 
     private var showsPlaybackControls: Bool {
@@ -93,8 +96,10 @@ struct EditorCanvasView: View {
                     }
             }
 
-            timelineViewContainer(state: state)
-                .padding(.top, timelineTopInset)
+            if jitTimelinePresentation != .hidden {
+                timelineViewContainer(state: state)
+                    .padding(.top, timelineTopInset)
+            }
 
             if showPlaybackAspectSettings {
                 aspectSettingsOverlay
