@@ -118,7 +118,7 @@ enum UIWorkspaceCatalog {
             layout: UILayoutNode(type: .vstack, children: layoutChildren),
             toolbar: UIToolbarPlacement(
                 widgets: toolbarWidgets,
-                showNavigation: activeSpace != .edit,
+                showNavigation: true,
                 showPromptBar: true
             ),
             hiddenBecauseIrrelevant: [],

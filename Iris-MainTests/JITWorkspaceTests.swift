@@ -9,6 +9,7 @@ final class JITWorkspaceTests: XCTestCase {
         )
         XCTAssertTrue(plan.isDefaultWorkspace)
         XCTAssertTrue(plan.toolbar.showPromptBar)
+        XCTAssertTrue(plan.toolbar.showNavigation)
         XCTAssertTrue(containsWidget("timeline.full", in: plan.layout))
     }
 
