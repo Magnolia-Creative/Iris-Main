@@ -141,22 +141,53 @@ struct JITWorkspaceParameterControlsView: View {
     let values: [String: Double]
     let onValueChange: (String, Double) -> Void
 
+    private var supportedControls: [UIParameterControl] {
+        placement.controls.filter { UIWorkspaceCatalog.isSupportedWorkspaceParameter($0.parameterId) }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            ForEach(placement.controls) { control in
-                VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-                    Text(control.label ?? control.parameterId)
-                        .typography(.bodySmall)
-                        .foregroundColor(Color.ds.textMuted)
-                    Slider(
-                        value: binding(for: control),
-                        in: sliderRange(for: control)
-                    )
-                    .tint(Color.ds.accentFg)
-                }
+        Group {
+            if placement.variant == "sliderGroup" {
+                sliderGroupBody
+            } else {
+                verticalControlsBody
             }
         }
         .padding(.horizontal, .spacing(.sp2))
+    }
+
+    private var sliderGroupBody: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: .spacing(.sp3)) {
+                ForEach(supportedControls) { control in
+                    parameterControlCard(control)
+                        .frame(width: 132)
+                }
+            }
+            .padding(.vertical, .spacing(.sp1))
+        }
+    }
+
+    private var verticalControlsBody: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            ForEach(supportedControls) { control in
+                parameterControlCard(control)
+            }
+        }
+    }
+
+    private func parameterControlCard(_ control: UIParameterControl) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+            Text(control.label ?? control.parameterId)
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+                .lineLimit(1)
+            Slider(
+                value: binding(for: control),
+                in: sliderRange(for: control)
+            )
+            .tint(Color.ds.accentFg)
+        }
     }
 
     private func binding(for control: UIParameterControl) -> Binding<Double> {

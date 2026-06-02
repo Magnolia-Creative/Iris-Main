@@ -22,6 +22,22 @@ enum UIWorkspaceCatalog {
         supportedWidgetIds.contains(widgetId) && UIEditorWidgetRegistry.descriptor(for: widgetId) != nil
     }
 
+    /// Parameters the local editor can apply to the selected clip today.
+    static let supportedWorkspaceParameterIds: Set<String> = [
+        "vintageIntensity",
+        "temperature",
+        "saturation",
+        "contrast",
+        "exposure",
+        "highlights",
+        "shadows",
+        "volumeGain"
+    ]
+
+    static func isSupportedWorkspaceParameter(_ parameterId: String) -> Bool {
+        supportedWorkspaceParameterIds.contains(parameterId)
+    }
+
     static func fallbackDefaultPlan(
         activeSpace: EditorSpace,
         hasSelectedClip: Bool

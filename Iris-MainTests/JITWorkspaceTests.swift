@@ -56,6 +56,11 @@ final class JITWorkspaceTests: XCTestCase {
         XCTAssertEqual(sanitized.workspaceId, "bad")
     }
 
+    func testSupportedWorkspaceParameterIdsExcludeGrain() {
+        XCTAssertFalse(UIWorkspaceCatalog.isSupportedWorkspaceParameter("grain"))
+        XCTAssertTrue(UIWorkspaceCatalog.isSupportedWorkspaceParameter("saturation"))
+    }
+
     func testDecodeWorkspacePlanResponse() throws {
         let json = """
         {
