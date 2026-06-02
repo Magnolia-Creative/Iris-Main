@@ -32,6 +32,7 @@ final class UIWorkspaceService {
     ) {
         self.urlSession = urlSession
         self.authClient = authClient
+        encoder.dateEncodingStrategy = .secondsSince1970
     }
 
     func fetchPlan(request: UIWorkspacePlanRequest, projectId: String) async throws -> UIWorkspacePlan {
@@ -50,8 +51,11 @@ final class UIWorkspaceService {
             return try decoder.decode(UIWorkspacePlanResponse.self, from: data).plan
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
-            let body = String(data: data, encoding: .utf8)
-            Self.logger.error("UI workspace plan failed status=\(httpResponse.statusCode)")
+            let body = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            Self.logger.error(
+                "UI workspace plan failed status=\(httpResponse.statusCode, privacy: .public) body=\(body ?? "<empty>", privacy: .public)"
+            )
             throw UIWorkspaceServiceError.requestFailed(statusCode: httpResponse.statusCode, body: body)
         }
         let plan = try decoder.decode(UIWorkspacePlanResponse.self, from: data).plan
