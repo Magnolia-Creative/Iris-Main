@@ -1,8 +1,13 @@
 import Foundation
 
 enum AppConfiguration {
+    #if DEBUG
     /// Clerk publishable key (test instance: ethical-adder-19).
     static let clerkPublishableKey = "pk_test_ZXRoaWNhbC1hZGRlci0xOS5jbGVyay5hY2NvdW50cy5kZXYk"
+    #else
+    /// Clerk publishable key (production instance: clerk.irisvideo.app).
+    static let clerkPublishableKey = "pk_live_Y2xlcmsuaXJpc3ZpZGVvLmFwcCQ"
+    #endif
 
     #if DEBUG
     static let backendBaseURL = URL(string: "http://127.0.0.1:8000")!
