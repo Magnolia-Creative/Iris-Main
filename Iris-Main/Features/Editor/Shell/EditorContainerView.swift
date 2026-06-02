@@ -289,7 +289,12 @@ struct EditorContainerView: View {
                 promptActionPreview: controller.promptActionPreview,
                 jitTimelinePresentation: jitWorkspaceCoordinator.timelinePresentation(
                     for: jitWorkspaceCoordinator.activePlan
-                )
+                ),
+                usesJITWorkspaceLayout: jitWorkspaceCoordinator.usesIntentWorkspace,
+                jitWorkspacePlan: jitWorkspaceCoordinator.usesIntentWorkspace
+                    ? jitWorkspaceCoordinator.activePlan
+                    : nil,
+                jitTransitionPlans: jitWorkspaceCoordinator.transitionPlans
             )
             .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
