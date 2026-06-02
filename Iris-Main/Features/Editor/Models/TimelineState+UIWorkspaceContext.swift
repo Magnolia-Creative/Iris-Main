@@ -28,8 +28,9 @@ extension TimelineState {
         )
     }
 
+    /// Numeric Iris backend project id for `POST /projects/{id}/ui-workspace-plan` (not the local UUID).
     var backendProjectIdForUIPlanning: String? {
-        let pid = timeline?.projectId.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pid = backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return pid.isEmpty ? nil : pid
     }
 }
