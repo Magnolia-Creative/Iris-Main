@@ -679,7 +679,7 @@ struct EditorContainerView: View {
             var filter = controller.clipColorFilter(for: clipId)
             filter.temperature = Float(value)
             controller.setClipColorFilter(clipId: clipId, filter: filter)
-        case "grain", "saturation", "contrast", "exposure", "highlights", "shadows":
+        case "saturation", "contrast", "exposure", "highlights", "shadows":
             var filter = controller.clipColorFilter(for: clipId)
             applyColorPatch(parameterId: parameterId, value: value, on: &filter)
             controller.setClipColorFilter(clipId: clipId, filter: filter)
@@ -699,10 +699,10 @@ struct EditorContainerView: View {
         let floatValue = Float(value)
         switch parameterId {
         case "saturation": filter.saturation = floatValue
-        case "contrast": filter.brightness = floatValue * 0.5
+        case "contrast": filter.contrast = floatValue
         case "exposure": filter.exposure = floatValue
-        case "highlights", "shadows", "grain":
-            filter.saturation = floatValue * 0.25
+        case "highlights": filter.highlights = floatValue
+        case "shadows": filter.shadows = floatValue
         default:
             break
         }
