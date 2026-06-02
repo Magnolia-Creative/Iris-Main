@@ -164,10 +164,12 @@ struct EditorCanvasView: View {
                     timelineTopSection(playback: playback)
                 },
                 timeline: { presentation in
-                    if presentation == .hidden {
-                        Color.clear.frame(height: 0)
-                    } else {
-                        timelineViewContainer(state: state, presentation: presentation)
+                    Group {
+                        if presentation == .hidden {
+                            Color.clear.frame(height: 0)
+                        } else {
+                            timelineViewContainer(state: state, presentation: presentation)
+                        }
                     }
                 },
                 panel: { panelId in
