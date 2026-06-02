@@ -33,4 +33,24 @@ extension TimelineState {
         let pid = backendProjectId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return pid.isEmpty ? nil : pid
     }
+
+    /// Intent context for UI workspace planning; uses backend project id when linked.
+    func makeIntentCompilerContextForUIPlanning() -> IntentCompilerContext {
+        let base = makeIntentCompilerContext()
+        guard let backendProjectId = backendProjectIdForUIPlanning else {
+            return base
+        }
+        return IntentCompilerContext(
+            timelineId: base.timelineId,
+            projectId: backendProjectId,
+            sessionId: base.sessionId,
+            selectedClipId: base.selectedClipId,
+            selectedTrackId: base.selectedTrackId,
+            selectedRange: base.selectedRange,
+            playheadTimeUs: base.playheadTimeUs,
+            clipsById: base.clipsById,
+            orderedClipIdsByTrackId: base.orderedClipIdsByTrackId,
+            transcriptContextsByClipId: base.transcriptContextsByClipId
+        )
+    }
 }

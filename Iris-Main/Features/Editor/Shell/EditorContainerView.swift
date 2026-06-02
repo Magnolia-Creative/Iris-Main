@@ -56,20 +56,19 @@ struct EditorContainerView: View {
                     timelineController.startPromptActionReview(actions: actions, prompt: prompt)
                 },
                 onIntentCompiled: { prompt, result in
-                    Task { @MainActor in
-                        await workspaceCoordinator.activateIntentWorkspace(
-                            prompt: prompt,
-                            context: timelineController.state.makeIntentCompilerContext(),
-                            editorContext: timelineController.state.makeUIEditorContext(
-                                activeSpace: .edit,
-                                isReviewActive: false,
-                                isPromptActionReviewActive: timelineController.promptActionReview != nil,
-                                isCaptionsChromeActive: false
-                            ),
-                            intentResult: result,
-                            projectId: timelineController.state.backendProjectIdForUIPlanning
-                        )
-                    }
+                    await workspaceCoordinator.activateIntentWorkspace(
+                        prompt: prompt,
+                        context: timelineController.state.makeIntentCompilerContextForUIPlanning(),
+                        editorContext: timelineController.state.makeUIEditorContext(
+                            activeSpace: .edit,
+                            isReviewActive: false,
+                            isPromptActionReviewActive: timelineController.promptActionReview != nil,
+                            isCaptionsChromeActive: false
+                        ),
+                        intentResult: result,
+                        projectId: timelineController.state.backendProjectIdForUIPlanning
+                    )
+                    return workspaceCoordinator.usesIntentWorkspace
                 }
             )
         )
@@ -717,7 +716,7 @@ struct EditorContainerView: View {
         if hasNextIntentSlice {
             Task {
                 await jitWorkspaceCoordinator.advanceToNextSlice(
-                    context: controller.state.makeIntentCompilerContext(),
+                    context: controller.state.makeIntentCompilerContextForUIPlanning(),
                     editorContext: controller.state.makeUIEditorContext(
                         activeSpace: activeSpace,
                         isReviewActive: isAgentCutReviewActive,

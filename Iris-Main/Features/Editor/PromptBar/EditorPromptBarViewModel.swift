@@ -17,7 +17,8 @@ final class EditorPromptBarViewModel: ObservableObject {
     typealias ActionApplier = @MainActor ([Action]) -> Bool
     /// Returns `true` when sequence-edit preview/review owns the action batch (do not apply immediately).
     typealias PromptActionReviewStarter = @MainActor (_ actions: [Action], _ prompt: String) -> Bool
-    typealias IntentCompiledHandler = @MainActor (_ prompt: String, _ result: IntentCompileResult) -> Void
+    /// Returns whether a JIT intent workspace is active after planning.
+    typealias IntentCompiledHandler = @MainActor (_ prompt: String, _ result: IntentCompileResult) async -> Bool
     /// When transcript DB id is not ready yet for transcript-heavy prompts, await before starting the intent run. Returns true if a wait loop ran.
     typealias TranscriptReadinessWaiter = @MainActor (String) async throws -> Bool
 
@@ -235,10 +236,25 @@ final class EditorPromptBarViewModel: ObservableObject {
                 return
             }
 
-            onIntentCompiled?(trimmedPrompt, result)
+            let workspaceActivated = await onIntentCompiled?(trimmedPrompt, result) ?? false
+            let prefersJITWorkspace = !result.experimentalEffectOperations.isEmpty
 
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
+                if prefersJITWorkspace && workspaceActivated {
+                    Self.logger.info(
+                        "[PromptBar] JIT workspace active; applying actions without legacy color review"
+                    )
+                    let didApply = applyActions(result.actions)
+                    guard didApply else {
+                        Self.logger.error("[PromptBar] Returned actions did not change the current timeline")
+                        showError("I got an edit back, but it could not be applied to the current timeline.")
+                        return
+                    }
+                    phase = .idle
+                    return
+                }
+
                 if result.actions.contains(where: \.isPromptSequenceReviewable)
                     || result.actions.contains(where: \.isPromptColorReviewable),
                    let attemptStartPromptActionReview {
