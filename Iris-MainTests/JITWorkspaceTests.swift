@@ -1,6 +1,7 @@
 import XCTest
 @testable import Iris_Main
 
+@MainActor
 final class JITWorkspaceTests: XCTestCase {
     func testDefaultWorkspaceIncludesTimelineAndPromptBar() {
         let plan = UIWorkspaceCatalog.fallbackDefaultPlan(
@@ -37,7 +38,6 @@ final class JITWorkspaceTests: XCTestCase {
         XCTAssertTrue(transitions.contains(where: { $0.widgetId == "playback.beforeAfterViewer" && $0.style == .enter }))
     }
 
-    @MainActor
     func testCoordinatorSanitizeDropsUnknownWidgets() {
         let coordinator = JITWorkspaceCoordinator(activeSpace: .edit, hasSelectedClip: false)
         let invalidPlan = UIWorkspacePlan(
