@@ -118,7 +118,7 @@ struct EditorContainerView: View {
 
     @ViewBuilder
     private var editorTabBarChrome: some View {
-        if jitWorkspaceCoordinator.usesIntentWorkspace && isPromptActionReviewActive {
+        if jitWorkspaceCoordinator.usesIntentWorkspace {
             jitIntentToolbarChrome
         } else {
             defaultEditorTabBarChrome
@@ -225,32 +225,47 @@ struct EditorContainerView: View {
 
     @ViewBuilder
     private var jitIntentToolbarChrome: some View {
+        let showsBottomNav = jitWorkspaceCoordinator.showsBottomNavigation
         EditorGlassEffectContainer(spacing: 20) {
-            VStack(spacing: .spacing(.sp2)) {
-                if let parameterPlacement = jitWorkspaceCoordinator.activePlan.toolbar.widgets.first(
-                    where: { $0.widgetId == "toolbar.parameterControls" }
-                ) {
-                    JITWorkspaceParameterControlsView(
-                        placement: parameterPlacement,
-                        values: workspaceParameterValues,
-                        onValueChange: { parameterId, value in
-                            workspaceParameterValues[parameterId] = value
-                            applyWorkspaceParameter(parameterId: parameterId, value: value)
-                        }
-                    )
+            ZStack(alignment: .bottom) {
+                VStack(spacing: .spacing(.sp2)) {
+                    if let parameterPlacement = jitWorkspaceCoordinator.activePlan.toolbar.widgets.first(
+                        where: { $0.widgetId == "toolbar.parameterControls" }
+                    ) {
+                        JITWorkspaceParameterControlsView(
+                            placement: parameterPlacement,
+                            values: workspaceParameterValues,
+                            onValueChange: { parameterId, value in
+                                workspaceParameterValues[parameterId] = value
+                                applyWorkspaceParameter(parameterId: parameterId, value: value)
+                            }
+                        )
+                    }
+                    if showsJITReviewActions {
+                        JITWorkspaceReviewActionsView(
+                            onApply: { handleJITWorkspaceApply() },
+                            onCancel: { handleJITWorkspaceCancel() },
+                            onRefine: { handleJITWorkspaceRefine() },
+                            showsNextSlice: hasNextIntentSlice
+                        )
+                    }
                 }
-                JITWorkspaceReviewActionsView(
-                    onApply: { handleJITWorkspaceApply() },
-                    onCancel: { handleJITWorkspaceCancel() },
-                    onRefine: { handleJITWorkspaceRefine() },
-                    showsNextSlice: hasNextIntentSlice
-                )
+                .padding(.horizontal, .spacing(.sp3))
+                .padding(.top, .spacing(.sp3))
+                .padding(.bottom, .spacing(.sp3) + (showsBottomNav ? EditorBottomNavBar.totalHeight : 0))
+
+                if showsBottomNav {
+                    EditorBottomNavBar(activeSpace: $activeSpace)
+                }
             }
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.top, .spacing(.sp3))
-            .padding(.bottom, .spacing(.sp3) + EditorBottomNavBar.totalHeight)
         }
         .padding(.bottom, .spacing(.sp2))
+    }
+
+    private var showsJITReviewActions: Bool {
+        isPromptActionReviewActive
+            || hasNextIntentSlice
+            || jitWorkspaceCoordinator.activePlan.toolbar.widgets.contains { $0.widgetId == "toolbar.reviewActions" }
     }
 
     private var hasNextIntentSlice: Bool {
