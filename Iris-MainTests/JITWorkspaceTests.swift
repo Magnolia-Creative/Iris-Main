@@ -1,7 +1,6 @@
 import XCTest
 @testable import Iris_Main
 
-@MainActor
 final class JITWorkspaceTests: XCTestCase {
     func testDefaultWorkspaceIncludesTimelineAndPromptBar() {
         let plan = UIWorkspaceCatalog.fallbackDefaultPlan(
@@ -38,23 +37,33 @@ final class JITWorkspaceTests: XCTestCase {
         XCTAssertTrue(transitions.contains(where: { $0.widgetId == "playback.beforeAfterViewer" && $0.style == .enter }))
     }
 
-    func testCoordinatorSanitizeDropsUnknownWidgets() {
+    @MainActor
+    func testCoordinatorSanitizeDropsUnknownWidgets() async {
         let coordinator = JITWorkspaceCoordinator(activeSpace: .edit, hasSelectedClip: false)
         let invalidPlan = UIWorkspacePlan(
-            workspaceId: "bad",
+            workspaceId: "visual_style",
             intentSummary: "test",
-            intentSlices: [],
-            currentSliceId: nil,
+            intentSlices: [
+                UIIntentSlice(id: "visual_style", title: "Visual", goal: "Tune", modality: "visual")
+            ],
+            currentSliceId: "visual_style",
             currentSliceIndex: 0,
             layout: UILayoutNode(
                 type: .widget,
-                widget: UIWidgetPlacement(widgetId: "unknown.widget", intentSliceId: "default")
+                widget: UIWidgetPlacement(widgetId: "playback.viewer", intentSliceId: "visual_style")
             ),
-            toolbar: UIToolbarPlacement(),
+            toolbar: UIToolbarPlacement(
+                widgets: [
+                    UIWidgetPlacement(widgetId: "unknown.widget", intentSliceId: "visual_style"),
+                    UIWidgetPlacement(widgetId: "toolbar.reviewActions", intentSliceId: "visual_style")
+                ]
+            ),
             isDefaultWorkspace: false
         )
         let sanitized = coordinator.sanitizedPlan(invalidPlan)
-        XCTAssertEqual(sanitized.workspaceId, "bad")
+        XCTAssertEqual(sanitized.workspaceId, "visual_style")
+        XCTAssertFalse(sanitized.toolbar.widgets.contains { $0.widgetId == "unknown.widget" })
+        XCTAssertTrue(sanitized.toolbar.widgets.contains { $0.widgetId == "toolbar.reviewActions" })
     }
 
     func testSupportedWorkspaceParameterIdsExcludeGrain() {
