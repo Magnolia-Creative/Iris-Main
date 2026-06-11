@@ -1,0 +1,320 @@
+import SwiftUI
+
+struct EditorComponentShowcaseView: View {
+    @State private var selectedCategory: EditorComponentCategory = .timeline
+    @State private var selectedSize: EditorComponentSize = .standard
+
+    @State private var currentTimeUs: Int64 = 1_500_000
+    @State private var selectedClipId: String?
+    @State private var selectedCaptionCueId: String?
+    @State private var isAddMenuOpen = false
+    @State private var expandedClipToolId: Int?
+    @State private var expandedCaptionToolId: String?
+    @State private var isPlaying = false
+    @State private var showAspectSettings = false
+    @State private var activeNavItemId = EditorSpace.edit.rawValue
+    @State private var temperatureValue = 0.0
+    @State private var volumeValue = 1.0
+    @State private var colorPropertyId = LibraryClipColorPropertyPreview.temperature.rawValue
+    @State private var toolbarShowsClipTools = true
+    @State private var toolbarShowsParameters = true
+    @State private var clipColorFilter = ClipColorFilter.neutral
+    @State private var clipVolume = ClipVolume.neutral
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            categoryPicker
+            sizePicker
+
+            ScrollView(showsIndicators: true) {
+                VStack(alignment: .leading, spacing: .spacing(.sp6)) {
+                    categoryContent
+                }
+                .padding(.horizontal, .spacing(.sp4))
+                .padding(.vertical, .spacing(.sp4))
+            }
+        }
+        .background(Color.ds.bg.ignoresSafeArea())
+        .navigationBarHidden(true)
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Editor Component Library")
+                .typography(.heading)
+                .foregroundColor(Color.ds.text)
+            Spacer()
+        }
+        .padding(.horizontal, .spacing(.sp4))
+        .padding(.top, .spacing(.sp4))
+        .padding(.bottom, .spacing(.sp2))
+    }
+
+    private var categoryPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: .spacing(.sp2)) {
+                ForEach(EditorComponentCategory.allCases) { category in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedCategory = category
+                        }
+                    } label: {
+                        Text(category.displayTitle)
+                            .typography(.bodySmall)
+                            .foregroundColor(selectedCategory == category ? Color.ds.accentFg : Color.ds.textMuted)
+                            .padding(.horizontal, .spacing(.sp3))
+                            .padding(.vertical, .spacing(.sp2))
+                            .background(
+                                Capsule()
+                                    .fill(selectedCategory == category ? Color.ds.accentBg.opacity(0.35) : Color.ds.surface.opacity(0.5))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, .spacing(.sp4))
+        }
+        .padding(.bottom, .spacing(.sp2))
+    }
+
+    private var sizePicker: some View {
+        Picker("Size", selection: $selectedSize) {
+            ForEach(EditorComponentSize.allCases) { size in
+                Text(size.displayTitle).tag(size)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, .spacing(.sp4))
+        .padding(.bottom, .spacing(.sp3))
+    }
+
+    @ViewBuilder
+    private var categoryContent: some View {
+        switch selectedCategory {
+        case .timeline:
+            timelineSection
+        case .tools:
+            toolsSection
+        case .playback:
+            playbackSection
+        case .navigation:
+            navigationSection
+        case .chrome:
+            chromeSection
+        case .panels:
+            panelsSection
+        }
+    }
+
+    private var timelineSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+            showcaseSectionTitle("Timeline Surface")
+            TimelineSurfaceComponent(
+                context: EditorComponentShowcaseSamples.makeTimelineContext(
+                    size: selectedSize,
+                    currentTime: $currentTimeUs,
+                    selectedClipId: $selectedClipId,
+                    selectedCaptionCueId: $selectedCaptionCueId,
+                    isAddMenuOpen: $isAddMenuOpen
+                ),
+                actions: EditorTimelineActions(
+                    onAddSelection: { _, _ in isAddMenuOpen = false },
+                    onMoveClip: { _, _, _ in },
+                    onTrimClip: { _, _, _, _ in }
+                )
+            )
+
+            showcaseSectionTitle("Timeline Primitives")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: .spacing(.sp4)) {
+                    VStack(alignment: .leading) {
+                        Text("Ruler").typography(.bodySmall).foregroundColor(Color.ds.textMuted)
+                        TimelineRulerComponent(
+                            size: selectedSize,
+                            pixelsPerSecond: 100,
+                            durationUs: 8_000_000,
+                            currentTime: $currentTimeUs
+                        )
+                        .frame(width: 280)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Time Readout").typography(.bodySmall).foregroundColor(Color.ds.textMuted)
+                        TimelineTimeReadoutComponent(
+                            size: selectedSize,
+                            currentTimeUs: currentTimeUs,
+                            timelineDurationUs: 7_000_000
+                        )
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Add Button").typography(.bodySmall).foregroundColor(Color.ds.textMuted)
+                        TimelineAddMediaButtonComponent(
+                            size: selectedSize,
+                            onSelect: { _, _ in },
+                            isMenuOpen: $isAddMenuOpen
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var toolsSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+            showcaseSectionTitle("Clip Tools")
+            ClipToolsComponent(
+                context: EditorToolContext(
+                    isClipSelected: true,
+                    selectedClipColorFilter: clipColorFilter,
+                    selectedClipVolume: clipVolume,
+                    expandedToolId: $expandedClipToolId,
+                    isReviewActive: false
+                ),
+                actions: EditorToolActions(
+                    onSplitClip: {},
+                    onDeleteClip: {},
+                    onSetClipColorFilter: { clipColorFilter = $0 },
+                    onResetClipColorFilter: { clipColorFilter = .neutral },
+                    onSetClipVolume: { clipVolume = $0 },
+                    onResetClipVolume: { clipVolume = .neutral },
+                    onDeselectClip: { expandedClipToolId = nil }
+                )
+            )
+
+            showcaseSectionTitle("Caption Tools")
+            CaptionToolsComponent(
+                context: EditorComponentShowcaseSamples.makeCaptionToolContext(expandedToolId: $expandedCaptionToolId),
+                actions: EditorCaptionToolActions(
+                    onUpdateStyle: { _, _ in },
+                    onDeleteCaptions: {},
+                    onFinishEditing: { expandedCaptionToolId = nil }
+                )
+            )
+
+            showcaseSectionTitle("Parameter Controls")
+            EditorToolControlRowComponent(axis: .vertical) {
+                EditorSliderControlComponent(
+                    title: "Temperature",
+                    value: $temperatureValue,
+                    bounds: EditorParameterBounds(lower: -1, upper: 1),
+                    display: .inlineValue,
+                    valueFormatter: { String(format: "%.2f", $0) }
+                )
+                EditorSliderControlComponent(
+                    title: "Volume",
+                    value: $volumeValue,
+                    bounds: EditorParameterBounds(lower: 0, upper: 2),
+                    display: .inlineValue,
+                    valueFormatter: { "\(Int(($0 * 100).rounded()))%" }
+                )
+                EditorSegmentedPillControlComponent(
+                    title: "Color Property",
+                    options: LibraryClipColorPropertyPreview.allCases.map {
+                        EditorSegmentedPillOption(id: $0.rawValue, title: $0.title)
+                    },
+                    selectionId: $colorPropertyId
+                )
+            }
+        }
+    }
+
+    private var playbackSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+            showcaseSectionTitle("Playback Section")
+            PlaybackSectionComponent(
+                context: EditorComponentShowcaseSamples.makePlaybackContext(
+                    size: selectedSize,
+                    isPlaying: isPlaying,
+                    showAspectSettings: $showAspectSettings
+                ),
+                actions: EditorPlaybackActions(
+                    onPlay: { isPlaying = true },
+                    onPause: { isPlaying = false },
+                    onJumpToStart: { currentTimeUs = 0 },
+                    onJumpToEnd: { currentTimeUs = 7_000_000 },
+                    onUndo: {},
+                    onRedo: {},
+                    onToggleAspectSettings: { showAspectSettings.toggle() }
+                )
+            )
+        }
+    }
+
+    private var navigationSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+            showcaseSectionTitle("Bottom Navigation")
+            EditorBottomNavigationComponent(
+                size: selectedSize,
+                style: .glass,
+                items: EditorBottomNavigationComponent.defaultEditorItems,
+                activeItemId: $activeNavItemId
+            )
+        }
+    }
+
+    private var chromeSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+            showcaseSectionTitle("Toolbar Collection")
+            Toggle("Show clip tools", isOn: $toolbarShowsClipTools)
+                .typography(.bodySmall)
+            Toggle("Show parameter cards", isOn: $toolbarShowsParameters)
+                .typography(.bodySmall)
+
+            let toolContext = EditorToolContext(
+                isClipSelected: true,
+                selectedClipColorFilter: clipColorFilter,
+                selectedClipVolume: clipVolume,
+                expandedToolId: $expandedClipToolId,
+                isReviewActive: false
+            )
+            let items = EditorComponentShowcaseSamples.demoToolbarItems(
+                showsClipTools: toolbarShowsClipTools,
+                showsParameters: toolbarShowsParameters,
+                toolContext: toolContext,
+                toolActions: .noop,
+                temperature: $temperatureValue,
+                volume: $volumeValue
+            )
+
+            EditorBottomChromeAssemblyComponent(
+                showsNavigation: true,
+                toolbarItems: items,
+                navigation: {
+                    EditorBottomNavigationComponent(
+                        size: selectedSize,
+                        style: .glass,
+                        items: EditorBottomNavigationComponent.defaultEditorItems,
+                        activeItemId: $activeNavItemId
+                    )
+                }
+            )
+        }
+    }
+
+    private var panelsSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            showcaseSectionTitle("Panels")
+            Text("Panel components are deferred until import/export library primitives are added.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+        }
+    }
+
+    private func showcaseSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .typography(.body)
+            .foregroundColor(Color.ds.text)
+    }
+}
+
+private enum LibraryClipColorPropertyPreview: String, CaseIterable {
+    case temperature, saturation, exposure
+
+    var title: String {
+        switch self {
+        case .temperature: "Temperature"
+        case .saturation: "Saturation"
+        case .exposure: "Exposure"
+        }
+    }
+}
