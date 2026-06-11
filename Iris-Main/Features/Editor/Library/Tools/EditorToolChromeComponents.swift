@@ -12,7 +12,7 @@ enum EditorToolSemanticRole: String, CaseIterable {
     case accent
 }
 
-enum EditorToolChromeMetrics {
+enum EditorLibraryToolChromeMetrics {
     static let toolItemWidth: CGFloat = 48
     static let roundedButtonSize: CGFloat = 40
 }
@@ -89,7 +89,7 @@ struct EditorToolIconLabelComponent: View {
             .font(.system(size: 22, weight: .medium))
             .modifier(EditorLibraryToolIconMatchModifier(id: matchedId, namespace: namespace))
             .foregroundColor(foreground)
-            .frame(width: EditorToolChromeMetrics.toolItemWidth, height: EditorToolChromeMetrics.toolItemWidth)
+            .frame(width: EditorLibraryToolChromeMetrics.toolItemWidth, height: EditorLibraryToolChromeMetrics.toolItemWidth)
             .contentShape(Rectangle())
             .accessibilityLabel(Text(title))
     }
@@ -104,7 +104,7 @@ struct EditorToolCloseButtonComponent: View {
             Image(systemName: "xmark")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(Color.ds.textMuted)
-                .frame(width: EditorToolChromeMetrics.toolItemWidth, height: EditorToolChromeMetrics.toolItemWidth)
+                .frame(width: EditorLibraryToolChromeMetrics.toolItemWidth, height: EditorLibraryToolChromeMetrics.toolItemWidth)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -136,7 +136,7 @@ struct EditorToolRoundedIconLabelComponent: View {
         Image(systemName: systemImage)
             .font(.system(size: 18, weight: .semibold))
             .foregroundColor(foreground)
-            .frame(width: EditorToolChromeMetrics.roundedButtonSize, height: EditorToolChromeMetrics.roundedButtonSize)
+            .frame(width: EditorLibraryToolChromeMetrics.roundedButtonSize, height: EditorLibraryToolChromeMetrics.roundedButtonSize)
             .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
             .accessibilityLabel(Text(title))

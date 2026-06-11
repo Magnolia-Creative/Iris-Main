@@ -80,7 +80,7 @@ struct EditorComponentToolbar: View, EditorLibraryComponentSpec {
     }
 }
 
-struct EditorBottomChromeAssemblyComponent<Navigation: View, ToolbarContent: View>: View {
+struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
     let showsNavigation: Bool
     let navigation: () -> Navigation
     let toolbarItems: [EditorToolbarItem]

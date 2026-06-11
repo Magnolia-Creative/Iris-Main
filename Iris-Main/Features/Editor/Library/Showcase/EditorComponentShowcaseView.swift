@@ -255,10 +255,14 @@ struct EditorComponentShowcaseView: View {
     private var chromeSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
             showcaseSectionTitle("Toolbar Collection")
-            Toggle("Show clip tools", isOn: $toolbarShowsClipTools)
-                .typography(.bodySmall)
-            Toggle("Show parameter cards", isOn: $toolbarShowsParameters)
-                .typography(.bodySmall)
+            Toggle(isOn: $toolbarShowsClipTools) {
+                Text("Show clip tools")
+                    .typography(.bodySmall)
+            }
+            Toggle(isOn: $toolbarShowsParameters) {
+                Text("Show parameter cards")
+                    .typography(.bodySmall)
+            }
 
             let toolContext = EditorToolContext(
                 isClipSelected: true,
