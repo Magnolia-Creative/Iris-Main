@@ -8,6 +8,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var deleteProjectErrorMessage: String?
     @Published var isPresentingProjectSetup = false
     @Published var isPresentingProfile = false
+    @Published var isPresentingComponentShowcase = false
     @Published var selectedProject: Project?
 
     private let db: DatabaseManager
@@ -36,6 +37,10 @@ final class HomeViewModel: ObservableObject {
 
     func presentProjectSetup() {
         isPresentingProjectSetup = true
+    }
+
+    func presentComponentShowcase() {
+        isPresentingComponentShowcase = true
     }
 
     func returnHomeFromEditor() {
