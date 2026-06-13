@@ -195,7 +195,7 @@ struct EditorExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: Vie
     }
 
     var body: some View {
-        HStack(spacing: .spacing(.sp2)) {
+        HStack(alignment: .top, spacing: .spacing(.sp2)) {
             if !isExpanded || showsLeadingWhenExpanded {
                 leading()
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
@@ -218,7 +218,7 @@ struct EditorExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: Vie
                 Spacer(minLength: 0)
             }
         }
-        .frame(minHeight: .spacing(.sp8))
+        .frame(minHeight: .spacing(.sp8), alignment: .topLeading)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isExpanded)
     }
 }

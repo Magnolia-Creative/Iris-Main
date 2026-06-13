@@ -242,7 +242,7 @@ struct EditorComponentShowcaseView: View {
 
     @ViewBuilder
     private func showcaseExpandedToolContent(for toolId: String) -> some View {
-        HStack(spacing: .spacing(.sp2)) {
+        HStack(alignment: .top, spacing: .spacing(.sp2)) {
             EditorToolBackButtonComponent(accessibilityLabel: "Back to tool buttons") {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     expandedShowcaseToolId = nil
@@ -250,19 +250,23 @@ struct EditorComponentShowcaseView: View {
             }
 
             if toolId == LibraryShowcaseExpandableToolID.color.rawValue {
-                EditorSegmentedPillControlComponent(
-                    title: nil,
-                    options: LibraryClipColorPropertyPreview.allCases.map {
-                        EditorSegmentedPillOption(id: $0.rawValue, title: $0.title)
-                    },
-                    selectionId: $colorPropertyId
-                )
-                EditorSliderControlComponent(
-                    title: "Temperature",
-                    value: $temperatureValue,
-                    bounds: EditorParameterBounds(lower: -1, upper: 1),
-                    display: .compact
-                )
+                VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+                    EditorSegmentedPillControlComponent(
+                        title: nil,
+                        options: LibraryClipColorPropertyPreview.allCases.map {
+                            EditorSegmentedPillOption(id: $0.rawValue, title: $0.title)
+                        },
+                        selectionId: $colorPropertyId
+                    )
+                    EditorSliderControlComponent(
+                        title: "Temperature",
+                        value: $temperatureValue,
+                        bounds: EditorParameterBounds(lower: -1, upper: 1),
+                        display: .inlineValue,
+                        valueFormatter: { String(format: "%.2f", $0) }
+                    )
+                    .frame(minWidth: 220)
+                }
             } else if toolId == LibraryShowcaseExpandableToolID.volume.rawValue {
                 EditorSliderControlComponent(
                     title: "Volume",

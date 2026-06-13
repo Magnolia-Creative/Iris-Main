@@ -148,45 +148,51 @@ struct ClipToolsComponent: View, EditorLibraryComponentSpec {
     }
 
     private var colorControls: some View {
-        HStack(spacing: .spacing(.sp2)) {
+        HStack(alignment: .top, spacing: .spacing(.sp2)) {
             EditorToolBackButtonComponent(accessibilityLabel: "Back to clip tools") {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     context.expandedToolId.wrappedValue = nil
                 }
             }
-            EditorSegmentedPillControlComponent(
-                title: nil,
-                options: LibraryClipColorProperty.allCases.map {
-                    EditorSegmentedPillOption(id: $0.id, title: $0.title)
-                },
-                selectionId: Binding(
-                    get: { activeColorProperty.id },
-                    set: { raw in
-                        if let property = LibraryClipColorProperty(rawValue: raw) {
-                            activeColorProperty = property
+            VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+                EditorSegmentedPillControlComponent(
+                    title: nil,
+                    options: LibraryClipColorProperty.allCases.map {
+                        EditorSegmentedPillOption(id: $0.id, title: $0.title)
+                    },
+                    selectionId: Binding(
+                        get: { activeColorProperty.id },
+                        set: { raw in
+                            if let property = LibraryClipColorProperty(rawValue: raw) {
+                                activeColorProperty = property
+                            }
                         }
-                    }
+                    )
                 )
-            )
-            EditorSliderControlComponent(
-                title: activeColorProperty.title,
-                value: activeColorBinding,
-                bounds: EditorParameterBounds(
-                    lower: Double(activeColorProperty.range.lowerBound),
-                    upper: Double(activeColorProperty.range.upperBound)
-                ),
-                display: .compact
-            )
-            EditorToolButtonComponent(
-                systemImage: "arrow.counterclockwise",
-                title: "Reset \(activeColorProperty.title)",
-                shape: .roundedIcon,
-                action: {
-                    var filter = context.selectedClipColorFilter
-                    activeColorProperty.set(0, on: &filter)
-                    actions.onSetClipColorFilter(filter)
+                HStack(spacing: .spacing(.sp2)) {
+                    EditorSliderControlComponent(
+                        title: activeColorProperty.title,
+                        value: activeColorBinding,
+                        bounds: EditorParameterBounds(
+                            lower: Double(activeColorProperty.range.lowerBound),
+                            upper: Double(activeColorProperty.range.upperBound)
+                        ),
+                        display: .inlineValue,
+                        valueFormatter: { String(format: "%.2f", $0) }
+                    )
+                    .frame(minWidth: 220)
+                    EditorToolButtonComponent(
+                        systemImage: "arrow.counterclockwise",
+                        title: "Reset \(activeColorProperty.title)",
+                        shape: .roundedIcon,
+                        action: {
+                            var filter = context.selectedClipColorFilter
+                            activeColorProperty.set(0, on: &filter)
+                            actions.onSetClipColorFilter(filter)
+                        }
+                    )
                 }
-            )
+            }
         }
     }
 
