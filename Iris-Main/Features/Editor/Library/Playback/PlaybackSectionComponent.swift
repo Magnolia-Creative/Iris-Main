@@ -11,7 +11,7 @@ struct PlaybackSectionComponent: View, EditorLibraryComponentSpec {
     var placeholderTitle: String = "Preview"
 
     var body: some View {
-        VStack(spacing: .spacing(.sp4)) {
+        VStack(spacing: .spacing(.sp2)) {
             PlaybackViewerComponent(
                 size: context.viewerSize,
                 previewAspect: context.previewAspect,

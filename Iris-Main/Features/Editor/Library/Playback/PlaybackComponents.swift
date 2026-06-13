@@ -19,7 +19,7 @@ struct PlaybackViewerComponent: View, EditorLibraryComponentSpec {
         switch size {
         case .compressed: 140
         case .standard: 220
-        case .expanded: 260
+        case .expanded: 340
         }
     }
 
