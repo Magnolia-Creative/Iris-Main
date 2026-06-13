@@ -176,26 +176,12 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     }
 
     private func addButtonTopOffset(for tracks: [TimelineTrackModel]) -> CGFloat {
-        let preferredTrackIndex = tracks.firstIndex(where: { $0.kind == .video }) ?? 0
-        let trackCenterY: CGFloat
-
-        if tracks.indices.contains(preferredTrackIndex) {
-            trackCenterY = trackCenterYPosition(for: preferredTrackIndex, in: tracks)
-        } else {
-            trackCenterY = layout.videoTrackHeight / 2
-        }
+        let trackStackCenterY = layout.trackStackHeight(for: tracks) / 2
 
         return max(
             0,
-            layout.rulerHeight + layout.organizerTrackTopOffset + trackCenterY - addButtonSize.buttonDimension / 2
+            layout.rulerHeight + layout.organizerTrackTopOffset + trackStackCenterY - addButtonSize.buttonDimension / 2
         )
-    }
-
-    private func trackCenterYPosition(for index: Int, in tracks: [TimelineTrackModel]) -> CGFloat {
-        let priorHeights = tracks.prefix(index).map { layout.trackHeight(for: $0.kind) }.reduce(0, +)
-        let spacingTotal = CGFloat(index) * layout.trackSpacing
-        let trackHeight = layout.trackHeight(for: tracks[index].kind)
-        return priorHeights + spacingTotal + trackHeight / 2
     }
 
     private func scrollToPlayhead(with proxy: ScrollViewProxy) {
