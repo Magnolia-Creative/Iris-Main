@@ -14,7 +14,7 @@ struct TimelineComponentLayout: Equatable {
     static let defaultPixelsPerSecond: CGFloat = 100
     static let minimumPixelsPerSecond: CGFloat = 40
     static let maximumPixelsPerSecond: CGFloat = 360
-    static let standard = preset(.standard)
+    static let standard = preset(TimelineTrackDisplaySize.standard)
 
     static func preset(_ size: EditorComponentSize) -> TimelineComponentLayout {
         preset(TimelineTrackDisplaySize(size))
