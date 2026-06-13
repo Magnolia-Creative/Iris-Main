@@ -30,7 +30,7 @@ struct TimelineComponentLayout: Equatable {
                 organizerTrackTopOffset: .spacing(.sp3),
                 trackSpacing: .spacing(.sp1),
                 videoTrackHeight: .spacing(.sp7),
-                audioTrackHeight: .spacing(.sp4),
+                audioTrackHeight: .spacing(.sp7),
                 captionTrackHeight: .spacing(.sp4),
                 minimumSegmentWidth: 20
             )
@@ -42,7 +42,7 @@ struct TimelineComponentLayout: Equatable {
                 organizerTrackTopOffset: .spacing(.sp4),
                 trackSpacing: .spacing(.sp2),
                 videoTrackHeight: .spacing(.sp8),
-                audioTrackHeight: .spacing(.sp6),
+                audioTrackHeight: .spacing(.sp8),
                 captionTrackHeight: .spacing(.sp5),
                 minimumSegmentWidth: 24
             )
@@ -54,7 +54,7 @@ struct TimelineComponentLayout: Equatable {
                 organizerTrackTopOffset: .spacing(.sp5),
                 trackSpacing: .spacing(.sp2),
                 videoTrackHeight: .spacing(.sp10),
-                audioTrackHeight: .spacing(.sp8),
+                audioTrackHeight: .spacing(.sp10),
                 captionTrackHeight: .spacing(.sp7),
                 minimumSegmentWidth: 28
             )
