@@ -45,6 +45,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
             ForEach(model.segments) { segment in
                 segmentView(segment)
                     .frame(width: segmentWidth(segment), height: trackHeight)
+                    .clipped()
                     .offset(x: segmentX(segment))
                     .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
                     .onTapGesture {
@@ -55,6 +56,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
         }
         .frame(minWidth: contentWidth, minHeight: trackHeight, alignment: .leading)
         .frame(height: trackHeight, alignment: .leading)
+        .clipped()
     }
 
     @ViewBuilder
@@ -191,19 +193,23 @@ private struct TimelineWaveformPlaceholder: View {
     private let barCount = 22
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<barCount, id: \.self) { index in
-                Capsule()
-                    .fill(Color.ds.accentFg.opacity(0.72))
-                    .frame(width: 2, height: barHeight(at: index))
+        GeometryReader { geometry in
+            let availableHeight = max(1, geometry.size.height)
+
+            HStack(alignment: .center, spacing: 2) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    Capsule()
+                        .fill(Color.ds.accentFg.opacity(0.72))
+                        .frame(width: 2, height: barHeight(at: index, availableHeight: availableHeight))
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func barHeight(at index: Int) -> CGFloat {
+    private func barHeight(at index: Int, availableHeight: CGFloat) -> CGFloat {
         let scalar = abs(sin(Double(index + seed.count) * 0.73))
-        return 5 + CGFloat(scalar) * 20
+        return max(2, availableHeight * (0.25 + CGFloat(scalar) * 0.75))
     }
 }
 
