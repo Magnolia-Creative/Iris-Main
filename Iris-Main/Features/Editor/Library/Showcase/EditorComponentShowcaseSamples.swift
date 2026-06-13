@@ -165,7 +165,7 @@ enum EditorComponentShowcaseSamples {
         if showsClipTools {
             items.append(
                 EditorToolbarItem(id: "clip-tools", category: .tools, placementPriority: 10) {
-                    ClipToolsComponent(context: toolContext, actions: toolActions)
+                    ComponentLibraryClipToolsDemo(context: toolContext, actions: toolActions)
                 }
             )
         }
