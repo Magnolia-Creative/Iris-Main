@@ -12,6 +12,7 @@ struct EditorToolDivider: View {
         RoundedRectangle(cornerRadius: 0.75, style: .continuous)
             .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.20))
             .frame(width: 1.5, height: 28)
+            .frame(height: EditorToolChromeMetrics.toolItemWidth)
             .padding(.horizontal, .spacing(.sp1))
             .accessibilityHidden(true)
     }
@@ -97,7 +98,7 @@ struct EditorToolPillLabel: View {
             )
             .overlay(
                 Capsule()
-                    .stroke(selected ? Color.ds.accentFg : Color.ds.border, lineWidth: selected ? 2 : 1)
+                    .strokeBorder(selected ? Color.ds.accentFg : Color.ds.border, lineWidth: selected ? 2 : 1)
             )
     }
 }
