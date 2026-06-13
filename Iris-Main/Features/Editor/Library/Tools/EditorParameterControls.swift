@@ -13,33 +13,33 @@ struct EditorSliderControlComponent: View {
 
     var body: some View {
         switch display {
-        case .slider, .inlineValue:
-            HStack(spacing: .spacing(.sp2)) {
-                if display == .inlineValue, let valueFormatter {
-                    Text(valueFormatter(value))
-                        .typography(.bodySmall)
-                        .foregroundColor(Color.ds.textMuted)
-                        .frame(minWidth: 44, alignment: .trailing)
-                        .monospacedDigit()
-                }
-                VStack(alignment: .leading, spacing: .spacing(.sp1)) {
-                    Text(title)
-                        .typography(.bodySmall)
-                        .foregroundColor(Color.ds.textMuted)
-                        .lineLimit(1)
-                    Slider(value: $value, in: sliderRange)
-                        .tint(Color.ds.accentFg)
-                }
-            }
+        case .slider:
+            sliderColumn(showsHeaderValue: false)
+        case .inlineValue:
+            sliderColumn(showsHeaderValue: true)
         case .compact:
-            VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+            sliderColumn(showsHeaderValue: false)
+        }
+    }
+
+    @ViewBuilder
+    private func sliderColumn(showsHeaderValue: Bool) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp1)) {
+            HStack(alignment: .firstTextBaseline, spacing: .spacing(.sp2)) {
                 Text(title)
                     .typography(.bodySmall)
                     .foregroundColor(Color.ds.textMuted)
                     .lineLimit(1)
-                Slider(value: $value, in: sliderRange)
-                    .tint(Color.ds.accentFg)
+                Spacer(minLength: .spacing(.sp2))
+                if showsHeaderValue, let valueFormatter {
+                    Text(valueFormatter(value))
+                        .typography(.bodySmall)
+                        .foregroundColor(Color.ds.text)
+                        .monospacedDigit()
+                }
             }
+            Slider(value: $value, in: sliderRange)
+                .tint(Color.ds.accentFg)
         }
     }
 }
