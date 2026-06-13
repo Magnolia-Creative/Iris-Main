@@ -61,6 +61,12 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         max(model.durationUs, Int64(contentWidth / resolvedPixelsPerSecond * 1_000_000))
     }
 
+    private var addButtonSize: EditorComponentSize {
+        model.tracks.first(where: { $0.kind == .video })?.size.componentSize
+            ?? model.tracks.first?.size.componentSize
+            ?? .standard
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let organizerHeight = max(
@@ -75,31 +81,49 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                 durationUs: rulerDurationUs,
                 pixelsPerSecond: resolvedPixelsPerSecond
             )
-            let playheadTopInset = max(0, layout.rulerHeight - 5)
+            let addButtonTopOffset = addButtonTopOffset(for: model.tracks)
 
             ZStack(alignment: .topLeading) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        TimelineRulerTicksComponent(model: rulerModel, layout: layout)
-                            .frame(width: rulerTicksWidth, height: layout.rulerHeight, alignment: .topLeading)
-                            .padding(.leading, playheadCenterX)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        ZStack(alignment: .topLeading) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                TimelineRulerTicksComponent(model: rulerModel, layout: layout)
+                                    .frame(width: rulerTicksWidth, height: layout.rulerHeight, alignment: .topLeading)
+                                    .padding(.leading, playheadCenterX)
 
-                        VStack(alignment: .leading, spacing: layout.trackSpacing) {
-                            ForEach(model.tracks) { track in
-                                TimelineTrackComponent(
-                                    model: track,
-                                    pixelsPerSecond: resolvedPixelsPerSecond,
-                                    selectedSegmentId: $selectedSegmentId
-                                )
+                                VStack(alignment: .leading, spacing: layout.trackSpacing) {
+                                    ForEach(model.tracks) { track in
+                                        TimelineTrackComponent(
+                                            model: track,
+                                            pixelsPerSecond: resolvedPixelsPerSecond,
+                                            selectedSegmentId: $selectedSegmentId
+                                        )
+                                    }
+                                }
+                                .padding(.top, layout.organizerTrackTopOffset)
+                                .padding(.leading, playheadCenterX)
                             }
+                            TimelineOrganizerScrollMarker(
+                                targetTimeUs: model.currentTimeUs,
+                                pixelsPerSecond: resolvedPixelsPerSecond,
+                                centerX: playheadCenterX
+                            )
                         }
-                        .padding(.top, layout.organizerTrackTopOffset)
-                        .padding(.leading, playheadCenterX)
+                        .frame(width: scrollContentWidth, alignment: .leading)
                     }
-                    .frame(width: scrollContentWidth, alignment: .leading)
+                    .background(Color.ds.bg)
+                    .simultaneousGesture(zoomGesture)
+                    .onAppear {
+                        scrollToPlayhead(with: proxy)
+                    }
+                    .onChange(of: model.currentTimeUs) { _, _ in
+                        scrollToPlayhead(with: proxy)
+                    }
+                    .onChange(of: resolvedPixelsPerSecond) { _, _ in
+                        scrollToPlayhead(with: proxy)
+                    }
                 }
-                .background(Color.ds.bg)
-                .simultaneousGesture(zoomGesture)
 
                 TimelineFixedRulerReadoutComponent(model: rulerModel, layout: layout)
                     .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
@@ -107,18 +131,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
 
                 if let onAddSelection {
                     TimelineAddMediaButtonComponent(
-                        size: .standard,
+                        size: addButtonSize,
                         onSelect: onAddSelection,
                         isMenuOpen: $isAddMenuOpen
                     )
-                    .padding(.top, layout.rulerHeight + layout.organizerTrackTopOffset)
+                    .padding(.top, addButtonTopOffset)
                     .padding(.trailing, .spacing(.sp4))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }
 
                 PlayheadView(tint: Color.ds.text)
-                    .frame(width: geometry.size.width, height: max(0, organizerHeight - playheadTopInset), alignment: .top)
-                    .padding(.top, playheadTopInset)
+                    .frame(width: geometry.size.width, height: organizerHeight, alignment: .top)
                     .allowsHitTesting(false)
                     .zIndex(10)
             }
@@ -149,6 +172,75 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
             pixelsPerSecond = value
         } else {
             localPixelsPerSecond = value
+        }
+    }
+
+    private func addButtonTopOffset(for tracks: [TimelineTrackModel]) -> CGFloat {
+        let preferredTrackIndex = tracks.firstIndex(where: { $0.kind == .video }) ?? 0
+        let trackCenterY: CGFloat
+
+        if tracks.indices.contains(preferredTrackIndex) {
+            trackCenterY = trackCenterYPosition(for: preferredTrackIndex, in: tracks)
+        } else {
+            trackCenterY = layout.videoTrackHeight / 2
+        }
+
+        return max(
+            0,
+            layout.rulerHeight + layout.organizerTrackTopOffset + trackCenterY - addButtonSize.buttonDimension / 2
+        )
+    }
+
+    private func trackCenterYPosition(for index: Int, in tracks: [TimelineTrackModel]) -> CGFloat {
+        let priorHeights = tracks.prefix(index).map { layout.trackHeight(for: $0.kind) }.reduce(0, +)
+        let spacingTotal = CGFloat(index) * layout.trackSpacing
+        let trackHeight = layout.trackHeight(for: tracks[index].kind)
+        return priorHeights + spacingTotal + trackHeight / 2
+    }
+
+    private func scrollToPlayhead(with proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            proxy.scrollTo(TimelineOrganizerScrollMarker.markerId, anchor: .center)
+        }
+    }
+}
+
+private struct TimelineOrganizerScrollMarker: View {
+    static let markerId = "timelineOrganizerScrollMarker"
+    let targetTimeUs: Int64
+    let pixelsPerSecond: CGFloat
+    let centerX: CGFloat
+
+    var body: some View {
+        let targetX = max(0, CGFloat(targetTimeUs) / 1_000_000 * pixelsPerSecond)
+        let markerPosition = targetX + centerX
+
+        Color.clear
+            .frame(width: markerPosition + 1, height: 1)
+            .overlay(alignment: .leading) {
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: markerPosition, height: 1)
+                    Color.clear.frame(width: 1, height: 1).id(Self.markerId)
+                }
+            }
+    }
+}
+
+private extension TimelineTrackDisplaySize {
+    var componentSize: EditorComponentSize {
+        switch self {
+        case .compressed: .compressed
+        case .standard: .standard
+        case .expanded: .expanded
+        }
+    }
+}
+
+private extension EditorComponentSize {
+    var buttonDimension: CGFloat {
+        switch self {
+        case .compressed: .spacing(.sp7)
+        case .standard, .expanded: .spacing(.sp8)
         }
     }
 }
