@@ -1,7 +1,296 @@
 import SwiftUI
 
-/// Standalone timeline surface for the component library and showcase.
-/// Does not include live scroll/drag physics from `TimelineSectionView`.
+struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
+    static let componentId: EditorComponentID = "timeline.organizer"
+    static let category: EditorComponentCategory = .timeline
+    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
+
+    let model: TimelineOrganizerModel
+    @Binding var pixelsPerSecond: CGFloat
+    var onAddSelection: ((TrackKind, ImportSource) -> Void)?
+    @Binding var isAddMenuOpen: Bool
+
+    @State private var selectedSegmentId: String?
+    @State private var gestureStartPixelsPerSecond: CGFloat?
+
+    init(
+        model: TimelineOrganizerModel,
+        pixelsPerSecond: Binding<CGFloat>? = nil,
+        onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
+        isAddMenuOpen: Binding<Bool> = .constant(false)
+    ) {
+        self.model = model
+        self._pixelsPerSecond = pixelsPerSecond ?? .constant(model.pixelsPerSecond)
+        self.onAddSelection = onAddSelection
+        self._isAddMenuOpen = isAddMenuOpen
+    }
+
+    private var resolvedPixelsPerSecond: CGFloat {
+        min(
+            TimelineComponentLayout.maximumPixelsPerSecond,
+            max(TimelineComponentLayout.minimumPixelsPerSecond, pixelsPerSecond)
+        )
+    }
+
+    private var layout: TimelineComponentLayout {
+        model.tracks.map { TimelineComponentLayout.preset($0.size) }.max(by: { left, right in
+            left.sectionHeight(for: model.tracks) < right.sectionHeight(for: model.tracks)
+        }) ?? .standard
+    }
+
+    private var contentWidth: CGFloat {
+        let modelEnd = model.tracks.flatMap(\.segments).map(\.rangeUs.end).max() ?? model.durationUs
+        let duration = max(model.durationUs, modelEnd)
+        return max(1, CGFloat(duration) / 1_000_000 * resolvedPixelsPerSecond)
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topTrailing) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        TimelineRulerComponent(
+                            model: TimelineRulerModel(
+                                currentTimeUs: model.currentTimeUs,
+                                durationUs: max(model.durationUs, Int64(contentWidth / resolvedPixelsPerSecond * 1_000_000)),
+                                pixelsPerSecond: resolvedPixelsPerSecond
+                            )
+                        )
+                        .frame(width: max(geometry.size.width, contentWidth + layout.readoutWidth), alignment: .leading)
+
+                        VStack(alignment: .leading, spacing: layout.trackSpacing) {
+                            ForEach(model.tracks) { track in
+                                TimelineTrackComponent(
+                                    model: track,
+                                    pixelsPerSecond: resolvedPixelsPerSecond,
+                                    selectedSegmentId: $selectedSegmentId
+                                )
+                            }
+                        }
+                        .padding(.top, layout.organizerTrackTopOffset)
+                        .padding(.leading, layout.readoutWidth)
+                    }
+                    .frame(minWidth: geometry.size.width, alignment: .leading)
+                }
+                .background(Color.ds.bg)
+                .gesture(zoomGesture)
+
+                if let onAddSelection {
+                    TimelineAddMediaButtonComponent(
+                        size: .standard,
+                        onSelect: onAddSelection,
+                        isMenuOpen: $isAddMenuOpen
+                    )
+                    .padding(.top, layout.rulerHeight + layout.organizerTrackTopOffset)
+                    .padding(.trailing, .spacing(.sp4))
+                }
+            }
+        }
+        .frame(height: max(layout.sectionHeight(for: model.tracks), layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)))
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                if gestureStartPixelsPerSecond == nil {
+                    gestureStartPixelsPerSecond = resolvedPixelsPerSecond
+                }
+                let start = gestureStartPixelsPerSecond ?? resolvedPixelsPerSecond
+                pixelsPerSecond = min(
+                    TimelineComponentLayout.maximumPixelsPerSecond,
+                    max(TimelineComponentLayout.minimumPixelsPerSecond, start * value)
+                )
+            }
+            .onEnded { _ in
+                gestureStartPixelsPerSecond = nil
+            }
+    }
+}
+
+struct TimelineRulerComponent: View, EditorLibraryComponentSpec {
+    static let componentId: EditorComponentID = "timeline.ruler"
+    static let category: EditorComponentCategory = .timeline
+    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
+
+    let model: TimelineRulerModel
+    private let layout = TimelineComponentLayout.standard
+
+    init(model: TimelineRulerModel) {
+        self.model = model
+    }
+
+    init(size _: EditorComponentSize, pixelsPerSecond: CGFloat, durationUs: Int64, currentTime: Binding<Int64>) {
+        self.model = TimelineRulerModel(
+            currentTimeUs: currentTime.wrappedValue,
+            durationUs: durationUs,
+            pixelsPerSecond: pixelsPerSecond
+        )
+    }
+
+    private var timeMarkers: [Int64] {
+        let totalSeconds = max(0, Int(ceil(Double(model.durationUs) / 1_000_000.0)))
+        return (0...max(0, totalSeconds)).map { Int64($0) * 1_000_000 }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            HStack(spacing: 0) {
+                readout
+                    .frame(width: layout.readoutWidth, height: layout.rulerHeight, alignment: .topLeading)
+                    .background(Color.ds.bg)
+
+                ZStack(alignment: .topLeading) {
+                    HStack(spacing: 0) {
+                        ForEach(Array(timeMarkers.enumerated()), id: \.element) { index, time in
+                            TimelineRulerMarker(
+                                timeUs: time,
+                                isLast: index == timeMarkers.count - 1,
+                                pixelsPerSecond: model.pixelsPerSecond
+                            )
+                        }
+                    }
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.ds.bg, location: 0),
+                            .init(color: Color.ds.bg.opacity(0), location: 1)
+                        ]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: layout.rulerFadeWidth, height: layout.rulerHeight)
+                }
+            }
+        }
+        .frame(height: layout.rulerHeight, alignment: .topLeading)
+    }
+
+    private var readout: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            Text(TimeFormatter.formatTime(model.currentTimeUs))
+                .typography(.body)
+                .foregroundStyle(Color.ds.text)
+                .frame(width: 41)
+            Text(TimeFormatter.calcCentiSeconds(model.currentTimeUs))
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.text)
+                .padding(.bottom, 0.5)
+                .frame(width: 15)
+            Text(" / ")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+            Text(TimeFormatter.formatTime(model.durationUs))
+                .typography(.body)
+                .foregroundStyle(Color.ds.textMuted)
+                .frame(width: 41)
+        }
+        .padding(.top, 2)
+    }
+}
+
+struct TimelineTimeReadoutComponent: View, EditorLibraryComponentSpec {
+    static let componentId: EditorComponentID = "timeline.timeReadout"
+    static let category: EditorComponentCategory = .timeline
+    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
+
+    let size: EditorComponentSize
+    let currentTimeUs: Int64
+    let timelineDurationUs: Int64
+
+    var body: some View {
+        TimelineRulerComponent(
+            model: TimelineRulerModel(
+                currentTimeUs: currentTimeUs,
+                durationUs: timelineDurationUs,
+                pixelsPerSecond: TimelineComponentLayout.defaultPixelsPerSecond
+            )
+        )
+        .frame(width: TimelineComponentLayout.preset(size).readoutWidth, alignment: .leading)
+        .clipped()
+    }
+}
+
+struct TimelineAddMediaButtonComponent: View, EditorLibraryComponentSpec {
+    static let componentId: EditorComponentID = "timeline.addButton"
+    static let category: EditorComponentCategory = .timeline
+    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
+
+    let size: EditorComponentSize
+    let onSelect: (TrackKind, ImportSource) -> Void
+    @Binding var isMenuOpen: Bool
+    var visibleOptions: [TimelineAddMediaOption] = TimelineAddMediaOption.allCases
+
+    private var buttonSize: CGFloat {
+        switch size {
+        case .compressed: .spacing(.sp7)
+        case .standard, .expanded: .spacing(.sp8)
+        }
+    }
+
+    var body: some View {
+        Button {
+            guard !isMenuOpen else { return }
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                isMenuOpen = true
+            }
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: .spacing(.sp2))
+                    .fill(Color.ds.bg.opacity(0.75))
+                    .frame(width: buttonSize, height: buttonSize)
+                    .overlay(RoundedRectangle(cornerRadius: .spacing(.sp2)).stroke(Color.ds.accentFg, lineWidth: 2))
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.ds.accentFg)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+        }
+        .buttonStyle(.plain)
+        .frame(width: buttonSize, height: buttonSize)
+        .opacity(isMenuOpen ? 0 : 1)
+        .allowsHitTesting(!isMenuOpen)
+        .overlay(alignment: .trailing) {
+            if isMenuOpen {
+                optionsPanel
+            }
+        }
+    }
+
+    private var optionsPanel: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(visibleOptions.enumerated()), id: \.element.id) { index, option in
+                Button {
+                    onSelect(option.selection.0, option.selection.1)
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                        isMenuOpen = false
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: option.iconName)
+                            .font(.system(size: 14, weight: .medium))
+                        Text(option.label)
+                            .typography(.action)
+                    }
+                    .foregroundStyle(Color.ds.accentFg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, .sp3)
+                    .padding(.vertical, .sp2)
+                    .background(Color.ds.bg.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+
+                if index < visibleOptions.count - 1 {
+                    Divider().background(Color.ds.border)
+                }
+            }
+        }
+        .frame(width: .spacing(.sp7) * 4)
+        .background(Color.ds.bg.opacity(0.75))
+        .overlay(RoundedRectangle(cornerRadius: .spacing(.sp2)).stroke(Color.ds.accentFg, lineWidth: 2))
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp2)))
+        .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+    }
+}
+
 struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
     static let componentId: EditorComponentID = "timeline.full"
     static let category: EditorComponentCategory = .timeline
@@ -10,88 +299,98 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
     let context: EditorTimelineContext
     let actions: EditorTimelineActions
 
-    @State private var scrollOffset: CGFloat = 0
-
-    private var layout: TimelineComponentLayout {
-        TimelineComponentLayout.preset(context.layoutSize)
-    }
-
-    private var displayTracks: [Track] {
-        let hasOverlayClips = context.tracks.contains { track in
-            track.kind == .overlay && !(context.clipsByTrackId[track.trackId] ?? []).isEmpty
-        }
-        return context.tracks.filter { track in
-            track.kind != .overlay || hasOverlayClips
-        }
+    private var pixelsPerSecond: Binding<CGFloat> {
+        Binding(
+            get: { context.pixelsPerSecond },
+            set: { _ in }
+        )
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let timelineWidth = CGFloat(max(0, context.scrollableDurationUs)) / 1_000_000 * context.pixelsPerSecond
-            let stackHeight = layout.trackStackHeight(for: displayTracks)
+        TimelineOrganizerComponent(
+            model: TimelineOrganizerModel(context: context),
+            pixelsPerSecond: pixelsPerSecond,
+            onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
+            isAddMenuOpen: context.$isAddMenuOpen
+        )
+    }
+}
 
-            ZStack(alignment: .topLeading) {
-                Color.ds.bg
+enum TimelineAddMediaOption: String, CaseIterable, Identifiable {
+    case captions
+    case videoPhotos
+    case videoFiles
+    case audioPhotos
+    case audioFiles
 
-                HStack(spacing: 0) {
-                    Spacer().frame(width: geometry.size.width / 2)
-                    VStack(alignment: .leading, spacing: 0) {
-                        TimelineRulerComponent(
-                            size: context.layoutSize,
-                            pixelsPerSecond: context.pixelsPerSecond,
-                            durationUs: context.scrollableDurationUs,
-                            currentTime: context.$currentTimeAtCenter
-                        )
+    var id: String { rawValue }
 
-                        TimelineTrackStackComponent(
-                            config: TimelineTrackComponentConfig(size: context.layoutSize),
-                            tracks: context.tracks,
-                            clipsByTrackId: context.clipsByTrackId,
-                            mediaById: context.mediaById,
-                            captionGroups: context.captionGroups,
-                            captionCues: context.captionCues,
-                            pixelsPerSecond: context.pixelsPerSecond,
-                            viewportWidth: geometry.size.width,
-                            scrollOffset: scrollOffset,
-                            selectedClipId: context.$selectedClipId,
-                            selectedCaptionCueId: context.$selectedCaptionCueId,
-                            onMoveClip: actions.onMoveClip,
-                            onTrimClip: actions.onTrimClip,
-                            onAutoScroll: { _ in },
-                            isUserScrolling: false,
-                            reviewFocusedClipIds: context.reviewFocusedClipIds,
-                            onSelectCaptionCue: actions.onCaptionCueSelected,
-                            onClipSelected: actions.onClipSelected
-                        )
-                        .padding(.top, layout.trackTopOffset)
-                    }
-                    .frame(minWidth: timelineWidth)
-                    Spacer().frame(width: geometry.size.width / 2)
-                }
-
-                TimelineTimeReadoutComponent(
-                    size: context.layoutSize,
-                    currentTimeUs: context.currentTimeAtCenter,
-                    timelineDurationUs: context.timelineDurationUs
-                )
-
-                TimelinePlayheadComponent(tint: context.playheadTint)
-
-                if context.showAddButton, let onAdd = actions.onAddSelection {
-                    HStack {
-                        Spacer()
-                        TimelineAddMediaButtonComponent(
-                            size: context.layoutSize,
-                            onSelect: onAdd,
-                            isMenuOpen: context.$isAddMenuOpen
-                        )
-                        .padding(.trailing, .spacing(.sp6))
-                    }
-                    .padding(.top, layout.rulerHeight + layout.trackTopOffset + layout.videoTrackHeight / 2)
-                }
-            }
-            .frame(height: layout.sectionHeight(for: displayTracks))
+    var label: String {
+        switch self {
+        case .captions: "Captions"
+        case .videoPhotos: "Video Photos"
+        case .videoFiles: "Video Files"
+        case .audioPhotos: "Audio Photos"
+        case .audioFiles: "Audio Files"
         }
-        .frame(height: layout.sectionHeight(for: displayTracks))
+    }
+
+    var iconName: String {
+        switch self {
+        case .captions: "textformat"
+        case .videoPhotos, .videoFiles: "video"
+        case .audioPhotos, .audioFiles: "waveform"
+        }
+    }
+
+    var selection: (TrackKind, ImportSource) {
+        switch self {
+        case .captions: (.captions, .caption)
+        case .videoPhotos: (.video, .photos)
+        case .videoFiles: (.video, .files)
+        case .audioPhotos: (.audio, .photos)
+        case .audioFiles: (.audio, .files)
+        }
+    }
+}
+
+private struct TimelineRulerMarker: View {
+    let timeUs: Int64
+    let isLast: Bool
+    let pixelsPerSecond: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .center, spacing: 0) {
+                Rectangle()
+                    .fill(Color.ds.border)
+                    .frame(width: 1, height: 12)
+                Text(TimeFormatter.formatTime(timeUs))
+                    .typography(.bodySmall)
+                    .foregroundStyle(Color.ds.textMuted)
+                    .padding(.top, 1)
+                    .fixedSize()
+                Spacer(minLength: 0)
+            }
+            .frame(width: 0)
+
+            if !isLast {
+                let spacingWidth = pixelsPerSecond / 5
+                HStack(spacing: 0) {
+                    Spacer().frame(width: spacingWidth)
+                    ForEach(0..<4, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 0) {
+                            Rectangle()
+                                .fill(Color.ds.border)
+                                .frame(width: 1, height: 4)
+                            Spacer()
+                        }
+                        .frame(width: 0, height: 4)
+                        Spacer().frame(width: spacingWidth)
+                    }
+                }
+                .frame(width: pixelsPerSecond)
+            }
+        }
     }
 }
