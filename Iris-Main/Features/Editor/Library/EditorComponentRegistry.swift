@@ -48,22 +48,6 @@ enum EditorComponentRegistry {
             workspaceWidgetId: nil
         ),
         EditorComponentRegistryEntry(
-            id: "toolbar.clipTools",
-            displayName: "Clip Tools",
-            category: .tools,
-            supportedSizes: [.compressed, .standard, .expanded],
-            supportedAxes: [.horizontal],
-            workspaceWidgetId: "toolbar.clipTools"
-        ),
-        EditorComponentRegistryEntry(
-            id: "toolbar.captionTools",
-            displayName: "Caption Tools",
-            category: .tools,
-            supportedSizes: [.compressed, .standard, .expanded],
-            supportedAxes: [.horizontal],
-            workspaceWidgetId: nil
-        ),
-        EditorComponentRegistryEntry(
             id: "tool.slider",
             displayName: "Parameter Slider",
             category: .tools,
