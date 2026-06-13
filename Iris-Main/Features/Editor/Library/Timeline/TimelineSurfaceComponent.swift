@@ -12,6 +12,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
 
     @State private var selectedSegmentId: String?
     @State private var gestureStartPixelsPerSecond: CGFloat?
+    @State private var localPixelsPerSecond: CGFloat
+    private let usesExternalPixelsPerSecond: Bool
 
     init(
         model: TimelineOrganizerModel,
@@ -20,16 +22,27 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         isAddMenuOpen: Binding<Bool> = .constant(false)
     ) {
         self.model = model
-        self._pixelsPerSecond = pixelsPerSecond ?? .constant(model.pixelsPerSecond)
+        if let pixelsPerSecond {
+            self._pixelsPerSecond = pixelsPerSecond
+            self.usesExternalPixelsPerSecond = true
+        } else {
+            self._pixelsPerSecond = .constant(model.pixelsPerSecond)
+            self.usesExternalPixelsPerSecond = false
+        }
         self.onAddSelection = onAddSelection
         self._isAddMenuOpen = isAddMenuOpen
+        self._localPixelsPerSecond = State(initialValue: model.pixelsPerSecond)
     }
 
     private var resolvedPixelsPerSecond: CGFloat {
         min(
             TimelineComponentLayout.maximumPixelsPerSecond,
-            max(TimelineComponentLayout.minimumPixelsPerSecond, pixelsPerSecond)
+            max(TimelineComponentLayout.minimumPixelsPerSecond, activePixelsPerSecond)
         )
+    }
+
+    private var activePixelsPerSecond: CGFloat {
+        usesExternalPixelsPerSecond ? pixelsPerSecond : localPixelsPerSecond
     }
 
     private var layout: TimelineComponentLayout {
@@ -44,19 +57,31 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         return max(1, CGFloat(duration) / 1_000_000 * resolvedPixelsPerSecond)
     }
 
+    private var rulerDurationUs: Int64 {
+        max(model.durationUs, Int64(contentWidth / resolvedPixelsPerSecond * 1_000_000))
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .topTrailing) {
+            let organizerHeight = max(
+                layout.sectionHeight(for: model.tracks),
+                layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)
+            )
+            let scrollContentWidth = max(geometry.size.width, contentWidth + layout.readoutWidth)
+            let rulerTicksWidth = max(1, scrollContentWidth - layout.readoutWidth)
+            let rulerModel = TimelineRulerModel(
+                currentTimeUs: model.currentTimeUs,
+                durationUs: rulerDurationUs,
+                pixelsPerSecond: resolvedPixelsPerSecond
+            )
+            let playheadTopInset = max(0, layout.rulerHeight - 5)
+
+            ZStack(alignment: .topLeading) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        TimelineRulerComponent(
-                            model: TimelineRulerModel(
-                                currentTimeUs: model.currentTimeUs,
-                                durationUs: max(model.durationUs, Int64(contentWidth / resolvedPixelsPerSecond * 1_000_000)),
-                                pixelsPerSecond: resolvedPixelsPerSecond
-                            )
-                        )
-                        .frame(width: max(geometry.size.width, contentWidth + layout.readoutWidth), alignment: .leading)
+                        TimelineRulerTicksComponent(model: rulerModel, layout: layout)
+                            .frame(width: rulerTicksWidth, height: layout.rulerHeight, alignment: .topLeading)
+                            .padding(.leading, layout.readoutWidth)
 
                         VStack(alignment: .leading, spacing: layout.trackSpacing) {
                             ForEach(model.tracks) { track in
@@ -70,10 +95,15 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                         .padding(.top, layout.organizerTrackTopOffset)
                         .padding(.leading, layout.readoutWidth)
                     }
-                    .frame(minWidth: geometry.size.width, alignment: .leading)
+                    .frame(width: scrollContentWidth, alignment: .leading)
                 }
                 .background(Color.ds.bg)
-                .gesture(zoomGesture)
+                .simultaneousGesture(zoomGesture)
+
+                TimelineRulerComponent(model: rulerModel)
+                    .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
+                    .clipped()
+                    .allowsHitTesting(false)
 
                 if let onAddSelection {
                     TimelineAddMediaButtonComponent(
@@ -83,8 +113,16 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     )
                     .padding(.top, layout.rulerHeight + layout.organizerTrackTopOffset)
                     .padding(.trailing, .spacing(.sp4))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }
+
+                PlayheadView(tint: Color.ds.text)
+                    .frame(width: geometry.size.width, height: max(0, organizerHeight - playheadTopInset), alignment: .top)
+                    .padding(.top, playheadTopInset)
+                    .allowsHitTesting(false)
+                    .zIndex(10)
             }
+            .frame(height: organizerHeight)
         }
         .frame(height: max(layout.sectionHeight(for: model.tracks), layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)))
     }
@@ -96,14 +134,22 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     gestureStartPixelsPerSecond = resolvedPixelsPerSecond
                 }
                 let start = gestureStartPixelsPerSecond ?? resolvedPixelsPerSecond
-                pixelsPerSecond = min(
+                setPixelsPerSecond(min(
                     TimelineComponentLayout.maximumPixelsPerSecond,
                     max(TimelineComponentLayout.minimumPixelsPerSecond, start * value)
-                )
+                ))
             }
             .onEnded { _ in
                 gestureStartPixelsPerSecond = nil
             }
+    }
+
+    private func setPixelsPerSecond(_ value: CGFloat) {
+        if usesExternalPixelsPerSecond {
+            pixelsPerSecond = value
+        } else {
+            localPixelsPerSecond = value
+        }
     }
 }
 
@@ -298,11 +344,12 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
 
     let context: EditorTimelineContext
     let actions: EditorTimelineActions
+    @State private var livePixelsPerSecond: CGFloat?
 
     private var pixelsPerSecond: Binding<CGFloat> {
         Binding(
-            get: { context.pixelsPerSecond },
-            set: { _ in }
+            get: { livePixelsPerSecond ?? context.pixelsPerSecond },
+            set: { livePixelsPerSecond = $0 }
         )
     }
 
@@ -313,6 +360,9 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
             isAddMenuOpen: context.$isAddMenuOpen
         )
+        .onChange(of: context.pixelsPerSecond) { _, newValue in
+            livePixelsPerSecond = newValue
+        }
     }
 }
 
@@ -392,5 +442,28 @@ private struct TimelineRulerMarker: View {
                 .frame(width: pixelsPerSecond)
             }
         }
+    }
+}
+
+private struct TimelineRulerTicksComponent: View {
+    let model: TimelineRulerModel
+    let layout: TimelineComponentLayout
+
+    private var timeMarkers: [Int64] {
+        let totalSeconds = max(0, Int(ceil(Double(model.durationUs) / 1_000_000.0)))
+        return (0...max(0, totalSeconds)).map { Int64($0) * 1_000_000 }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(timeMarkers.enumerated()), id: \.element) { index, time in
+                TimelineRulerMarker(
+                    timeUs: time,
+                    isLast: index == timeMarkers.count - 1,
+                    pixelsPerSecond: model.pixelsPerSecond
+                )
+            }
+        }
+        .frame(height: layout.rulerHeight, alignment: .topLeading)
     }
 }
