@@ -10,6 +10,7 @@ struct EditorBottomNavBar: View {
     @Binding var activeSpace: EditorSpace
 
     @Environment(\.colorScheme) private var colorScheme
+    @GestureState private var isDraggingNavigation = false
     @Namespace private var tabNamespace
 
     fileprivate static let tabItemWidth: CGFloat = 62
@@ -105,22 +106,50 @@ struct EditorBottomNavBar: View {
         let shape = RoundedRectangle(cornerRadius: Self.indicatorCornerRadius, style: .continuous)
 
         return shape
-            .fill(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.18))
+            .fill(Color.white.opacity(bubbleFillOpacity))
             .editorRegularGlassEffect(
-                tint: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.2),
-                in: shape
+                tint: Color.white.opacity(bubbleTintOpacity),
+                in: shape,
+                interactive: isDraggingNavigation
             )
             .overlay(
-                shape.stroke(Color.white.opacity(colorScheme == .dark ? 0.22 : 0.42), lineWidth: 0.75)
+                shape.stroke(Color.white.opacity(bubbleStrokeOpacity), lineWidth: 0.75)
             )
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.12), radius: 7, x: 0, y: 4)
+            .shadow(color: Color.black.opacity(bubbleShadowOpacity), radius: isDraggingNavigation ? 10 : 7, x: 0, y: 4)
     }
 
     private var navigationDragGesture: some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .updating($isDraggingNavigation) { _, state, _ in
+                state = true
+            }
             .onChanged { value in
                 selectSpace(at: value.location.x)
             }
+    }
+
+    private var bubbleFillOpacity: Double {
+        isDraggingNavigation
+            ? (colorScheme == .dark ? 0.08 : 0.12)
+            : (colorScheme == .dark ? 0.12 : 0.18)
+    }
+
+    private var bubbleTintOpacity: Double {
+        isDraggingNavigation
+            ? (colorScheme == .dark ? 0.16 : 0.28)
+            : (colorScheme == .dark ? 0.08 : 0.2)
+    }
+
+    private var bubbleStrokeOpacity: Double {
+        isDraggingNavigation
+            ? (colorScheme == .dark ? 0.32 : 0.56)
+            : (colorScheme == .dark ? 0.22 : 0.42)
+    }
+
+    private var bubbleShadowOpacity: Double {
+        isDraggingNavigation
+            ? (colorScheme == .dark ? 0.42 : 0.16)
+            : (colorScheme == .dark ? 0.32 : 0.12)
     }
 
     private var navTint: Color {
