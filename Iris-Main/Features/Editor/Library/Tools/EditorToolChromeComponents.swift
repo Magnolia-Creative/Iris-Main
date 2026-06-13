@@ -118,7 +118,7 @@ struct EditorToolBackButtonComponent: View {
 
     var body: some View {
         Button(action: action) {
-            EditorToolRoundedIconLabelComponent(systemImage: "chevron.left", title: accessibilityLabel)
+            EditorToolIconLabelComponent(systemImage: "chevron.left", title: accessibilityLabel)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(accessibilityLabel))
@@ -212,6 +212,7 @@ struct EditorExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: Vie
                         .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentTransition(.opacity)
 
             if includesTrailingSpacer {

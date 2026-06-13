@@ -181,6 +181,7 @@ struct ClipToolsComponent: View, EditorLibraryComponentSpec {
                         valueFormatter: { String(format: "%.2f", $0) }
                     )
                     .frame(minWidth: 220)
+                    .frame(maxWidth: .infinity)
                     EditorToolButtonComponent(
                         systemImage: "arrow.counterclockwise",
                         title: "Reset \(activeColorProperty.title)",
@@ -193,6 +194,7 @@ struct ClipToolsComponent: View, EditorLibraryComponentSpec {
                     )
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

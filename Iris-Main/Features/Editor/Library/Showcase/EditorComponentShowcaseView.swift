@@ -208,7 +208,7 @@ struct EditorComponentShowcaseView: View {
                 .foregroundColor(Color.ds.textMuted)
             EditorExpandableToolTrayComponent(
                 expandedToolId: $expandedShowcaseToolId,
-                showsLeadingWhenExpanded: expandedShowcaseToolId != LibraryShowcaseExpandableToolID.volume.rawValue,
+                showsLeadingWhenExpanded: false,
                 leading: {
                     EditorToolCloseButtonComponent(title: "Dismiss tool selection") {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -266,7 +266,9 @@ struct EditorComponentShowcaseView: View {
                         valueFormatter: { String(format: "%.2f", $0) }
                     )
                     .frame(minWidth: 220)
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else if toolId == LibraryShowcaseExpandableToolID.volume.rawValue {
                 EditorSliderControlComponent(
                     title: "Volume",
@@ -275,8 +277,10 @@ struct EditorComponentShowcaseView: View {
                     display: .inlineValue,
                     valueFormatter: { "\(Int(($0 * 100).rounded()))%" }
                 )
+                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var parameterControlsSection: some View {
