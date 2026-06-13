@@ -22,6 +22,7 @@ struct EditorComponentShowcaseView: View {
     @State private var toolbarShowsParameters = true
     @State private var clipColorFilter = ClipColorFilter.neutral
     @State private var clipVolume = ClipVolume.neutral
+    @State private var timelineTrackSizesById: [String: TimelineTrackDisplaySize] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,7 +114,8 @@ struct EditorComponentShowcaseView: View {
         let organizerModel = EditorComponentShowcaseSamples.makeTimelineOrganizerModel(
             size: selectedSize,
             currentTimeUs: currentTimeUs,
-            pixelsPerSecond: timelinePixelsPerSecond
+            pixelsPerSecond: timelinePixelsPerSecond,
+            trackSizesById: timelineTrackSizesById
         )
         let trackModels = EditorComponentShowcaseSamples.sampleTimelineTrackModels(
             size: TimelineTrackDisplaySize(selectedSize)
@@ -124,6 +126,7 @@ struct EditorComponentShowcaseView: View {
             Text("Pinch the organizer to inspect shared horizontal scale across the ruler and every track.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
+            timelineTrackSizeControls(trackModels: organizerModel.tracks)
             TimelineOrganizerComponent(
                 model: organizerModel,
                 pixelsPerSecond: $timelinePixelsPerSecond,
@@ -182,6 +185,51 @@ struct EditorComponentShowcaseView: View {
                 )
             }
         }
+    }
+
+    private func timelineTrackSizeControls(trackModels: [TimelineTrackModel]) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            Text("Track sizes")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+
+            VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+                ForEach(trackModels) { track in
+                    HStack(spacing: .spacing(.sp2)) {
+                        Text(track.kind.displayTitle)
+                            .typography(.bodySmall)
+                            .foregroundColor(Color.ds.text)
+                            .frame(width: 72, alignment: .leading)
+
+                        HStack(spacing: .spacing(.sp1)) {
+                            ForEach(TimelineTrackDisplaySize.allCases) { size in
+                                let isSelected = resolvedTrackSize(for: track.id) == size
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                        timelineTrackSizesById[track.id] = size
+                                    }
+                                } label: {
+                                    Text(size.displayTitle)
+                                        .typography(.bodySmall)
+                                        .foregroundColor(isSelected ? Color.ds.accentFg : Color.ds.textMuted)
+                                        .padding(.horizontal, .spacing(.sp2))
+                                        .padding(.vertical, .spacing(.sp1))
+                                        .background(
+                                            Capsule()
+                                                .fill(isSelected ? Color.ds.accentBg.opacity(0.35) : Color.ds.surface.opacity(0.4))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func resolvedTrackSize(for trackId: String) -> TimelineTrackDisplaySize {
+        timelineTrackSizesById[trackId] ?? TimelineTrackDisplaySize(selectedSize)
     }
 
     private func timelineComponentPreview<Content: View>(
@@ -465,6 +513,16 @@ struct EditorComponentShowcaseView: View {
 
 private enum LibraryShowcaseExpandableToolID: String {
     case color, volume
+}
+
+private extension TimelineTrackDisplaySize {
+    var displayTitle: String {
+        switch self {
+        case .compressed: "Compressed"
+        case .standard: "Standard"
+        case .expanded: "Expanded"
+        }
+    }
 }
 
 private enum LibraryClipColorPropertyPreview: String, CaseIterable {

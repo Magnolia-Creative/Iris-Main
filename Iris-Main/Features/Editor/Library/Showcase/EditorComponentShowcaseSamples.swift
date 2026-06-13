@@ -121,10 +121,18 @@ enum EditorComponentShowcaseSamples {
     static func makeTimelineOrganizerModel(
         size: EditorComponentSize,
         currentTimeUs: Int64,
-        pixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
+        pixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond,
+        trackSizesById: [String: TimelineTrackDisplaySize] = [:]
     ) -> TimelineOrganizerModel {
+        let defaultTrackSize = TimelineTrackDisplaySize(size)
+        let tracks = sampleTimelineTrackModels(size: defaultTrackSize).map { track in
+            var sizedTrack = track
+            sizedTrack.size = trackSizesById[track.id] ?? defaultTrackSize
+            return sizedTrack
+        }
+
         TimelineOrganizerModel(
-            tracks: sampleTimelineTrackModels(size: TimelineTrackDisplaySize(size)),
+            tracks: tracks,
             durationUs: 7_000_000,
             currentTimeUs: currentTimeUs,
             pixelsPerSecond: pixelsPerSecond
