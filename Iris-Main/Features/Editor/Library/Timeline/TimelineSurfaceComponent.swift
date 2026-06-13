@@ -445,7 +445,7 @@ private struct TimelineRulerMarker: View {
     }
 }
 
-private struct TimelineRulerTicksComponent: View {
+struct TimelineRulerTicksComponent: View {
     let model: TimelineRulerModel
     let layout: TimelineComponentLayout
 
@@ -468,7 +468,7 @@ private struct TimelineRulerTicksComponent: View {
     }
 }
 
-private struct TimelineFixedRulerReadoutComponent: View {
+struct TimelineFixedRulerReadoutComponent: View {
     let model: TimelineRulerModel
     let layout: TimelineComponentLayout
 

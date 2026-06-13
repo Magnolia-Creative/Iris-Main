@@ -133,16 +133,34 @@ struct EditorComponentShowcaseView: View {
 
             showcaseSectionTitle("Timeline Components")
             timelineComponentPreview("Ruler + Readout") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    TimelineRulerComponent(
-                        model: TimelineRulerModel(
-                            currentTimeUs: currentTimeUs,
-                            durationUs: organizerModel.durationUs,
-                            pixelsPerSecond: timelinePixelsPerSecond
-                        )
-                    )
-                    .frame(width: 520, alignment: .leading)
+                let layout = TimelineComponentLayout.preset(selectedSize)
+                let contentWidth = max(1, CGFloat(organizerModel.durationUs) / 1_000_000 * timelinePixelsPerSecond)
+                let rulerModel = TimelineRulerModel(
+                    currentTimeUs: currentTimeUs,
+                    durationUs: organizerModel.durationUs,
+                    pixelsPerSecond: timelinePixelsPerSecond
+                )
+
+                GeometryReader { geometry in
+                    let playheadCenterX = geometry.size.width / 2
+                    let scrollContentWidth = max(geometry.size.width, contentWidth + playheadCenterX * 2)
+
+                    ZStack(alignment: .topLeading) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            TimelineRulerTicksComponent(model: rulerModel, layout: layout)
+                                .frame(width: contentWidth, height: layout.rulerHeight, alignment: .topLeading)
+                                .padding(.leading, playheadCenterX)
+                                .frame(width: scrollContentWidth, alignment: .leading)
+                        }
+                        .background(Color.ds.bg)
+
+                        TimelineFixedRulerReadoutComponent(model: rulerModel, layout: layout)
+                            .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
+                            .allowsHitTesting(false)
+                    }
+                    .frame(height: layout.rulerHeight)
                 }
+                .frame(height: layout.rulerHeight)
             }
 
             ForEach(trackModels) { trackModel in
