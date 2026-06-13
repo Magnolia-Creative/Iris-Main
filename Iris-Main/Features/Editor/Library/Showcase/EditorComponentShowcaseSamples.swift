@@ -131,7 +131,7 @@ enum EditorComponentShowcaseSamples {
             return sizedTrack
         }
 
-        TimelineOrganizerModel(
+        return TimelineOrganizerModel(
             tracks: tracks,
             durationUs: 7_000_000,
             currentTimeUs: currentTimeUs,
