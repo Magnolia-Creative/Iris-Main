@@ -29,8 +29,8 @@ struct TimelineComponentLayout: Equatable {
                 rulerFadeWidth: .spacing(.sp5),
                 organizerTrackTopOffset: .spacing(.sp3),
                 trackSpacing: .spacing(.sp1),
-                videoTrackHeight: .spacing(.sp7),
-                audioTrackHeight: .spacing(.sp7),
+                videoTrackHeight: .spacing(.sp5),
+                audioTrackHeight: .spacing(.sp5),
                 captionTrackHeight: .spacing(.sp4),
                 minimumSegmentWidth: 20
             )
