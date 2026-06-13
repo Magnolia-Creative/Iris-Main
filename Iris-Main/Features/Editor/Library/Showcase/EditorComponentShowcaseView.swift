@@ -9,7 +9,8 @@ struct EditorComponentShowcaseView: View {
     @State private var selectedCaptionCueId: String?
     @State private var isAddMenuOpen = false
     @State private var expandedClipToolId: Int?
-    @State private var expandedCaptionToolId: String?
+    @State private var expandedShowcaseToolId: String?
+    @State private var showcaseSplitCount = 0
     @State private var isPlaying = false
     @State private var showAspectSettings = false
     @State private var activeNavItemId = EditorSpace.edit.rawValue
@@ -161,37 +162,125 @@ struct EditorComponentShowcaseView: View {
 
     private var toolsSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            showcaseSectionTitle("Clip Tools")
-            ClipToolsComponent(
-                context: EditorToolContext(
-                    isClipSelected: true,
-                    selectedClipColorFilter: clipColorFilter,
-                    selectedClipVolume: clipVolume,
-                    expandedToolId: $expandedClipToolId,
-                    isReviewActive: false
-                ),
-                actions: EditorToolActions(
-                    onSplitClip: {},
-                    onDeleteClip: {},
-                    onSetClipColorFilter: { clipColorFilter = $0 },
-                    onResetClipColorFilter: { clipColorFilter = .neutral },
-                    onSetClipVolume: { clipVolume = $0 },
-                    onResetClipVolume: { clipVolume = .neutral },
-                    onDeselectClip: { expandedClipToolId = nil }
-                )
-            )
+            toolActionsSection
+            expandableToolButtonSection
+            parameterControlsSection
+        }
+    }
 
-            showcaseSectionTitle("Caption Tools")
-            CaptionToolsComponent(
-                context: EditorComponentShowcaseSamples.makeCaptionToolContext(expandedToolId: $expandedCaptionToolId),
-                actions: EditorCaptionToolActions(
-                    onUpdateStyle: { _, _ in },
-                    onDeleteCaptions: {},
-                    onFinishEditing: { expandedCaptionToolId = nil }
+    private var toolActionsSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            showcaseSectionTitle("Tool Actions")
+            Text("Buttons that directly change timeline state without opening a subview.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+            EditorToolControlRowComponent {
+                EditorToolButtonComponent(
+                    systemImage: "trash",
+                    title: "Delete",
+                    role: .destructive,
+                    action: {}
                 )
-            )
+                EditorToolButtonComponent(
+                    systemImage: "scissors",
+                    title: "Split",
+                    action: { showcaseSplitCount += 1 }
+                )
+                EditorToolButtonComponent(
+                    systemImage: "textformat",
+                    title: "Style",
+                    action: {}
+                )
+            }
+            if showcaseSplitCount > 0 {
+                Text("Split tapped \(showcaseSplitCount) time\(showcaseSplitCount == 1 ? "" : "s")")
+                    .typography(.bodySmall)
+                    .foregroundColor(Color.ds.textMuted)
+            }
+        }
+    }
 
+    private var expandableToolButtonSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            showcaseSectionTitle("Expandable Tool Button")
+            Text("A tool button opens a subview with parameter controls; the close button dismisses selection.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+            EditorExpandableToolTrayComponent(
+                expandedToolId: $expandedShowcaseToolId,
+                showsLeadingWhenExpanded: expandedShowcaseToolId != LibraryShowcaseExpandableToolID.volume.rawValue,
+                leading: {
+                    EditorToolCloseButtonComponent(title: "Dismiss tool selection") {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            expandedShowcaseToolId = nil
+                        }
+                    }
+                },
+                collapsed: {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: .spacing(.sp1)) {
+                            EditorToolButtonComponent(
+                                systemImage: "camera.filters",
+                                title: "Color",
+                                action: { toggleShowcaseTool(LibraryShowcaseExpandableToolID.color) }
+                            )
+                            EditorToolButtonComponent(
+                                systemImage: "speaker.wave.2",
+                                title: "Volume",
+                                action: { toggleShowcaseTool(LibraryShowcaseExpandableToolID.volume) }
+                            )
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                },
+                expanded: { toolId in
+                    showcaseExpandedToolContent(for: toolId)
+                }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func showcaseExpandedToolContent(for toolId: String) -> some View {
+        HStack(spacing: .spacing(.sp2)) {
+            EditorToolBackButtonComponent(accessibilityLabel: "Back to tool buttons") {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    expandedShowcaseToolId = nil
+                }
+            }
+
+            if toolId == LibraryShowcaseExpandableToolID.color.rawValue {
+                EditorSegmentedPillControlComponent(
+                    title: nil,
+                    options: LibraryClipColorPropertyPreview.allCases.map {
+                        EditorSegmentedPillOption(id: $0.rawValue, title: $0.title)
+                    },
+                    selectionId: $colorPropertyId
+                )
+                EditorSliderControlComponent(
+                    title: "Temperature",
+                    value: $temperatureValue,
+                    bounds: EditorParameterBounds(lower: -1, upper: 1),
+                    display: .compact
+                )
+            } else if toolId == LibraryShowcaseExpandableToolID.volume.rawValue {
+                EditorSliderControlComponent(
+                    title: "Volume",
+                    value: $volumeValue,
+                    bounds: EditorParameterBounds(lower: 0, upper: 2),
+                    display: .inlineValue,
+                    valueFormatter: { "\(Int(($0 * 100).rounded()))%" }
+                )
+            }
+        }
+    }
+
+    private var parameterControlsSection: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
             showcaseSectionTitle("Parameter Controls")
+            Text("Standalone controls used inside expanded tool subviews.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
             EditorToolControlRowComponent(axis: .vertical) {
                 EditorSliderControlComponent(
                     title: "Temperature",
@@ -215,6 +304,13 @@ struct EditorComponentShowcaseView: View {
                     selectionId: $colorPropertyId
                 )
             }
+        }
+    }
+
+    private func toggleShowcaseTool(_ tool: LibraryShowcaseExpandableToolID) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            let current = expandedShowcaseToolId
+            expandedShowcaseToolId = current == tool.rawValue ? nil : tool.rawValue
         }
     }
 
@@ -309,6 +405,10 @@ struct EditorComponentShowcaseView: View {
             .typography(.body)
             .foregroundColor(Color.ds.text)
     }
+}
+
+private enum LibraryShowcaseExpandableToolID: String {
+    case color, volume
 }
 
 private enum LibraryClipColorPropertyPreview: String, CaseIterable {
