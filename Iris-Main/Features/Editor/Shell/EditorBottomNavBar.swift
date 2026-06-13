@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Permanently pinned 3-icon navigation row that selects the active editor
-/// space. Frame, padding, and glass shell are constant — only the highlight
-/// indicator slides and icon symbols swap fill states.
+/// space. Frame, padding, and glass shell are constant — only the liquid
+/// glass bubble slides and icon symbols swap fill states.
 ///
 /// Lives as a sibling of `EditorTabBar` (the top chrome) so that selected
 /// clip / prompt / tab transitions on the chrome cannot re-lay out this row.
@@ -14,14 +14,18 @@ struct EditorBottomNavBar: View {
 
     fileprivate static let tabItemWidth: CGFloat = 62
     fileprivate static let tabRowHeight: CGFloat = 48
+    fileprivate static let tabSpacing: CGFloat = .spacing(.sp3)
+    fileprivate static let horizontalPadding: CGFloat = .spacing(.sp2)
+    fileprivate static let verticalPadding: CGFloat = .spacing(.sp2)
     fileprivate static let navCornerRadius: CGFloat = .spacing(.sp4)
+    fileprivate static let indicatorCornerRadius: CGFloat = .spacing(.sp3)
     fileprivate static let shellInset: CGFloat = 10
 
     /// Total laid-out height including the surrounding shell insets. Callers
     /// (e.g. `EditorContainerView`) use this to reserve overlap space inside
     /// the top chrome so the nav bar can float in front of it in z.
     static var totalHeight: CGFloat {
-        let rowInnerVertical = CGFloat.spacing(.sp2) * 2
+        let rowInnerVertical = verticalPadding * 2
         return tabRowHeight + rowInnerVertical + shellInset * 2
     }
 
@@ -29,8 +33,8 @@ struct EditorBottomNavBar: View {
     /// surrounding shell insets.
     static var navWidth: CGFloat {
         let count = CGFloat(EditorSpace.allCases.count)
-        let hPad = CGFloat.spacing(.sp2) * 2
-        return count * tabItemWidth + (count - 1) * CGFloat.spacing(.sp3) + hPad
+        let hPad = horizontalPadding * 2
+        return count * tabItemWidth + (count - 1) * tabSpacing + hPad
     }
 
     /// Outer container width = nav card + symmetrical shell insets. Constant.
@@ -46,39 +50,29 @@ struct EditorBottomNavBar: View {
     }
 
     private var navCard: some View {
-        navigationRow
-            .frame(width: Self.navWidth)
-            .editorRegularGlassEffect(
-                tint: navTint,
-                in: RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous),
-                interactive: true
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
-                    .stroke(Color.ds.border, lineWidth: 1)
-            )
-            .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
+        EditorGlassEffectContainer(spacing: Self.tabSpacing) {
+            navigationRow
+                .frame(width: Self.navWidth)
+                .editorRegularGlassEffect(
+                    tint: navTint,
+                    in: navShape
+                )
+                .overlay(
+                    navShape.stroke(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.36), lineWidth: 0.75)
+                )
+                .overlay(
+                    navShape.stroke(Color.ds.border.opacity(0.7), lineWidth: 1)
+                )
+                .shadow(color: navInnerShadowColor, radius: 8, x: 0, y: 4)
+                .simultaneousGesture(navigationDragGesture)
+        }
     }
 
     private var navigationRow: some View {
-        HStack(spacing: .spacing(.sp3)) {
+        HStack(spacing: Self.tabSpacing) {
             ForEach(EditorSpace.allCases) { space in
                 Button {
-                    let transitionMark = "space-transition-\(space.rawValue)"
-                    let appearanceMark = "space-content-\(space.rawValue)"
-                    EditorDebugTrace.begin(
-                        transitionMark,
-                        scope: "EditorBottomNavBar",
-                        message: "tap from=\(activeSpace.rawValue) to=\(space.rawValue)"
-                    )
-                    EditorDebugTrace.begin(
-                        appearanceMark,
-                        scope: "EditorBottomNavBar",
-                        message: "waiting for content appearance space=\(space.rawValue)"
-                    )
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        activeSpace = space
-                    }
+                    selectSpace(space, source: "tap")
                 } label: {
                     Image(systemName: activeSpace == space ? space.selectedIconName : space.unselectedIconName)
                         .font(.system(size: 21, weight: .medium))
@@ -88,24 +82,49 @@ struct EditorBottomNavBar: View {
                         .frame(width: Self.tabItemWidth, height: Self.tabRowHeight)
                         .background {
                             if activeSpace == space {
-                                RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous)
-                                    .fill(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.22))
+                                selectionBubble
                                     .matchedGeometryEffect(id: "tabIndicator", in: tabNamespace)
                             }
                         }
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(EditorBottomNavPressButtonStyle())
+                .buttonStyle(.plain)
                 .accessibilityLabel(Text(space.rawValue))
             }
         }
-        .padding(.horizontal, .spacing(.sp2))
-        .padding(.vertical, .spacing(.sp2))
+        .padding(.horizontal, Self.horizontalPadding)
+        .padding(.vertical, Self.verticalPadding)
         .animation(.spring(response: 0.38, dampingFraction: 0.78), value: activeSpace)
     }
 
+    private var navShape: some Shape {
+        RoundedRectangle(cornerRadius: Self.navCornerRadius, style: .continuous)
+    }
+
+    private var selectionBubble: some View {
+        let shape = RoundedRectangle(cornerRadius: Self.indicatorCornerRadius, style: .continuous)
+
+        return shape
+            .fill(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.18))
+            .editorRegularGlassEffect(
+                tint: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.2),
+                in: shape
+            )
+            .overlay(
+                shape.stroke(Color.white.opacity(colorScheme == .dark ? 0.22 : 0.42), lineWidth: 0.75)
+            )
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.12), radius: 7, x: 0, y: 4)
+    }
+
+    private var navigationDragGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                selectSpace(at: value.location.x)
+            }
+    }
+
     private var navTint: Color {
-        Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12)
+        Color.white.opacity(colorScheme == .dark ? 0.05 : 0.15)
     }
 
     private var navInnerShadowColor: Color {
@@ -113,14 +132,40 @@ struct EditorBottomNavBar: View {
             ? Color.black.opacity(0.5)
             : Color.black.opacity(0.1)
     }
-}
 
-/// Springy press feedback for the pinned bottom-nav tabs.
-private struct EditorBottomNavPressButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .opacity(configuration.isPressed ? 0.88 : 1.0)
-            .animation(.spring(response: 0.34, dampingFraction: 0.72), value: configuration.isPressed)
+    private func selectSpace(_ space: EditorSpace, source: String) {
+        guard activeSpace != space else { return }
+
+        let transitionMark = "space-transition-\(space.rawValue)"
+        let appearanceMark = "space-content-\(space.rawValue)"
+        EditorDebugTrace.begin(
+            transitionMark,
+            scope: "EditorBottomNavBar",
+            message: "\(source) from=\(activeSpace.rawValue) to=\(space.rawValue)"
+        )
+        EditorDebugTrace.begin(
+            appearanceMark,
+            scope: "EditorBottomNavBar",
+            message: "waiting for content appearance space=\(space.rawValue)"
+        )
+
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            activeSpace = space
+        }
+    }
+
+    private func selectSpace(at locationX: CGFloat) {
+        let spaces = EditorSpace.allCases
+        guard let index = spaces.indices.min(by: {
+            abs(tabCenterX(for: $0) - locationX) < abs(tabCenterX(for: $1) - locationX)
+        }) else {
+            return
+        }
+
+        selectSpace(spaces[index], source: "drag")
+    }
+
+    private func tabCenterX(for index: Int) -> CGFloat {
+        Self.horizontalPadding + CGFloat(index) * (Self.tabItemWidth + Self.tabSpacing) + Self.tabItemWidth / 2
     }
 }
