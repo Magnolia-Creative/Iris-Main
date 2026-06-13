@@ -65,11 +65,7 @@ private enum LibraryClipColorProperty: String, CaseIterable, Identifiable {
     }
 }
 
-struct ClipToolsComponent: View, EditorLibraryComponentSpec {
-    static let componentId: EditorComponentID = "toolbar.clipTools"
-    static let category: EditorComponentCategory = .tools
-    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
-
+struct ComponentLibraryClipToolsDemo: View {
     let context: EditorToolContext
     let actions: EditorToolActions
 

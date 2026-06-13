@@ -21,11 +21,7 @@ private enum LibraryCaptionTool: String, CaseIterable, Identifiable {
     }
 }
 
-struct CaptionToolsComponent: View, EditorLibraryComponentSpec {
-    static let componentId: EditorComponentID = "toolbar.captionTools"
-    static let category: EditorComponentCategory = .tools
-    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
-
+struct ComponentLibraryCaptionToolsDemo: View {
     let context: EditorCaptionToolContext
     let actions: EditorCaptionToolActions
 
