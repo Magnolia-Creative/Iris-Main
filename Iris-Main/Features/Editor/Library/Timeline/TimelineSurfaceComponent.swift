@@ -67,8 +67,9 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                 layout.sectionHeight(for: model.tracks),
                 layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)
             )
-            let scrollContentWidth = max(geometry.size.width, contentWidth + layout.readoutWidth)
-            let rulerTicksWidth = max(1, scrollContentWidth - layout.readoutWidth)
+            let playheadCenterX = geometry.size.width / 2
+            let scrollContentWidth = max(geometry.size.width, contentWidth + playheadCenterX * 2)
+            let rulerTicksWidth = max(1, contentWidth)
             let rulerModel = TimelineRulerModel(
                 currentTimeUs: model.currentTimeUs,
                 durationUs: rulerDurationUs,
@@ -81,7 +82,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     VStack(alignment: .leading, spacing: 0) {
                         TimelineRulerTicksComponent(model: rulerModel, layout: layout)
                             .frame(width: rulerTicksWidth, height: layout.rulerHeight, alignment: .topLeading)
-                            .padding(.leading, layout.readoutWidth)
+                            .padding(.leading, playheadCenterX)
 
                         VStack(alignment: .leading, spacing: layout.trackSpacing) {
                             ForEach(model.tracks) { track in
@@ -93,16 +94,15 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                             }
                         }
                         .padding(.top, layout.organizerTrackTopOffset)
-                        .padding(.leading, layout.readoutWidth)
+                        .padding(.leading, playheadCenterX)
                     }
                     .frame(width: scrollContentWidth, alignment: .leading)
                 }
                 .background(Color.ds.bg)
                 .simultaneousGesture(zoomGesture)
 
-                TimelineRulerComponent(model: rulerModel)
+                TimelineFixedRulerReadoutComponent(model: rulerModel, layout: layout)
                     .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
-                    .clipped()
                     .allowsHitTesting(false)
 
                 if let onAddSelection {
@@ -465,5 +465,51 @@ private struct TimelineRulerTicksComponent: View {
             }
         }
         .frame(height: layout.rulerHeight, alignment: .topLeading)
+    }
+}
+
+private struct TimelineFixedRulerReadoutComponent: View {
+    let model: TimelineRulerModel
+    let layout: TimelineComponentLayout
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            readout
+                .frame(width: layout.readoutWidth, height: layout.rulerHeight, alignment: .topLeading)
+                .background(Color.ds.bg)
+
+            LinearGradient(
+                gradient: Gradient(stops: [
+                    .init(color: Color.ds.bg, location: 0),
+                    .init(color: Color.ds.bg.opacity(0), location: 1)
+                ]),
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: layout.rulerFadeWidth, height: layout.rulerHeight)
+        }
+        .frame(height: layout.rulerHeight, alignment: .topLeading)
+    }
+
+    private var readout: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            Text(TimeFormatter.formatTime(model.currentTimeUs))
+                .typography(.body)
+                .foregroundStyle(Color.ds.text)
+                .frame(width: 41)
+            Text(TimeFormatter.calcCentiSeconds(model.currentTimeUs))
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.text)
+                .padding(.bottom, 0.5)
+                .frame(width: 15)
+            Text(" / ")
+                .typography(.bodySmall)
+                .foregroundStyle(Color.ds.textMuted)
+            Text(TimeFormatter.formatTime(model.durationUs))
+                .typography(.body)
+                .foregroundStyle(Color.ds.textMuted)
+                .frame(width: 41)
+        }
+        .padding(.top, 2)
     }
 }
