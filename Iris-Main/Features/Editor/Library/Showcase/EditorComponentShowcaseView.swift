@@ -5,6 +5,7 @@ struct EditorComponentShowcaseView: View {
     @State private var selectedSize: EditorComponentSize = .standard
 
     @State private var currentTimeUs: Int64 = 1_500_000
+    @State private var timelinePixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
     @State private var selectedClipId: String?
     @State private var selectedCaptionCueId: String?
     @State private var isAddMenuOpen = false
@@ -109,54 +110,75 @@ struct EditorComponentShowcaseView: View {
     }
 
     private var timelineSection: some View {
+        let organizerModel = EditorComponentShowcaseSamples.makeTimelineOrganizerModel(
+            size: selectedSize,
+            currentTimeUs: currentTimeUs,
+            pixelsPerSecond: timelinePixelsPerSecond
+        )
+        let trackModels = EditorComponentShowcaseSamples.sampleTimelineTrackModels(
+            size: TimelineTrackDisplaySize(selectedSize)
+        )
+
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            showcaseSectionTitle("Timeline Surface")
-            TimelineSurfaceComponent(
-                context: EditorComponentShowcaseSamples.makeTimelineContext(
-                    size: selectedSize,
-                    currentTime: $currentTimeUs,
-                    selectedClipId: $selectedClipId,
-                    selectedCaptionCueId: $selectedCaptionCueId,
-                    isAddMenuOpen: $isAddMenuOpen
-                ),
-                actions: EditorTimelineActions(
-                    onAddSelection: { _, _ in isAddMenuOpen = false },
-                    onMoveClip: { _, _, _ in },
-                    onTrimClip: { _, _, _, _ in }
-                )
+            showcaseSectionTitle("Timeline Organizer")
+            Text("Pinch the organizer to inspect shared horizontal scale across the ruler and every track.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+            TimelineOrganizerComponent(
+                model: organizerModel,
+                pixelsPerSecond: $timelinePixelsPerSecond,
+                onAddSelection: { _, _ in isAddMenuOpen = false },
+                isAddMenuOpen: $isAddMenuOpen
             )
 
-            showcaseSectionTitle("Timeline Primitives")
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: .spacing(.sp4)) {
-                    VStack(alignment: .leading) {
-                        Text("Ruler").typography(.bodySmall).foregroundColor(Color.ds.textMuted)
-                        TimelineRulerComponent(
-                            size: selectedSize,
-                            pixelsPerSecond: 100,
-                            durationUs: 8_000_000,
-                            currentTime: $currentTimeUs
-                        )
-                        .frame(width: 280)
-                    }
-                    VStack(alignment: .leading) {
-                        Text("Time Readout").typography(.bodySmall).foregroundColor(Color.ds.textMuted)
-                        TimelineTimeReadoutComponent(
-                            size: selectedSize,
+            showcaseSectionTitle("Timeline Components")
+            timelineComponentPreview("Ruler + Readout") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    TimelineRulerComponent(
+                        model: TimelineRulerModel(
                             currentTimeUs: currentTimeUs,
-                            timelineDurationUs: 7_000_000
+                            durationUs: organizerModel.durationUs,
+                            pixelsPerSecond: timelinePixelsPerSecond
                         )
-                    }
-                    VStack(alignment: .leading) {
-                        Text("Add Button").typography(.bodySmall).foregroundColor(Color.ds.textMuted)
-                        TimelineAddMediaButtonComponent(
-                            size: selectedSize,
-                            onSelect: { _, _ in },
-                            isMenuOpen: $isAddMenuOpen
+                    )
+                    .frame(width: 520, alignment: .leading)
+                }
+            }
+
+            ForEach(trackModels) { trackModel in
+                timelineComponentPreview("\(trackModel.kind.displayTitle) Track") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        TimelineTrackComponent(
+                            model: trackModel,
+                            pixelsPerSecond: timelinePixelsPerSecond
                         )
                     }
                 }
             }
+
+            timelineComponentPreview("Add Button") {
+                TimelineAddMediaButtonComponent(
+                    size: selectedSize,
+                    onSelect: { _, _ in isAddMenuOpen = false },
+                    isMenuOpen: $isAddMenuOpen
+                )
+            }
+        }
+    }
+
+    private func timelineComponentPreview<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            Text(title)
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+            content()
+                .padding(.spacing(.sp3))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.ds.surface.opacity(0.35))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
         }
     }
 

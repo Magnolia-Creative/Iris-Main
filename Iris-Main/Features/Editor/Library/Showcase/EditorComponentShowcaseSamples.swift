@@ -118,6 +118,81 @@ enum EditorComponentShowcaseSamples {
         )
     }
 
+    static func makeTimelineOrganizerModel(
+        size: EditorComponentSize,
+        currentTimeUs: Int64,
+        pixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
+    ) -> TimelineOrganizerModel {
+        TimelineOrganizerModel(
+            tracks: sampleTimelineTrackModels(size: TimelineTrackDisplaySize(size)),
+            durationUs: 7_000_000,
+            currentTimeUs: currentTimeUs,
+            pixelsPerSecond: pixelsPerSecond
+        )
+    }
+
+    static func sampleTimelineTrackModels(size: TimelineTrackDisplaySize) -> [TimelineTrackModel] {
+        [
+            TimelineTrackModel(
+                id: "showcase-video-track",
+                kind: .video,
+                size: size,
+                segments: [
+                    TimelineSegmentModel(
+                        id: "showcase-video-1",
+                        rangeUs: TimeRange(start: 0, end: 3_200_000),
+                        sourceRangeUs: TimeRange(start: 0, end: 3_200_000),
+                        title: "Intro",
+                        mediaKind: .video
+                    ),
+                    TimelineSegmentModel(
+                        id: "showcase-video-2",
+                        rangeUs: TimeRange(start: 3_400_000, end: 7_000_000),
+                        sourceRangeUs: TimeRange(start: 0, end: 3_600_000),
+                        title: "Demo",
+                        mediaKind: .video
+                    )
+                ],
+                label: "Video"
+            ),
+            TimelineTrackModel(
+                id: "showcase-audio-track",
+                kind: .audio,
+                size: size,
+                segments: [
+                    TimelineSegmentModel(
+                        id: "showcase-audio-1",
+                        rangeUs: TimeRange(start: 0, end: 7_000_000),
+                        sourceRangeUs: TimeRange(start: 0, end: 7_000_000),
+                        title: "Voiceover",
+                        mediaKind: .audio
+                    )
+                ],
+                label: "Audio"
+            ),
+            TimelineTrackModel(
+                id: "showcase-caption-track",
+                kind: .caption,
+                size: size,
+                segments: [
+                    TimelineSegmentModel(
+                        id: "showcase-caption-1",
+                        rangeUs: TimeRange(start: 400_000, end: 2_200_000),
+                        title: "Hello showcase",
+                        captionText: "Hello showcase"
+                    ),
+                    TimelineSegmentModel(
+                        id: "showcase-caption-2",
+                        rangeUs: TimeRange(start: 4_200_000, end: 6_700_000),
+                        title: "New timeline components",
+                        captionText: "New timeline components"
+                    )
+                ],
+                label: "Captions"
+            )
+        ]
+    }
+
     static func makeToolContext(expandedToolId: Binding<Int?>) -> EditorToolContext {
         EditorToolContext(
             isClipSelected: true,
