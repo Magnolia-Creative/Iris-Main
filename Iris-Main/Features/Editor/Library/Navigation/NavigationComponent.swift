@@ -1,43 +1,79 @@
 import SwiftUI
 
-enum EditorBottomNavigationStyle: String, CaseIterable {
+enum NavigationStyle: String, CaseIterable {
     case glass
     case flat
 }
 
-struct EditorBottomNavigationItem: Identifiable, Equatable {
+struct NavigationItem: Identifiable, Equatable {
     let id: String
     let title: String
     let selectedIconName: String
     let unselectedIconName: String
 }
 
-struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
+struct NavigationComponent: View, EditorLibraryComponentSpec {
     static let componentId: EditorComponentID = "navigation.bottomBar"
     static let category: EditorComponentCategory = .navigation
     static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
 
     let size: EditorComponentSize
-    let style: EditorBottomNavigationStyle
-    let items: [EditorBottomNavigationItem]
+    let style: NavigationStyle
+    let items: [NavigationItem]
     @Binding var activeItemId: String
+    var isSuppressedByIntelligence: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @GestureState private var isDraggingNavigation = false
     @Namespace private var tabNamespace
 
-    static var defaultEditorItems: [EditorBottomNavigationItem] {
-        EditorSpace.allCases.map { space in
-            EditorBottomNavigationItem(
-                id: space.rawValue,
-                title: space.rawValue,
-                selectedIconName: space.selectedIconName,
-                unselectedIconName: space.unselectedIconName
+    static var defaultShowcaseItems: [NavigationItem] {
+        [
+            NavigationItem(
+                id: "Import",
+                title: "Import",
+                selectedIconName: "square.and.arrow.down.fill",
+                unselectedIconName: "square.and.arrow.down"
+            ),
+            NavigationItem(
+                id: "Edit",
+                title: "Edit",
+                selectedIconName: "movieclapper.fill",
+                unselectedIconName: "movieclapper"
+            ),
+            NavigationItem(
+                id: "Export",
+                title: "Export",
+                selectedIconName: "square.and.arrow.up.fill",
+                unselectedIconName: "square.and.arrow.up"
             )
+        ]
+    }
+
+    static func shellInset(for size: EditorComponentSize) -> CGFloat {
+        switch size {
+        case .compressed: 8
+        case .standard: 10
+        case .expanded: 12
         }
     }
 
-    private var tabItemWidth: CGFloat {
+    static func navWidth(for size: EditorComponentSize, itemCount: Int = 3) -> CGFloat {
+        let count = CGFloat(max(itemCount, 1))
+        let hPad = horizontalPadding * 2
+        return count * tabItemWidth(for: size) + (count - 1) * tabSpacing + hPad
+    }
+
+    static func containerWidth(for size: EditorComponentSize, itemCount: Int = 3) -> CGFloat {
+        navWidth(for: size, itemCount: itemCount) + shellInset(for: size) * 2
+    }
+
+    static func totalHeight(for size: EditorComponentSize) -> CGFloat {
+        let rowInnerVertical = verticalPadding * 2
+        return tabRowHeight(for: size) + rowInnerVertical + shellInset(for: size) * 2
+    }
+
+    static func tabItemWidth(for size: EditorComponentSize) -> CGFloat {
         switch size {
         case .compressed: 52
         case .standard: 62
@@ -45,7 +81,7 @@ struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
         }
     }
 
-    private var tabRowHeight: CGFloat {
+    static func tabRowHeight(for size: EditorComponentSize) -> CGFloat {
         switch size {
         case .compressed: 40
         case .standard: 48
@@ -53,7 +89,28 @@ struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
         }
     }
 
+    private static let tabSpacing: CGFloat = .spacing(.sp3)
+    private static let horizontalPadding: CGFloat = .spacing(.sp2)
+    private static let verticalPadding: CGFloat = .spacing(.sp2)
+
+    private var tabItemWidth: CGFloat { Self.tabItemWidth(for: size) }
+    private var tabRowHeight: CGFloat { Self.tabRowHeight(for: size) }
+
     var body: some View {
+        navCard
+            .padding(.horizontal, Self.shellInset(for: size))
+            .padding(.vertical, Self.shellInset(for: size))
+            .frame(
+                width: Self.containerWidth(for: size, itemCount: items.count),
+                height: Self.totalHeight(for: size)
+            )
+            .opacity(isSuppressedByIntelligence ? 0 : 1)
+            .scaleEffect(isSuppressedByIntelligence ? 0.92 : 1, anchor: .trailing)
+            .allowsHitTesting(!isSuppressedByIntelligence)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isSuppressedByIntelligence)
+    }
+
+    private var navCard: some View {
         EditorGlassEffectContainer(spacing: tabSpacing) {
             HStack(spacing: tabSpacing) {
                 ForEach(items) { item in
@@ -78,10 +135,10 @@ struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
                     .accessibilityLabel(Text(item.title))
                 }
             }
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
+            .padding(.horizontal, Self.horizontalPadding)
+            .padding(.vertical, Self.verticalPadding)
             .modifier(NavigationChromeStyleModifier(style: style, colorScheme: colorScheme))
-            .simultaneousGesture(navigationDragGesture)
+            .simultaneousGesture(isSuppressedByIntelligence ? nil : navigationDragGesture)
             .animation(.spring(response: 0.38, dampingFraction: 0.78), value: activeItemId)
         }
     }
@@ -94,11 +151,7 @@ struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
         }
     }
 
-    private var tabSpacing: CGFloat { .spacing(.sp3) }
-
-    private var horizontalPadding: CGFloat { .spacing(.sp2) }
-
-    private var verticalPadding: CGFloat { .spacing(.sp2) }
+    private var tabSpacing: CGFloat { Self.tabSpacing }
 
     private var indicatorCornerRadius: CGFloat { .spacing(.sp3) }
 
@@ -165,7 +218,7 @@ struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
         selectItem(item.id)
     }
 
-    private func item(closestTo locationX: CGFloat) -> EditorBottomNavigationItem? {
+    private func item(closestTo locationX: CGFloat) -> NavigationItem? {
         guard let index = items.indices.min(by: {
             abs(tabCenterX(for: $0) - locationX) < abs(tabCenterX(for: $1) - locationX)
         }) else {
@@ -176,12 +229,12 @@ struct EditorBottomNavigationComponent: View, EditorLibraryComponentSpec {
     }
 
     private func tabCenterX(for index: Int) -> CGFloat {
-        horizontalPadding + CGFloat(index) * (tabItemWidth + tabSpacing) + tabItemWidth / 2
+        Self.horizontalPadding + CGFloat(index) * (tabItemWidth + tabSpacing) + tabItemWidth / 2
     }
 }
 
 private struct NavigationChromeStyleModifier: ViewModifier {
-    let style: EditorBottomNavigationStyle
+    let style: NavigationStyle
     let colorScheme: ColorScheme
 
     func body(content: Content) -> some View {
