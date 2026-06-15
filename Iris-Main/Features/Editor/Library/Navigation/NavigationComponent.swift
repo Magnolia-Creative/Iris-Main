@@ -138,7 +138,10 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
             .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, Self.verticalPadding)
             .modifier(NavigationChromeStyleModifier(style: style, colorScheme: colorScheme))
-            .simultaneousGesture(isSuppressedByIntelligence ? nil : navigationDragGesture)
+            .modifier(NavigationDragGestureModifier(
+                isEnabled: !isSuppressedByIntelligence,
+                gesture: navigationDragGesture
+            ))
             .animation(.spring(response: 0.38, dampingFraction: 0.78), value: activeItemId)
         }
     }
@@ -230,6 +233,20 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
 
     private func tabCenterX(for index: Int) -> CGFloat {
         Self.horizontalPadding + CGFloat(index) * (tabItemWidth + tabSpacing) + tabItemWidth / 2
+    }
+}
+
+private struct NavigationDragGestureModifier<G: Gesture>: ViewModifier {
+    let isEnabled: Bool
+    let gesture: G
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.simultaneousGesture(gesture)
+        } else {
+            content
+        }
     }
 }
 

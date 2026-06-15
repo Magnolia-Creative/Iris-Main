@@ -73,7 +73,15 @@ enum EditorComponentRegistry {
         ),
         EditorComponentRegistryEntry(
             id: "navigation.bottomBar",
-            displayName: "Bottom Navigation",
+            displayName: "NavigationComponent",
+            category: .navigation,
+            supportedSizes: [.compressed, .standard, .expanded],
+            supportedAxes: [.horizontal],
+            workspaceWidgetId: nil
+        ),
+        EditorComponentRegistryEntry(
+            id: "navigation.intelligence",
+            displayName: "IntelligenceComponent",
             category: .navigation,
             supportedSizes: [.compressed, .standard, .expanded],
             supportedAxes: [.horizontal],

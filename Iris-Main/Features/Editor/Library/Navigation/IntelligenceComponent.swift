@@ -1,5 +1,10 @@
 import SwiftUI
 
+// Library-only navigation dock: intelligence prompt entry + bottom navigation.
+// Shell integration is intentionally deferred — adapt app state into the bindings
+// and callbacks below from `EditorContainerView` in a later slice without changing
+// this component's API or imports.
+
 // MARK: - Models
 
 enum IntelligencePromptPhase: Equatable {

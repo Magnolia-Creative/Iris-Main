@@ -14,7 +14,12 @@ struct EditorComponentShowcaseView: View {
     @State private var showcaseSplitCount = 0
     @State private var isPlaying = false
     @State private var showAspectSettings = false
-    @State private var activeNavItemId = EditorSpace.edit.rawValue
+    @State private var activeNavItemId = "Edit"
+    @State private var intelligencePromptPhase: IntelligencePromptPhase = .idle
+    @State private var intelligencePromptDraft = ""
+    @State private var intelligenceLiveTranscript = ""
+    @State private var intelligenceVoiceLevel: Float = 0
+    @State private var intelligenceVoiceSimulationTask: Task<Void, Never>?
     @State private var temperatureValue = 0.0
     @State private var volumeValue = 1.0
     @State private var colorPropertyId = LibraryClipColorPropertyPreview.temperature.rawValue
@@ -121,7 +126,7 @@ struct EditorComponentShowcaseView: View {
             size: TimelineTrackDisplaySize(selectedSize)
         )
 
-        VStack(alignment: .leading, spacing: .spacing(.sp4)) {
+        return VStack(alignment: .leading, spacing: .spacing(.sp4)) {
             showcaseSectionTitle("Timeline Organizer")
             Text("Pinch the organizer to inspect shared horizontal scale across the ruler and every track.")
                 .typography(.bodySmall)
@@ -442,13 +447,67 @@ struct EditorComponentShowcaseView: View {
 
     private var navigationSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            showcaseSectionTitle("Bottom Navigation")
-            EditorBottomNavigationComponent(
+            showcaseSectionTitle("NavigationComponent")
+            NavigationComponent(
                 size: selectedSize,
                 style: .glass,
-                items: EditorBottomNavigationComponent.defaultEditorItems,
+                items: NavigationComponent.defaultShowcaseItems,
                 activeItemId: $activeNavItemId
             )
+
+            showcaseSectionTitle("IntelligenceComponent")
+            Text("Tap opens typing. Hold simulates voice capture. Use the phase picker to inspect takeover states.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+
+            intelligencePhasePicker
+
+            IntelligenceComponent(
+                size: selectedSize,
+                navigationItems: IntelligenceComponent.defaultShowcaseItems,
+                activeNavigationItemId: $activeNavItemId,
+                promptPhase: $intelligencePromptPhase,
+                promptDraft: $intelligencePromptDraft,
+                liveTranscript: intelligenceLiveTranscript,
+                voiceLevel: intelligenceVoiceLevel,
+                onIntelligenceTap: handleIntelligenceTap,
+                onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
+                onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
+                onSubmitText: handleIntelligenceSubmitText,
+                onCancelText: handleIntelligenceCancelText,
+                onCancelProcessing: handleIntelligenceCancelProcessing
+            )
+        }
+    }
+
+    private var intelligencePhasePicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: .spacing(.sp2)) {
+                ForEach(LibraryIntelligencePhasePreview.allCases) { preview in
+                    Button {
+                        applyIntelligencePhasePreview(preview)
+                    } label: {
+                        Text(preview.title)
+                            .typography(.bodySmall)
+                            .foregroundColor(
+                                intelligencePromptPhase == preview.phase
+                                    ? Color.ds.accentFg
+                                    : Color.ds.textMuted
+                            )
+                            .padding(.horizontal, .spacing(.sp3))
+                            .padding(.vertical, .spacing(.sp2))
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        intelligencePromptPhase == preview.phase
+                                            ? Color.ds.accentBg.opacity(0.35)
+                                            : Color.ds.surface.opacity(0.5)
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -484,10 +543,10 @@ struct EditorComponentShowcaseView: View {
                 showsNavigation: true,
                 toolbarItems: items,
                 navigation: {
-                    EditorBottomNavigationComponent(
+                    NavigationComponent(
                         size: selectedSize,
                         style: .glass,
-                        items: EditorBottomNavigationComponent.defaultEditorItems,
+                        items: NavigationComponent.defaultShowcaseItems,
                         activeItemId: $activeNavItemId
                     )
                 }
@@ -508,6 +567,184 @@ struct EditorComponentShowcaseView: View {
         Text(title)
             .typography(.body)
             .foregroundColor(Color.ds.text)
+    }
+
+    private func handleIntelligenceTap() {
+        intelligenceVoiceSimulationTask?.cancel()
+        intelligenceVoiceLevel = 0
+        intelligenceLiveTranscript = ""
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = .typing
+        }
+    }
+
+    private func handleIntelligenceVoiceHoldStart() {
+        intelligenceVoiceSimulationTask?.cancel()
+        intelligenceLiveTranscript = ""
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = .recording
+        }
+        intelligenceVoiceSimulationTask = Task { @MainActor in
+            var tick = 0
+            while !Task.isCancelled, intelligencePromptPhase == .recording {
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled, intelligencePromptPhase == .recording else { return }
+                tick += 1
+                intelligenceVoiceLevel = Float((sin(Double(tick) * 0.35) + 1) * 0.45)
+                if tick == 6 {
+                    intelligenceLiveTranscript = "Trim the intro"
+                } else if tick == 12 {
+                    intelligenceLiveTranscript = "Trim the intro and add captions"
+                }
+            }
+        }
+    }
+
+    private func handleIntelligenceVoiceHoldEnd() {
+        intelligenceVoiceSimulationTask?.cancel()
+        intelligenceVoiceSimulationTask = nil
+        let transcript = intelligenceLiveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                intelligencePromptPhase = .error("I did not catch any speech.")
+            }
+            scheduleIntelligenceReset(after: 2)
+            return
+        }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = .submitting("Starting backend intent run.")
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard intelligencePromptPhase.isSubmitting else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                intelligencePromptPhase = .idle
+            }
+            intelligenceVoiceLevel = 0
+            intelligenceLiveTranscript = ""
+        }
+    }
+
+    private func handleIntelligenceSubmitText() {
+        let draft = intelligencePromptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        intelligencePromptDraft = ""
+        guard !draft.isEmpty else {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                intelligencePromptPhase = .error("Enter a prompt to compile.")
+            }
+            scheduleIntelligenceReset(after: 2)
+            return
+        }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = .submitting("Compiling \"\(draft)\"")
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard intelligencePromptPhase.isSubmitting else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                intelligencePromptPhase = .idle
+            }
+        }
+    }
+
+    private func handleIntelligenceCancelText() {
+        intelligenceVoiceSimulationTask?.cancel()
+        intelligencePromptDraft = ""
+        intelligenceVoiceLevel = 0
+        intelligenceLiveTranscript = ""
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = .idle
+        }
+    }
+
+    private func handleIntelligenceCancelProcessing() {
+        intelligenceVoiceSimulationTask?.cancel()
+        intelligenceVoiceLevel = 0
+        intelligenceLiveTranscript = ""
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = .idle
+        }
+    }
+
+    private func applyIntelligencePhasePreview(_ preview: LibraryIntelligencePhasePreview) {
+        intelligenceVoiceSimulationTask?.cancel()
+        intelligencePromptDraft = preview.sampleDraft
+        intelligenceLiveTranscript = preview.sampleTranscript
+        intelligenceVoiceLevel = preview.sampleVoiceLevel
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            intelligencePromptPhase = preview.phase
+        }
+        if preview.autoResetsToIdle {
+            scheduleIntelligenceReset(after: 2)
+        }
+    }
+
+    private func scheduleIntelligenceReset(after seconds: TimeInterval) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard case .error = intelligencePromptPhase else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                intelligencePromptPhase = .idle
+            }
+            intelligenceVoiceLevel = 0
+            intelligenceLiveTranscript = ""
+        }
+    }
+}
+
+private enum LibraryIntelligencePhasePreview: String, CaseIterable, Identifiable {
+    case idle
+    case typing
+    case recording
+    case submitting
+    case clarification
+    case error
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .idle: "Idle"
+        case .typing: "Typing"
+        case .recording: "Recording"
+        case .submitting: "Submitting"
+        case .clarification: "Clarify"
+        case .error: "Error"
+        }
+    }
+
+    var phase: IntelligencePromptPhase {
+        switch self {
+        case .idle: .idle
+        case .typing: .typing
+        case .recording: .recording
+        case .submitting: .submitting("Starting backend intent run.")
+        case .clarification: .clarification("Which clip should I trim?")
+        case .error: .error("Could not reach the intent compiler.")
+        }
+    }
+
+    var sampleDraft: String {
+        self == .typing ? "Make the colors warmer" : ""
+    }
+
+    var sampleTranscript: String {
+        self == .recording ? "Trim the intro and add captions" : ""
+    }
+
+    var sampleVoiceLevel: Float {
+        self == .recording ? 0.62 : 0
+    }
+
+    var autoResetsToIdle: Bool {
+        self == .error
+    }
+}
+
+private extension IntelligencePromptPhase {
+    var isSubmitting: Bool {
+        if case .submitting = self { return true }
+        return false
     }
 }
 
