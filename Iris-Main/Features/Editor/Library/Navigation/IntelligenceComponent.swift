@@ -184,7 +184,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
 
     private var showWaveformInChrome: Bool {
         switch promptPhase {
-        case .recording, .submitting:
+        case .recording:
             return true
         default:
             return false
@@ -376,11 +376,14 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     }
 
     private func submittingStatusOverlay(_ status: String) -> some View {
-        Text(status)
+        let transcript = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = transcript.isEmpty ? status : transcript
+
+        return Text(text)
             .typographyStyle(.bodySmall)
             .foregroundStyle(Color.ds.text)
             .lineLimit(2)
-            .truncationMode(.tail)
+            .truncationMode(.head)
             .multilineTextAlignment(.center)
             .padding(.horizontal, .spacing(.sp2))
             .padding(.horizontal, 12)
