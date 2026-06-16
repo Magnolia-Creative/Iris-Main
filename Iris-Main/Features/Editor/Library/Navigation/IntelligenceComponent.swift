@@ -101,7 +101,9 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     var body: some View {
         dockRow
             .frame(width: takeoverWidth, alignment: .leading)
+            .frame(height: pillHeight, alignment: .center)
             .frame(maxWidth: .infinity)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: promptPhase)
             .fullScreenCover(isPresented: isTypingPresented) {
                 typingOverlay
@@ -146,6 +148,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 )
             }
         }
+        .frame(height: pillHeight, alignment: .center)
     }
 
     // MARK: - Layout
