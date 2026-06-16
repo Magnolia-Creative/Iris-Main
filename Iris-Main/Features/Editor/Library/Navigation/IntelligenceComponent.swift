@@ -569,8 +569,6 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 }
             }
             .frame(width: width, height: height)
-            .scaleEffect(x: recording ? (1.0 + CGFloat(voiceLevel) * 0.02) : 1.0, y: 1.0)
-            .animation(.easeOut(duration: 0.12), value: voiceLevel)
     }
 
     private func accentBorderOverlay(
