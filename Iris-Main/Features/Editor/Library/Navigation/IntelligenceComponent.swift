@@ -100,7 +100,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
 
     var body: some View {
         dockRow
-            .frame(width: takeoverWidth)
+            .frame(width: takeoverWidth, alignment: .leading)
             .frame(maxWidth: .infinity)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: promptPhase)
             .fullScreenCover(isPresented: isTypingPresented) {
@@ -175,35 +175,24 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         return false
     }
 
-    private var processingRevealCancelThreshold: CGFloat { pillHeight + 8 }
+    private var expandedContentOpacity: Double {
+        animatedPillWidth > pillHeight + 24 ? 1 : 0
+    }
 
     private var showWaveformInChrome: Bool {
         switch promptPhase {
-        case .recording:
+        case .recording, .submitting:
             return true
-        case .submitting:
-            return animatedPillWidth > processingRevealCancelThreshold
         default:
             return false
         }
-    }
-
-    private var showProcessingCancelButton: Bool {
-        isProcessing && animatedPillWidth <= processingRevealCancelThreshold
     }
 
     // MARK: - Intelligence control
 
     @ViewBuilder
     private var intelligenceControl: some View {
-        switch promptPhase {
-        case .clarification(let message):
-            clarificationPill(message)
-        case .error(let message):
-            errorPill(message)
-        case .idle, .recording, .submitting, .typing:
-            intelligenceButton
-        }
+        intelligenceButton
     }
 
     private var intelligenceButton: some View {
@@ -223,17 +212,20 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 recordingTranscriptOverlay
             }
 
-            if case .submitting(let status) = promptPhase, !showProcessingCancelButton {
+            if case .submitting(let status) = promptPhase {
                 submittingStatusOverlay(status)
             }
 
-            if showProcessingCancelButton {
-                processingCancelButton
-                    .transition(.opacity.combined(with: .scale(scale: 0.88)))
+            if case .clarification(let message) = promptPhase {
+                clarificationContent(message)
+            }
+
+            if case .error(let message) = promptPhase {
+                errorContent(message)
             }
         }
-        .animation(.easeOut(duration: 0.18), value: showProcessingCancelButton)
         .frame(width: animatedPillWidth, height: pillHeight)
+        .clipShape(RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous))
 
         return Group {
@@ -388,91 +380,60 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
             .truncationMode(.tail)
             .multilineTextAlignment(.center)
             .padding(.horizontal, .spacing(.sp2))
-            .padding(.vertical, .spacing(.sp1))
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.black.opacity(colorScheme == .dark ? 0.38 : 0.24))
-            )
             .padding(.horizontal, 12)
+            .opacity(expandedContentOpacity)
             .allowsHitTesting(false)
-    }
-
-    private var processingCancelButton: some View {
-        Button(action: onCancelProcessing) {
-            Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(Color.ds.textMuted)
-                .frame(width: animatedPillWidth, height: pillHeight)
-                .contentShape(RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Cancel processing"))
     }
 
     // MARK: - Clarify / error pills
 
-    private func clarificationPill(_ message: String) -> some View {
+    private func clarificationContent(_ message: String) -> some View {
         HStack(spacing: .spacing(.sp2)) {
-            leadingIntelligenceAffordance
+            leadingIntelligenceIcon
             Text(message)
                 .typographyStyle(.bodySmall)
                 .foregroundStyle(Color.ds.text)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
+                .opacity(expandedContentOpacity)
             Spacer(minLength: 0)
         }
-        .padding(.trailing, .spacing(.sp2))
         .frame(width: animatedPillWidth, height: pillHeight, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous)
-                .fill(pillFill)
-        )
-        .overlay {
-            accentBorderOverlay(cornerRadius: pillHeight / 2, lineWidth: 1.8, opacity: 0.55)
-        }
-        .gesture(intelligenceGesture(allowsTap: true))
-        .accessibilityLabel(Text("Clarification"))
-        .accessibilityHint(Text(accessibilityHintForPhase))
+        .padding(.trailing, .spacing(.sp2))
+        .allowsHitTesting(false)
     }
 
-    private func errorPill(_ message: String) -> some View {
+    private func errorContent(_ message: String) -> some View {
         HStack(spacing: .spacing(.sp2)) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.ds.danger)
+            leadingErrorIcon
             Text(message)
                 .typographyStyle(.bodySmall)
                 .foregroundStyle(Color.ds.danger)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
+                .opacity(expandedContentOpacity)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, .spacing(.sp2))
         .frame(width: animatedPillWidth, height: pillHeight, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous)
-                .fill(pillFill)
-        )
-        .overlay {
-            errorBorderOverlay(cornerRadius: pillHeight / 2, lineWidth: 2.2)
-        }
-        .shadow(color: Color.ds.danger.opacity(0.35), radius: 10, x: 0, y: 0)
+        .padding(.trailing, .spacing(.sp2))
+        .allowsHitTesting(false)
     }
 
-    private var leadingIntelligenceAffordance: some View {
-        ZStack {
-            Circle()
-                .fill(pillFill)
-            Image(systemName: "wand.and.stars")
-                .font(.system(size: iconSize * 0.85, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.88))
-                .scaleEffect(isIntelligencePressed ? 0.94 : 1.0)
-        }
-        .frame(width: pillHeight, height: pillHeight)
-        .overlay {
-            accentBorderOverlay(cornerRadius: pillHeight / 2, lineWidth: 1.6, opacity: 0.72)
-        }
-        .allowsHitTesting(false)
+    private var leadingIntelligenceIcon: some View {
+        Image(systemName: "wand.and.stars")
+            .font(.system(size: iconSize * 0.85, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.88))
+            .scaleEffect(isIntelligencePressed ? 0.94 : 1.0)
+            .frame(width: pillHeight, height: pillHeight)
+            .allowsHitTesting(false)
+    }
+
+    private var leadingErrorIcon: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(Color.ds.danger)
+            .frame(width: pillHeight, height: pillHeight)
+            .allowsHitTesting(false)
     }
 
     // MARK: - Typing overlay
@@ -483,10 +444,11 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 .ignoresSafeArea()
                 .onTapGesture { onCancelText() }
 
-            VStack(spacing: 0) {
-                typingGlowBackdrop
-                typingComposerBar
-            }
+            typingGlowBackdrop
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .ignoresSafeArea(.container, edges: .bottom)
+
+            typingComposerBar
         }
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
@@ -501,7 +463,8 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 120)
+        .frame(maxWidth: .infinity)
+        .frame(height: 420)
         .allowsHitTesting(false)
     }
 
@@ -603,9 +566,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 }
             }
             .frame(width: width, height: height)
-            .scaleEffect(
-                recording ? (1.0 + CGFloat(voiceLevel) * (pillUsesCapsuleShape ? 0.03 : 0.06)) : 1.0
-            )
+            .scaleEffect(x: recording ? (1.0 + CGFloat(voiceLevel) * 0.02) : 1.0, y: 1.0)
             .animation(.easeOut(duration: 0.12), value: voiceLevel)
     }
 
