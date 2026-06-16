@@ -456,27 +456,31 @@ struct EditorComponentShowcaseView: View {
             )
 
             showcaseSectionTitle("IntelligenceComponent")
-            Text("Tap opens typing. Hold simulates voice capture. Use the phase picker to inspect takeover states.")
+            Text("Tap opens a keyboard overlay. Hold simulates voice capture. Use the phase picker to inspect takeover states.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
 
             intelligencePhasePicker
 
-            IntelligenceComponent(
-                size: selectedSize,
-                navigationItems: IntelligenceComponent.defaultShowcaseItems,
-                activeNavigationItemId: $activeNavItemId,
-                promptPhase: $intelligencePromptPhase,
-                promptDraft: $intelligencePromptDraft,
-                liveTranscript: intelligenceLiveTranscript,
-                voiceLevel: intelligenceVoiceLevel,
-                onIntelligenceTap: handleIntelligenceTap,
-                onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
-                onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
-                onSubmitText: handleIntelligenceSubmitText,
-                onCancelText: handleIntelligenceCancelText,
-                onCancelProcessing: handleIntelligenceCancelProcessing
-            )
+            HStack {
+                Spacer(minLength: 0)
+                IntelligenceComponent(
+                    size: selectedSize,
+                    navigationItems: IntelligenceComponent.defaultShowcaseItems,
+                    activeNavigationItemId: $activeNavItemId,
+                    promptPhase: $intelligencePromptPhase,
+                    promptDraft: $intelligencePromptDraft,
+                    liveTranscript: intelligenceLiveTranscript,
+                    voiceLevel: intelligenceVoiceLevel,
+                    onIntelligenceTap: handleIntelligenceTap,
+                    onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
+                    onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
+                    onSubmitText: handleIntelligenceSubmitText,
+                    onCancelText: handleIntelligenceCancelText,
+                    onCancelProcessing: handleIntelligenceCancelProcessing
+                )
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -719,8 +723,8 @@ private enum LibraryIntelligencePhasePreview: String, CaseIterable, Identifiable
         case .typing: .typing
         case .recording: .recording
         case .submitting: .submitting("Starting backend intent run.")
-        case .clarification: .clarification("Which clip should I trim?")
-        case .error: .error("Could not reach the intent compiler.")
+        case .clarification: .clarification("Which clip should I trim — the intro montage or the interview segment on track two?")
+        case .error: .error("Could not reach the intent compiler. Check your connection and try again.")
         }
     }
 
@@ -729,7 +733,9 @@ private enum LibraryIntelligencePhasePreview: String, CaseIterable, Identifiable
     }
 
     var sampleTranscript: String {
-        self == .recording ? "Trim the intro and add captions" : ""
+        self == .recording
+            ? "Trim the intro and add captions to the interview segment on track two"
+            : ""
     }
 
     var sampleVoiceLevel: Float {
