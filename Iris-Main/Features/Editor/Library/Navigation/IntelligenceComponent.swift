@@ -15,9 +15,14 @@ enum IntelligencePromptPhase: Equatable {
     case clarification(String)
     case error(String)
 
-    var isTakingOver: Bool {
-        if case .idle = self { return false }
-        return true
+    /// Dock stays visually idle during typing; the keyboard overlay owns that phase.
+    var isDockExpanded: Bool {
+        switch self {
+        case .idle, .typing:
+            return false
+        default:
+            return true
+        }
     }
 }
 
@@ -82,43 +87,63 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         Self.containerWidth(for: size, itemCount: navigationItems.count)
     }
 
-    var body: some View {
-        VStack(spacing: 4) {
-            HStack(alignment: .center, spacing: Self.interControlGap) {
-                intelligenceControl
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private var isTypingPresented: Binding<Bool> {
+        Binding(
+            get: { promptPhase == .typing },
+            set: { isPresented in
+                if !isPresented, promptPhase == .typing {
+                    onCancelText()
+                }
+            }
+        )
+    }
 
+    var body: some View {
+        dockRow
+            .frame(width: takeoverWidth)
+            .frame(maxWidth: .infinity)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: promptPhase)
+            .fullScreenCover(isPresented: isTypingPresented) {
+                typingOverlay
+                    .presentationBackground(.clear)
+            }
+            .onAppear {
+                animatedPillWidth = targetPillWidth(for: promptPhase)
+            }
+            .onChange(of: promptPhase) { _, phase in
+                isPromptFocused = (phase == .typing)
+                withAnimation(.spring(response: 0.48, dampingFraction: 0.84)) {
+                    animatedPillWidth = targetPillWidth(for: phase)
+                }
+                if phase == .recording {
+                    showRecordingAccentBorder = false
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(150))
+                        guard promptPhase == .recording else { return }
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            showRecordingAccentBorder = true
+                        }
+                    }
+                } else {
+                    showRecordingAccentBorder = false
+                }
+            }
+    }
+
+    // MARK: - Dock row
+
+    private var dockRow: some View {
+        HStack(spacing: Self.interControlGap) {
+            intelligenceControl
+                .frame(width: animatedPillWidth, alignment: .leading)
+
+            if !promptPhase.isDockExpanded {
                 NavigationComponent(
                     size: size,
                     style: .glass,
                     items: navigationItems,
-                    activeItemId: $activeNavigationItemId,
-                    isSuppressedByIntelligence: promptPhase.isTakingOver
+                    activeItemId: $activeNavigationItemId
                 )
-            }
-            captionLine
-        }
-        .frame(width: takeoverWidth)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: promptPhase)
-        .onAppear {
-            animatedPillWidth = targetPillWidth(for: promptPhase)
-        }
-        .onChange(of: promptPhase) { _, phase in
-            isPromptFocused = (phase == .typing)
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.84)) {
-                animatedPillWidth = targetPillWidth(for: phase)
-            }
-            if phase == .recording {
-                showRecordingAccentBorder = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(150))
-                    guard promptPhase == .recording else { return }
-                    withAnimation(.easeInOut(duration: 0.22)) {
-                        showRecordingAccentBorder = true
-                    }
-                }
-            } else {
-                showRecordingAccentBorder = false
             }
         }
     }
@@ -127,9 +152,9 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
 
     private func targetPillWidth(for phase: IntelligencePromptPhase) -> CGFloat {
         switch phase {
-        case .idle:
+        case .idle, .typing:
             return intelligenceDiameter
-        case .recording, .typing, .submitting, .clarification, .error:
+        case .recording, .submitting, .clarification, .error:
             return takeoverWidth
         }
     }
@@ -169,20 +194,16 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
 
     // MARK: - Intelligence control
 
+    @ViewBuilder
     private var intelligenceControl: some View {
-        Group {
-            switch promptPhase {
-            case .typing:
-                typingRow
-            case .clarification(let message):
-                clarificationRow(message)
-            case .error(let message):
-                errorRow(message)
-            case .idle, .recording, .submitting:
-                intelligenceButton
-            }
+        switch promptPhase {
+        case .clarification(let message):
+            clarificationPill(message)
+        case .error(let message):
+            errorPill(message)
+        case .idle, .recording, .submitting, .typing:
+            intelligenceButton
         }
-        .frame(width: animatedPillWidth, alignment: .leading)
     }
 
     private var intelligenceButton: some View {
@@ -198,6 +219,14 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                     .transition(.opacity)
             }
 
+            if promptPhase == .recording {
+                recordingTranscriptOverlay
+            }
+
+            if case .submitting(let status) = promptPhase, !showProcessingCancelButton {
+                submittingStatusOverlay(status)
+            }
+
             if showProcessingCancelButton {
                 processingCancelButton
                     .transition(.opacity.combined(with: .scale(scale: 0.88)))
@@ -210,18 +239,51 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         return Group {
             if isProcessing {
                 core
-            } else if case .idle = promptPhase {
+            } else if allowsIntelligenceGesture {
                 core
-                    .gesture(intelligenceGesture)
-                    .accessibilityLabel(Text("Intelligence"))
-                    .accessibilityHint(Text("Tap to type a prompt. Press and hold to record a voice prompt."))
-            } else if case .recording = promptPhase {
-                core
-                    .gesture(intelligenceGesture)
-                    .accessibilityLabel(Text("Recording"))
+                    .gesture(intelligenceGesture(allowsTap: allowsTapInCurrentPhase))
+                    .accessibilityLabel(Text(accessibilityLabelForPhase))
+                    .accessibilityHint(Text(accessibilityHintForPhase))
             } else {
                 core
             }
+        }
+    }
+
+    private var allowsIntelligenceGesture: Bool {
+        switch promptPhase {
+        case .idle, .recording, .clarification:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var allowsTapInCurrentPhase: Bool {
+        switch promptPhase {
+        case .idle, .clarification:
+            return true
+        case .recording:
+            return false
+        default:
+            return false
+        }
+    }
+
+    private var accessibilityLabelForPhase: String {
+        switch promptPhase {
+        case .recording: "Recording"
+        case .clarification: "Clarification"
+        default: "Intelligence"
+        }
+    }
+
+    private var accessibilityHintForPhase: String {
+        switch promptPhase {
+        case .clarification:
+            return "Tap to type a response. Press and hold to record a response."
+        default:
+            return "Tap to type a prompt. Press and hold to record a voice prompt."
         }
     }
 
@@ -241,7 +303,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         }
     }
 
-    private var intelligenceGesture: some Gesture {
+    private func intelligenceGesture(allowsTap: Bool) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { _ in
                 guard !isIntelligencePressed else { return }
@@ -261,7 +323,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 if didActivateVoiceHold {
                     didActivateVoiceHold = false
                     onVoiceHoldEnd()
-                } else if case .idle = promptPhase {
+                } else if allowsTap {
                     onIntelligenceTap()
                 }
             }
@@ -295,6 +357,46 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         .allowsHitTesting(false)
     }
 
+    private var recordingTranscriptOverlay: some View {
+        let text = liveTranscript.isEmpty ? "Listening…" : liveTranscript
+        let isPlaceholder = liveTranscript.isEmpty
+
+        return Text(text)
+            .typographyStyle(.bodySmall)
+            .foregroundStyle(isPlaceholder ? Color.ds.accentFg : Color.ds.text)
+            .lineLimit(2)
+            .truncationMode(.head)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, .spacing(.sp2))
+            .padding(.vertical, .spacing(.sp1))
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(colorScheme == .dark ? 0.42 : 0.28))
+            )
+            .padding(.horizontal, pillUsesCapsuleShape ? 12 : 8)
+            .allowsHitTesting(false)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+
+    private func submittingStatusOverlay(_ status: String) -> some View {
+        Text(status)
+            .typographyStyle(.bodySmall)
+            .foregroundStyle(Color.ds.text)
+            .lineLimit(2)
+            .truncationMode(.tail)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, .spacing(.sp2))
+            .padding(.vertical, .spacing(.sp1))
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(colorScheme == .dark ? 0.38 : 0.24))
+            )
+            .padding(.horizontal, 12)
+            .allowsHitTesting(false)
+    }
+
     private var processingCancelButton: some View {
         Button(action: onCancelProcessing) {
             Image(systemName: "xmark")
@@ -307,63 +409,128 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         .accessibilityLabel(Text("Cancel processing"))
     }
 
-    // MARK: - Expanded phase rows
+    // MARK: - Clarify / error pills
 
-    private var typingRow: some View {
+    private func clarificationPill(_ message: String) -> some View {
         HStack(spacing: .spacing(.sp2)) {
-            typingField
-            compactIconButton(systemName: "xmark", action: onCancelText)
-            compactIconButton(systemName: "arrow.up", accent: true, action: onSubmitText)
-        }
-        .frame(width: takeoverWidth, alignment: .leading)
-    }
-
-    private func clarificationRow(_ message: String) -> some View {
-        HStack(spacing: .spacing(.sp2)) {
-            Image(systemName: "questionmark.bubble.fill")
-                .font(.system(size: 16, weight: .semibold))
+            leadingIntelligenceAffordance
             Text(message)
                 .typographyStyle(.bodySmall)
+                .foregroundStyle(Color.ds.text)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
-            compactIconButton(systemName: "xmark", action: onCancelText)
-            compactIconButton(systemName: "message.fill", action: onIntelligenceTap)
         }
-        .foregroundStyle(Color.ds.text)
-        .padding(.horizontal, .spacing(.sp2))
-        .frame(width: takeoverWidth, height: pillHeight, alignment: .leading)
-        .background(pillFill)
-        .clipShape(RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous))
-        .overlay(rotatingAccentBorder(cornerRadius: pillHeight / 2, lineWidth: 1.5, opacity: 0.55))
+        .padding(.trailing, .spacing(.sp2))
+        .frame(width: animatedPillWidth, height: pillHeight, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous)
+                .fill(pillFill)
+        )
+        .overlay {
+            accentBorderOverlay(cornerRadius: pillHeight / 2, lineWidth: 1.8, opacity: 0.55)
+        }
+        .gesture(intelligenceGesture(allowsTap: true))
+        .accessibilityLabel(Text("Clarification"))
+        .accessibilityHint(Text(accessibilityHintForPhase))
     }
 
-    private func errorRow(_ message: String) -> some View {
+    private func errorPill(_ message: String) -> some View {
         HStack(spacing: .spacing(.sp2)) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.ds.danger)
             Text(message)
                 .typographyStyle(.bodySmall)
+                .foregroundStyle(Color.ds.danger)
                 .lineLimit(2)
+                .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(Color.ds.danger)
         .padding(.horizontal, .spacing(.sp2))
-        .frame(width: takeoverWidth, height: pillHeight, alignment: .leading)
-        .background(pillFill)
-        .clipShape(RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous))
-        .overlay(rotatingAccentBorder(cornerRadius: pillHeight / 2, lineWidth: 1.5, opacity: 0.45))
+        .frame(width: animatedPillWidth, height: pillHeight, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: pillHeight / 2, style: .continuous)
+                .fill(pillFill)
+        )
+        .overlay {
+            errorBorderOverlay(cornerRadius: pillHeight / 2, lineWidth: 2.2)
+        }
+        .shadow(color: Color.ds.danger.opacity(0.35), radius: 10, x: 0, y: 0)
     }
 
-    private var typingField: some View {
-        TextField("Describe your edit…", text: $promptDraft, axis: .vertical)
-            .typographyStyle(.body)
-            .foregroundStyle(Color.ds.text)
-            .tint(Color.ds.accentFg)
-            .lineLimit(1...2)
-            .focused($isPromptFocused)
-            .submitLabel(.send)
-            .onSubmit(onSubmitText)
+    private var leadingIntelligenceAffordance: some View {
+        ZStack {
+            Circle()
+                .fill(pillFill)
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: iconSize * 0.85, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.88))
+                .scaleEffect(isIntelligencePressed ? 0.94 : 1.0)
+        }
+        .frame(width: pillHeight, height: pillHeight)
+        .overlay {
+            accentBorderOverlay(cornerRadius: pillHeight / 2, lineWidth: 1.6, opacity: 0.72)
+        }
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - Typing overlay
+
+    private var typingOverlay: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(colorScheme == .dark ? 0.35 : 0.18)
+                .ignoresSafeArea()
+                .onTapGesture { onCancelText() }
+
+            VStack(spacing: 0) {
+                typingGlowBackdrop
+                typingComposerBar
+            }
+        }
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private var typingGlowBackdrop: some View {
+        LinearGradient(
+            colors: [
+                Color.clear,
+                Color.ds.accentBg.opacity(colorScheme == .dark ? 0.18 : 0.12),
+                Color.ds.accentFg.opacity(colorScheme == .dark ? 0.28 : 0.2)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 120)
+        .allowsHitTesting(false)
+    }
+
+    private var typingComposerBar: some View {
+        HStack(spacing: .spacing(.sp2)) {
+            TextField("Describe your edit…", text: $promptDraft, axis: .vertical)
+                .typographyStyle(.body)
+                .foregroundStyle(Color.ds.text)
+                .tint(Color.ds.accentFg)
+                .lineLimit(1...4)
+                .focused($isPromptFocused)
+                .submitLabel(.send)
+                .onSubmit(onSubmitText)
+
+            compactIconButton(systemName: "xmark", action: onCancelText)
+            compactIconButton(systemName: "arrow.up", accent: true, action: onSubmitText)
+        }
+        .padding(.horizontal, .spacing(.sp3))
+        .padding(.vertical, .spacing(.sp2))
+        .background(
+            RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous)
+                .fill(Color.ds.bg.opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous)
+                .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.22), lineWidth: 1)
+        )
+        .padding(.horizontal, .spacing(.sp3))
+        .padding(.bottom, .spacing(.sp2))
     }
 
     private func compactIconButton(
@@ -400,50 +567,6 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         }
     }
 
-    // MARK: - Caption
-
-    private var captionLine: some View {
-        Text(captionText)
-            .typographyStyle(.bodySmall)
-            .foregroundStyle(captionColor)
-            .lineLimit(2)
-            .truncationMode(.head)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: takeoverWidth)
-            .opacity(captionText.isEmpty ? 0 : 1)
-            .frame(height: captionText.isEmpty ? 0 : nil)
-            .animation(.easeOut(duration: 0.15), value: captionText.isEmpty)
-            .transaction { transaction in
-                if promptPhase == .recording {
-                    transaction.animation = nil
-                }
-            }
-    }
-
-    private var captionText: String {
-        switch promptPhase {
-        case .idle:
-            return "Tap to type · Hold to talk"
-        case .recording:
-            return liveTranscript.isEmpty ? "Listening…" : liveTranscript
-        case .submitting(let status):
-            return status
-        case .typing, .clarification, .error:
-            return ""
-        }
-    }
-
-    private var captionColor: Color {
-        switch promptPhase {
-        case .recording where liveTranscript.isEmpty:
-            return Color.ds.accentFg
-        case .recording, .submitting:
-            return Color.ds.text
-        default:
-            return Color.ds.textMuted
-        }
-    }
-
     // MARK: - Pill chrome
 
     private var pillFill: Color {
@@ -467,13 +590,15 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                     if accentChrome {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(recordingBorderGradient, lineWidth: 2.35)
+                    } else if case .error = promptPhase {
+                        errorBorderOverlay(cornerRadius: corner, lineWidth: 2.2)
                     } else if isProcessing {
-                        rotatingAccentBorder(cornerRadius: corner, lineWidth: 2.35, opacity: 1.0)
+                        accentBorderOverlay(cornerRadius: corner, lineWidth: 2.35, opacity: 1.0, animated: true)
                     } else if recording {
                         RoundedRectangle(cornerRadius: corner, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.14), lineWidth: 1.1)
                     } else {
-                        rotatingAccentBorder(cornerRadius: corner, lineWidth: 1.8, opacity: 0.72)
+                        accentBorderOverlay(cornerRadius: corner, lineWidth: 1.8, opacity: 0.72, animated: true)
                     }
                 }
             }
@@ -484,14 +609,43 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
             .animation(.easeOut(duration: 0.12), value: voiceLevel)
     }
 
-    private func rotatingAccentBorder(cornerRadius: CGFloat, lineWidth: CGFloat, opacity: Double) -> some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { context in
-            let degrees = context.date.timeIntervalSinceReferenceDate * (360.0 / 2.6)
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(processingAngularBorderGradient, lineWidth: lineWidth)
-                .rotationEffect(.degrees(degrees))
-                .opacity(opacity)
+    private func accentBorderOverlay(
+        cornerRadius: CGFloat,
+        lineWidth: CGFloat,
+        opacity: Double,
+        animated: Bool = false
+    ) -> some View {
+        Group {
+            if animated {
+                TimelineView(.animation(minimumInterval: 1.0 / 45.0, paused: false)) { context in
+                    let degrees = context.date.timeIntervalSinceReferenceDate * (360.0 / 2.6)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(processingAngularBorderGradient(angle: .degrees(degrees)), lineWidth: lineWidth)
+                        .opacity(opacity)
+                }
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(processingAngularBorderGradient(angle: .degrees(0)), lineWidth: lineWidth)
+                    .opacity(opacity)
+            }
         }
+    }
+
+    private func errorBorderOverlay(cornerRadius: CGFloat, lineWidth: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.ds.danger.opacity(0.95),
+                        Color.ds.danger.opacity(0.55),
+                        Color.ds.danger.opacity(0.95)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                lineWidth: lineWidth
+            )
+            .shadow(color: Color.ds.danger.opacity(0.45), radius: 6, x: 0, y: 0)
     }
 
     private var idleWaveformGradient: LinearGradient {
@@ -529,7 +683,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         )
     }
 
-    private var processingAngularBorderGradient: AngularGradient {
+    private func processingAngularBorderGradient(angle: Angle) -> AngularGradient {
         AngularGradient(
             gradient: Gradient(stops: [
                 .init(color: Color.ds.accentBg, location: 0.0),
@@ -541,7 +695,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
                 .init(color: Color.ds.accentBg, location: 1.0)
             ]),
             center: .center,
-            angle: .degrees(0)
+            angle: angle
         )
     }
 }
