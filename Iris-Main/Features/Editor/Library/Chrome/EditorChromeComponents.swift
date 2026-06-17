@@ -121,6 +121,7 @@ struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
                 navigation()
             }
         }
+        .padding(.bottom, showsSubchrome ? .spacing(.sp2) : 0)
         .background {
             if showsSubchrome {
                 EditorChromeSurfaceComponent {
