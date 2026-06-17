@@ -106,17 +106,27 @@ struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
         !visibleToolbarItems.isEmpty
     }
 
+    private var subchromeTransition: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.98, anchor: .bottom))
+    }
+
     var body: some View {
-        VStack(spacing: .spacing(.sp2)) {
+        Group {
             if showsSubchrome {
                 EditorChromeSurfaceComponent {
-                    EditorComponentToolbar(axis: toolbarAxis, items: toolbarItems)
-                }
-            }
+                    VStack(spacing: .spacing(.sp2)) {
+                        EditorComponentToolbar(axis: toolbarAxis, items: toolbarItems)
 
-            if showsNavigation {
+                        if showsNavigation {
+                            navigation()
+                        }
+                    }
+                }
+                .transition(subchromeTransition)
+            } else if showsNavigation {
                 navigation()
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showsSubchrome)
     }
 }

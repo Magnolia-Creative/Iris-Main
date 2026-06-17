@@ -87,14 +87,18 @@ struct EditorComponentShowcaseView: View {
     }
 
     private var sizePicker: some View {
-        Picker("Size", selection: $selectedSize) {
-            ForEach(EditorComponentSize.allCases) { size in
-                Text(size.displayTitle).tag(size)
+        Group {
+            if selectedCategory != .chrome {
+                Picker("Size", selection: $selectedSize) {
+                    ForEach(EditorComponentSize.allCases) { size in
+                        Text(size.displayTitle).tag(size)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, .spacing(.sp4))
+                .padding(.bottom, .spacing(.sp3))
             }
         }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, .spacing(.sp4))
-        .padding(.bottom, .spacing(.sp3))
     }
 
     @ViewBuilder
@@ -518,7 +522,7 @@ struct EditorComponentShowcaseView: View {
     private var chromeSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
             showcaseSectionTitle("Bottom Chrome Assembly")
-            Text("The subchrome surface appears only when clip tools or parameter cards are visible. Intelligence and navigation stay outside that container.")
+            Text("The subchrome surface wraps clip tools or parameter cards together with intelligence and navigation. When nothing is selected, only the bare dock is shown.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
 
@@ -554,7 +558,7 @@ struct EditorComponentShowcaseView: View {
                     HStack {
                         Spacer(minLength: 0)
                         IntelligenceComponent(
-                            size: selectedSize,
+                            size: .standard,
                             navigationItems: IntelligenceComponent.defaultShowcaseItems,
                             activeNavigationItemId: $activeNavItemId,
                             promptPhase: $intelligencePromptPhase,
