@@ -98,19 +98,25 @@ struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
         self.navigation = navigation
     }
 
+    private var visibleToolbarItems: [EditorToolbarItem] {
+        toolbarItems.filter(\.isVisible).sorted { $0.placementPriority > $1.placementPriority }
+    }
+
+    private var showsSubchrome: Bool {
+        !visibleToolbarItems.isEmpty
+    }
+
     var body: some View {
-        ZStack(alignment: .bottom) {
-            EditorChromeSurfaceComponent {
-                VStack(spacing: .spacing(.sp2)) {
-                    if !toolbarItems.filter(\.isVisible).isEmpty {
-                        EditorComponentToolbar(axis: toolbarAxis, items: toolbarItems)
-                    }
-                    if showsNavigation {
-                        navigation()
-                    }
+        VStack(spacing: .spacing(.sp2)) {
+            if showsSubchrome {
+                EditorChromeSurfaceComponent {
+                    EditorComponentToolbar(axis: toolbarAxis, items: toolbarItems)
                 }
             }
-            .padding(.bottom, showsNavigation ? 0 : .spacing(.sp2))
+
+            if showsNavigation {
+                navigation()
+            }
         }
     }
 }

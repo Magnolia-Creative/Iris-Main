@@ -517,7 +517,11 @@ struct EditorComponentShowcaseView: View {
 
     private var chromeSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            showcaseSectionTitle("Toolbar Collection")
+            showcaseSectionTitle("Bottom Chrome Assembly")
+            Text("The subchrome surface appears only when clip tools or parameter cards are visible. Intelligence and navigation stay outside that container.")
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
+
             Toggle(isOn: $toolbarShowsClipTools) {
                 Text("Show clip tools")
                     .typography(.bodySmall)
@@ -547,12 +551,25 @@ struct EditorComponentShowcaseView: View {
                 showsNavigation: true,
                 toolbarItems: items,
                 navigation: {
-                    NavigationComponent(
-                        size: selectedSize,
-                        style: .glass,
-                        items: NavigationComponent.defaultShowcaseItems,
-                        activeItemId: $activeNavItemId
-                    )
+                    HStack {
+                        Spacer(minLength: 0)
+                        IntelligenceComponent(
+                            size: selectedSize,
+                            navigationItems: IntelligenceComponent.defaultShowcaseItems,
+                            activeNavigationItemId: $activeNavItemId,
+                            promptPhase: $intelligencePromptPhase,
+                            promptDraft: $intelligencePromptDraft,
+                            liveTranscript: intelligenceLiveTranscript,
+                            voiceLevel: intelligenceVoiceLevel,
+                            onIntelligenceTap: handleIntelligenceTap,
+                            onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
+                            onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
+                            onSubmitText: handleIntelligenceSubmitText,
+                            onCancelText: handleIntelligenceCancelText,
+                            onCancelProcessing: handleIntelligenceCancelProcessing
+                        )
+                        Spacer(minLength: 0)
+                    }
                 }
             )
         }
