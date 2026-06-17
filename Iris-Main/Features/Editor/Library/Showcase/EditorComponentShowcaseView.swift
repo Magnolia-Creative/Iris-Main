@@ -522,7 +522,7 @@ struct EditorComponentShowcaseView: View {
     private var chromeSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
             showcaseSectionTitle("Bottom Chrome Assembly")
-            Text("The subchrome surface wraps clip tools or parameter cards together with intelligence and navigation. When nothing is selected, only the bare dock is shown.")
+            Text("The dock stays visible while the subchrome surface extends underneath it when clip tools or parameter cards are visible.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
 
