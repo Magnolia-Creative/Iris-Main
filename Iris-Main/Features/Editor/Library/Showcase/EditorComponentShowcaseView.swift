@@ -555,25 +555,22 @@ struct EditorComponentShowcaseView: View {
                 showsNavigation: true,
                 toolbarItems: items,
                 navigation: {
-                    HStack {
-                        Spacer(minLength: 0)
-                        IntelligenceComponent(
-                            size: .standard,
-                            navigationItems: IntelligenceComponent.defaultShowcaseItems,
-                            activeNavigationItemId: $activeNavItemId,
-                            promptPhase: $intelligencePromptPhase,
-                            promptDraft: $intelligencePromptDraft,
-                            liveTranscript: intelligenceLiveTranscript,
-                            voiceLevel: intelligenceVoiceLevel,
-                            onIntelligenceTap: handleIntelligenceTap,
-                            onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
-                            onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
-                            onSubmitText: handleIntelligenceSubmitText,
-                            onCancelText: handleIntelligenceCancelText,
-                            onCancelProcessing: handleIntelligenceCancelProcessing
-                        )
-                        Spacer(minLength: 0)
-                    }
+                    IntelligenceComponent(
+                        size: .standard,
+                        navigationItems: IntelligenceComponent.defaultShowcaseItems,
+                        activeNavigationItemId: $activeNavItemId,
+                        promptPhase: $intelligencePromptPhase,
+                        promptDraft: $intelligencePromptDraft,
+                        liveTranscript: intelligenceLiveTranscript,
+                        voiceLevel: intelligenceVoiceLevel,
+                        onIntelligenceTap: handleIntelligenceTap,
+                        onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
+                        onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
+                        onSubmitText: handleIntelligenceSubmitText,
+                        onCancelText: handleIntelligenceCancelText,
+                        onCancelProcessing: handleIntelligenceCancelProcessing
+                    )
+                    .frame(width: IntelligenceComponent.containerWidth(for: .standard))
                 }
             )
         }

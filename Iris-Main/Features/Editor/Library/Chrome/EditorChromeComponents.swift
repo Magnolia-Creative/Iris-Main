@@ -80,11 +80,30 @@ struct EditorComponentToolbar: View, EditorLibraryComponentSpec {
     }
 }
 
+private struct EditorChromeToolbarHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct EditorChromeNavigationSizePreferenceKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
+    }
+}
+
 struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
     let showsNavigation: Bool
     let navigation: () -> Navigation
     let toolbarItems: [EditorToolbarItem]
     let toolbarAxis: EditorComponentAxis
+
+    @State private var toolbarHeight: CGFloat = 0
+    @State private var navigationSize: CGSize = .zero
 
     init(
         showsNavigation: Bool = true,
@@ -110,15 +129,42 @@ struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
         .opacity.combined(with: .scale(scale: 0.98, anchor: .bottom))
     }
 
+    private var navigationCutoutSize: CGSize {
+        CGSize(
+            width: navigationSize.width + .spacing(.sp3),
+            height: navigationSize.height + .spacing(.sp2)
+        )
+    }
+
+    private var navigationCutoutOffsetY: CGFloat {
+        toolbarHeight + .spacing(.sp2) - .spacing(.sp1)
+    }
+
     var body: some View {
         VStack(spacing: .spacing(.sp2)) {
             if showsSubchrome {
                 EditorComponentToolbar(axis: toolbarAxis, items: visibleToolbarItems)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: EditorChromeToolbarHeightPreferenceKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    }
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
             if showsNavigation {
                 navigation()
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: EditorChromeNavigationSizePreferenceKey.self,
+                                value: proxy.size
+                            )
+                        }
+                    }
             }
         }
         .padding(.bottom, showsSubchrome ? .spacing(.sp2) : 0)
@@ -127,9 +173,28 @@ struct EditorBottomChromeAssemblyComponent<Navigation: View>: View {
                 EditorChromeSurfaceComponent {
                     Color.clear
                 }
+                .mask {
+                    ZStack(alignment: .top) {
+                        Rectangle().fill(Color.white)
+
+                        if showsNavigation, navigationSize != .zero {
+                            RoundedRectangle(
+                                cornerRadius: navigationCutoutSize.height / 2,
+                                style: .continuous
+                            )
+                            .fill(Color.white)
+                            .frame(width: navigationCutoutSize.width, height: navigationCutoutSize.height)
+                            .offset(y: navigationCutoutOffsetY)
+                            .blendMode(.destinationOut)
+                        }
+                    }
+                    .compositingGroup()
+                }
                 .transition(subchromeTransition)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showsSubchrome)
+        .onPreferenceChange(EditorChromeToolbarHeightPreferenceKey.self) { toolbarHeight = $0 }
+        .onPreferenceChange(EditorChromeNavigationSizePreferenceKey.self) { navigationSize = $0 }
     }
 }
