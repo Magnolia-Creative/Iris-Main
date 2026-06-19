@@ -148,22 +148,9 @@ struct EditorToolPillComponent: View {
     let title: String
     let selected: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         Text(title)
-            .typography(.bodySmall)
-            .foregroundColor(selected ? Color.ds.accentFg : Color.ds.text)
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.vertical, .spacing(.sp2))
-            .editorRegularGlassEffect(
-                tint: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.14),
-                in: Capsule()
-            )
-            .overlay(
-                Capsule()
-                    .strokeBorder(selected ? Color.ds.accentFg : Color.ds.border, lineWidth: selected ? 2 : 1)
-            )
+            .irisChipPickerAppearance(isSelected: selected)
     }
 }
 

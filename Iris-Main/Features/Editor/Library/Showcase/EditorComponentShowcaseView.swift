@@ -63,22 +63,14 @@ struct EditorComponentShowcaseView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: .spacing(.sp2)) {
                 ForEach(EditorComponentCategory.allCases) { category in
-                    Button {
+                    showcaseChipButton(
+                        category.displayTitle,
+                        isSelected: selectedCategory == category
+                    ) {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selectedCategory = category
                         }
-                    } label: {
-                        Text(category.displayTitle)
-                            .typography(.bodySmall)
-                            .foregroundColor(selectedCategory == category ? Color.ds.accentFg : Color.ds.textMuted)
-                            .padding(.horizontal, .spacing(.sp3))
-                            .padding(.vertical, .spacing(.sp2))
-                            .background(
-                                Capsule()
-                                    .fill(selectedCategory == category ? Color.ds.accentBg.opacity(0.35) : Color.ds.surface.opacity(0.5))
-                            )
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, .spacing(.sp4))
@@ -89,13 +81,21 @@ struct EditorComponentShowcaseView: View {
     private var sizePicker: some View {
         Group {
             if selectedCategory != .chrome {
-                Picker("Size", selection: $selectedSize) {
-                    ForEach(EditorComponentSize.allCases) { size in
-                        Text(size.displayTitle).tag(size)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: .spacing(.sp2)) {
+                        ForEach(EditorComponentSize.allCases) { size in
+                            showcaseChipButton(
+                                size.displayTitle,
+                                isSelected: selectedSize == size
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    selectedSize = size
+                                }
+                            }
+                        }
                     }
+                    .padding(.horizontal, .spacing(.sp4))
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, .spacing(.sp4))
                 .padding(.bottom, .spacing(.sp3))
             }
         }
@@ -213,22 +213,14 @@ struct EditorComponentShowcaseView: View {
                         HStack(spacing: .spacing(.sp1)) {
                             ForEach(TimelineTrackDisplaySize.allCases) { size in
                                 let isSelected = resolvedTrackSize(for: track.id) == size
-                                Button {
+                                showcaseChipButton(
+                                    size.displayTitle,
+                                    isSelected: isSelected
+                                ) {
                                     withAnimation(.easeInOut(duration: 0.18)) {
                                         timelineTrackSizesById[track.id] = size
                                     }
-                                } label: {
-                                    Text(size.displayTitle)
-                                        .typography(.bodySmall)
-                                        .foregroundColor(isSelected ? Color.ds.accentFg : Color.ds.textMuted)
-                                        .padding(.horizontal, .spacing(.sp2))
-                                        .padding(.vertical, .spacing(.sp1))
-                                        .background(
-                                            Capsule()
-                                                .fill(isSelected ? Color.ds.accentBg.opacity(0.35) : Color.ds.surface.opacity(0.4))
-                                        )
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -490,28 +482,12 @@ struct EditorComponentShowcaseView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: .spacing(.sp2)) {
                 ForEach(LibraryIntelligencePhasePreview.allCases) { preview in
-                    Button {
+                    showcaseChipButton(
+                        preview.title,
+                        isSelected: intelligencePromptPhase == preview.phase
+                    ) {
                         applyIntelligencePhasePreview(preview)
-                    } label: {
-                        Text(preview.title)
-                            .typography(.bodySmall)
-                            .foregroundColor(
-                                intelligencePromptPhase == preview.phase
-                                    ? Color.ds.accentFg
-                                    : Color.ds.textMuted
-                            )
-                            .padding(.horizontal, .spacing(.sp3))
-                            .padding(.vertical, .spacing(.sp2))
-                            .background(
-                                Capsule()
-                                    .fill(
-                                        intelligencePromptPhase == preview.phase
-                                            ? Color.ds.accentBg.opacity(0.35)
-                                            : Color.ds.surface.opacity(0.5)
-                                    )
-                            )
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -586,6 +562,18 @@ struct EditorComponentShowcaseView: View {
         Text(title)
             .typography(.body)
             .foregroundColor(Color.ds.text)
+    }
+
+    private func showcaseChipButton(
+        _ title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+        }
+        .buttonStyle(.irisChipPicker(isSelected: isSelected))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func handleIntelligenceTap() {
