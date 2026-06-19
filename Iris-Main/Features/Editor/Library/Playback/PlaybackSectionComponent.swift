@@ -7,6 +7,7 @@ struct PlaybackSectionComponent: View, EditorLibraryComponentSpec {
 
     let context: EditorPlaybackContext
     let actions: EditorPlaybackActions
+    var renderEngine: VideoLabRenderEngine?
     var fitMode: PlaybackViewerFitMode = .fitAspect
     var placeholderTitle: String = "Preview"
 
@@ -15,6 +16,7 @@ struct PlaybackSectionComponent: View, EditorLibraryComponentSpec {
             PlaybackViewerComponent(
                 size: context.viewerSize,
                 previewAspect: context.previewAspect,
+                renderEngine: renderEngine,
                 fitMode: fitMode,
                 placeholderTitle: placeholderTitle
             )

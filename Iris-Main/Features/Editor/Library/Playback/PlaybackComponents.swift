@@ -12,6 +12,7 @@ struct PlaybackViewerComponent: View, EditorLibraryComponentSpec {
 
     let size: EditorComponentSize
     var previewAspect: CGFloat?
+    var renderEngine: VideoLabRenderEngine?
     var fitMode: PlaybackViewerFitMode = .fitAspect
     var placeholderTitle: String = "Preview"
 
@@ -24,32 +25,40 @@ struct PlaybackViewerComponent: View, EditorLibraryComponentSpec {
     }
 
     var body: some View {
-        let preview = RoundedRectangle(cornerRadius: 4)
-            .fill(Color.ds.surface)
-            .overlay(
-                VStack(spacing: .spacing(.sp2)) {
-                    Image(systemName: "play.rectangle")
-                        .font(.system(size: 28))
-                        .foregroundColor(Color.ds.textMuted)
-                    Text(placeholderTitle)
-                        .typography(.body)
-                        .foregroundColor(Color.ds.text)
-                }
-            )
-
         ZStack {
             Color.clear
             Group {
                 if fitMode == .fitAspect, let previewAspect {
-                    preview.aspectRatio(previewAspect, contentMode: .fit)
+                    previewContent.aspectRatio(previewAspect, contentMode: .fit)
                 } else {
-                    preview.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    previewContent.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: minHeight)
         .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    @ViewBuilder
+    private var previewContent: some View {
+        if let renderEngine {
+            VideoLabPreviewView(engine: renderEngine)
+                .background(Color.black)
+        } else {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.ds.surface)
+                .overlay(
+                    VStack(spacing: .spacing(.sp2)) {
+                        Image(systemName: "play.rectangle")
+                            .font(.system(size: 28))
+                            .foregroundColor(Color.ds.textMuted)
+                        Text(placeholderTitle)
+                            .typography(.body)
+                            .foregroundColor(Color.ds.text)
+                    }
+                )
+        }
     }
 }
 
