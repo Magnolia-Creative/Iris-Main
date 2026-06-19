@@ -94,6 +94,30 @@ enum EditorComponentRegistry {
             supportedSizes: [.compressed, .standard, .expanded],
             supportedAxes: [.horizontal, .vertical],
             workspaceWidgetId: nil
+        ),
+        EditorComponentRegistryEntry(
+            id: "chrome.bottomStack",
+            displayName: "Bottom Chrome Stack",
+            category: .chrome,
+            supportedSizes: [.compressed, .standard, .expanded],
+            supportedAxes: [.vertical],
+            workspaceWidgetId: nil
+        ),
+        EditorComponentRegistryEntry(
+            id: "chrome.parameterTier",
+            displayName: "Parameter Group Tier",
+            category: .chrome,
+            supportedSizes: [.compressed, .standard, .expanded],
+            supportedAxes: [.vertical],
+            workspaceWidgetId: nil
+        ),
+        EditorComponentRegistryEntry(
+            id: "chrome.actionsRow",
+            displayName: "Immediate Actions Row",
+            category: .chrome,
+            supportedSizes: [.standard],
+            supportedAxes: [.horizontal],
+            workspaceWidgetId: nil
         )
     ]
 

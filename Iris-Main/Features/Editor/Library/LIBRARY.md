@@ -19,10 +19,22 @@ The following are intentionally unchanged in this pass:
 - `EditorCanvasView`
 - `EditorTabBar`
 - `TimelineSectionView`
-- `JITWorkspaceLayoutRenderer`
-- `UIWorkspaceCatalog`
+- `EditorContainerView` bottom chrome wiring
+- Legacy `Features/Editor/Workspace` JIT layout code (reference only; do not build new primitives against it)
 
-After showcase validation, wire library components into those integration points and align `EditorComponentRegistry` with backend workspace widget IDs.
+After showcase validation, wire library components into those integration points.
+
+## Bottom chrome primitives
+
+New tiered bottom chrome lives under `Library/Chrome/`:
+
+- `EditorBottomChromePlan` — tiers, actions, parameter groups, density
+- `EditorBottomChromeStack` — glass subchrome + dock slot
+- `EditorParameterTierView` — chip-selected parameter groups
+- `EditorImmediateActionsRow` — dynamic action buttons
+- `EditorSpatialParameterTierView` — placeholder for future 2D controls
+
+Validate in **Component Library → Chrome → Bottom Chrome Preview Lab** before live editor wiring.
 
 ## Design principles
 
