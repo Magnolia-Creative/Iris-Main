@@ -282,18 +282,18 @@ struct EditorComponentShowcaseView: View {
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
             ToolControlRowComponent {
-                EditorToolButtonComponent(
+                ToolButtonComponent(
                     systemImage: "trash",
                     title: "Delete",
                     role: .destructive,
                     action: {}
                 )
-                EditorToolButtonComponent(
+                ToolButtonComponent(
                     systemImage: "scissors",
                     title: "Split",
                     action: { showcaseSplitCount += 1 }
                 )
-                EditorToolButtonComponent(
+                ToolButtonComponent(
                     systemImage: "textformat",
                     title: "Style",
                     action: {}
@@ -313,11 +313,11 @@ struct EditorComponentShowcaseView: View {
             Text("A tool button opens a subview with parameter controls; the close button dismisses selection.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
-            EditorExpandableToolTrayComponent(
+            ExpandableToolTrayComponent(
                 expandedToolId: $expandedShowcaseToolId,
                 showsLeadingWhenExpanded: false,
                 leading: {
-                    EditorToolCloseButtonComponent(title: "Dismiss tool selection") {
+                    ToolCloseButtonComponent(title: "Dismiss tool selection") {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             expandedShowcaseToolId = nil
                         }
@@ -326,12 +326,12 @@ struct EditorComponentShowcaseView: View {
                 collapsed: {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: .spacing(.sp1)) {
-                            EditorToolButtonComponent(
+                            ToolButtonComponent(
                                 systemImage: "camera.filters",
                                 title: "Color",
                                 action: { toggleShowcaseTool(LibraryShowcaseExpandableToolID.color) }
                             )
-                            EditorToolButtonComponent(
+                            ToolButtonComponent(
                                 systemImage: "speaker.wave.2",
                                 title: "Volume",
                                 action: { toggleShowcaseTool(LibraryShowcaseExpandableToolID.volume) }
@@ -352,7 +352,7 @@ struct EditorComponentShowcaseView: View {
         if toolId == LibraryShowcaseExpandableToolID.color.rawValue {
             VStack(alignment: .leading, spacing: .spacing(.sp2)) {
                 HStack(alignment: .top, spacing: .spacing(.sp2)) {
-                    EditorToolBackButtonComponent(accessibilityLabel: "Back to tool buttons") {
+                    ToolBackButtonComponent(accessibilityLabel: "Back to tool buttons") {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             expandedShowcaseToolId = nil
                         }
@@ -380,7 +380,7 @@ struct EditorComponentShowcaseView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if toolId == LibraryShowcaseExpandableToolID.volume.rawValue {
             HStack(alignment: .top, spacing: .spacing(.sp2)) {
-                EditorToolBackButtonComponent(accessibilityLabel: "Back to tool buttons") {
+                ToolBackButtonComponent(accessibilityLabel: "Back to tool buttons") {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         expandedShowcaseToolId = nil
                     }

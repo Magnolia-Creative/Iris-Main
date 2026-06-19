@@ -67,7 +67,7 @@ struct ParameterSegmentedPillControlComponent: View {
                         Button {
                             selectionId = option.id
                         } label: {
-                            EditorToolPillComponent(
+                            ToolPillComponent(
                                 title: option.title,
                                 selected: selectionId == option.id
                             )

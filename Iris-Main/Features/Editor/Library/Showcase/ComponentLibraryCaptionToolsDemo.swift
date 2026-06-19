@@ -44,11 +44,11 @@ struct ComponentLibraryCaptionToolsDemo: View {
                     .foregroundColor(Color.ds.danger)
             }
 
-            EditorExpandableToolTrayComponent(
+            ExpandableToolTrayComponent(
                 expandedToolId: context.expandedToolId,
                 includesTrailingSpacer: true,
                 leading: {
-                    EditorToolCloseButtonComponent(title: "Done editing caption style") {
+                    ToolCloseButtonComponent(title: "Done editing caption style") {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             actions.onFinishEditing()
                         }
@@ -57,14 +57,14 @@ struct ComponentLibraryCaptionToolsDemo: View {
                 collapsed: {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: .spacing(.sp1)) {
-                            EditorToolButtonComponent(
+                            ToolButtonComponent(
                                 systemImage: "trash",
                                 title: "Delete captions",
                                 role: .destructive,
                                 action: { showDeleteConfirmation = true }
                             )
                             ForEach(LibraryCaptionTool.allCases) { tool in
-                                EditorToolButtonComponent(
+                                ToolButtonComponent(
                                     systemImage: tool.systemImage,
                                     title: tool.title,
                                     action: { toggleTool(tool) }
@@ -101,7 +101,7 @@ struct ComponentLibraryCaptionToolsDemo: View {
     @ViewBuilder
     private func expandedRow(for tool: LibraryCaptionTool) -> some View {
         HStack(spacing: .spacing(.sp2)) {
-            EditorToolBackButtonComponent(accessibilityLabel: "Back to caption tools") {
+            ToolBackButtonComponent(accessibilityLabel: "Back to caption tools") {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     context.expandedToolId.wrappedValue = nil
                 }

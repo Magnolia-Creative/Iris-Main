@@ -1,40 +1,40 @@
 import SwiftUI
 
-enum EditorToolButtonShape: String, CaseIterable {
+enum ToolButtonShape: String, CaseIterable {
     case icon
     case roundedIcon
     case pill
 }
 
-enum EditorToolSemanticRole: String, CaseIterable {
+enum ToolSemanticRole: String, CaseIterable {
     case neutral
     case destructive
     case accent
 }
 
-enum EditorLibraryToolChromeMetrics {
+enum ToolMetrics {
     static let toolItemWidth: CGFloat = 48
     static let roundedButtonSize: CGFloat = 40
 }
 
-struct EditorToolDividerComponent: View {
+struct ToolDividerComponent: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         RoundedRectangle(cornerRadius: 0.75, style: .continuous)
             .fill(Color.white.opacity(colorScheme == .dark ? 0.14 : 0.20))
             .frame(width: 1.5, height: 28)
-            .frame(height: EditorLibraryToolChromeMetrics.toolItemWidth)
+            .frame(height: ToolMetrics.toolItemWidth)
             .padding(.horizontal, .spacing(.sp1))
             .accessibilityHidden(true)
     }
 }
 
-struct EditorToolButtonComponent: View {
+struct ToolButtonComponent: View {
     let systemImage: String
     let title: String
-    var shape: EditorToolButtonShape = .icon
-    var role: EditorToolSemanticRole = .neutral
+    var shape: ToolButtonShape = .icon
+    var role: ToolSemanticRole = .neutral
     var matchedId: String?
     var namespace: Namespace.ID?
     let action: () -> Void
@@ -59,7 +59,7 @@ struct EditorToolButtonComponent: View {
     private var label: some View {
         switch shape {
         case .icon:
-            EditorToolIconLabelComponent(
+            ToolIconLabelComponent(
                 systemImage: systemImage,
                 title: title,
                 foreground: foreground,
@@ -67,18 +67,18 @@ struct EditorToolButtonComponent: View {
                 namespace: namespace
             )
         case .roundedIcon:
-            EditorToolRoundedIconLabelComponent(
+            ToolRoundedIconLabelComponent(
                 systemImage: systemImage,
                 title: title,
                 foreground: foreground
             )
         case .pill:
-            EditorToolPillComponent(title: title, selected: role == .accent)
+            ToolPillComponent(title: title, selected: role == .accent)
         }
     }
 }
 
-struct EditorToolIconLabelComponent: View {
+struct ToolIconLabelComponent: View {
     let systemImage: String
     let title: String
     var foreground: Color = Color.ds.textMuted
@@ -88,15 +88,15 @@ struct EditorToolIconLabelComponent: View {
     var body: some View {
         Image(systemName: systemImage)
             .font(.system(size: 22, weight: .medium))
-            .modifier(EditorLibraryToolIconMatchModifier(id: matchedId, namespace: namespace))
+            .modifier(ToolIconMatchModifier(id: matchedId, namespace: namespace))
             .foregroundColor(foreground)
-            .frame(width: EditorLibraryToolChromeMetrics.toolItemWidth, height: EditorLibraryToolChromeMetrics.toolItemWidth)
+            .frame(width: ToolMetrics.toolItemWidth, height: ToolMetrics.toolItemWidth)
             .contentShape(Rectangle())
             .accessibilityLabel(Text(title))
     }
 }
 
-struct EditorToolCloseButtonComponent: View {
+struct ToolCloseButtonComponent: View {
     let title: String
     let action: () -> Void
 
@@ -105,7 +105,7 @@ struct EditorToolCloseButtonComponent: View {
             Image(systemName: "xmark")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(Color.ds.textMuted)
-                .frame(width: EditorLibraryToolChromeMetrics.toolItemWidth, height: EditorLibraryToolChromeMetrics.toolItemWidth)
+                .frame(width: ToolMetrics.toolItemWidth, height: ToolMetrics.toolItemWidth)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -113,20 +113,20 @@ struct EditorToolCloseButtonComponent: View {
     }
 }
 
-struct EditorToolBackButtonComponent: View {
+struct ToolBackButtonComponent: View {
     let accessibilityLabel: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            EditorToolIconLabelComponent(systemImage: "chevron.left", title: accessibilityLabel)
+            ToolIconLabelComponent(systemImage: "chevron.left", title: accessibilityLabel)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(accessibilityLabel))
     }
 }
 
-struct EditorToolRoundedIconLabelComponent: View {
+struct ToolRoundedIconLabelComponent: View {
     let systemImage: String
     let title: String
     var foreground: Color = Color.ds.textMuted
@@ -137,14 +137,14 @@ struct EditorToolRoundedIconLabelComponent: View {
         Image(systemName: systemImage)
             .font(.system(size: 18, weight: .semibold))
             .foregroundColor(foreground)
-            .frame(width: EditorLibraryToolChromeMetrics.roundedButtonSize, height: EditorLibraryToolChromeMetrics.roundedButtonSize)
+            .frame(width: ToolMetrics.roundedButtonSize, height: ToolMetrics.roundedButtonSize)
             .background(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18))
             .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3), style: .continuous))
             .accessibilityLabel(Text(title))
     }
 }
 
-struct EditorToolPillComponent: View {
+struct ToolPillComponent: View {
     let title: String
     let selected: Bool
 
@@ -154,7 +154,7 @@ struct EditorToolPillComponent: View {
     }
 }
 
-struct EditorExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: View, Collapsed: View, Expanded: View>: View {
+struct ExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: View, Collapsed: View, Expanded: View>: View {
     @Binding var expandedToolId: ExpandedToolID?
     var showsLeadingWhenExpanded: Bool = true
     var includesTrailingSpacer: Bool = false
@@ -187,7 +187,7 @@ struct EditorExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: Vie
             if !isExpanded || showsLeadingWhenExpanded {
                 leading()
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .leading)))
-                EditorToolDividerComponent()
+                ToolDividerComponent()
                     .transition(.opacity)
             }
 
@@ -212,7 +212,7 @@ struct EditorExpandableToolTrayComponent<ExpandedToolID: Equatable, Leading: Vie
     }
 }
 
-private struct EditorLibraryToolIconMatchModifier: ViewModifier {
+private struct ToolIconMatchModifier: ViewModifier {
     let id: String?
     let namespace: Namespace.ID?
 

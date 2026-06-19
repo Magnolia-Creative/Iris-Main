@@ -12,9 +12,9 @@ struct EditorImmediateActionsRow: View {
         } else {
             HStack(spacing: .spacing(.sp2)) {
                 if isDismissable {
-                    EditorToolCloseButtonComponent(title: "Dismiss chrome", action: onDismiss)
+                    ToolCloseButtonComponent(title: "Dismiss chrome", action: onDismiss)
 
-                    EditorToolDividerComponent()
+                    ToolDividerComponent()
                 }
 
                 actionButtons
@@ -26,7 +26,7 @@ struct EditorImmediateActionsRow: View {
     private var actionButtons: some View {
         HStack(spacing: .spacing(.sp1)) {
             ForEach(actions) { action in
-                EditorToolButtonComponent(
+                ToolButtonComponent(
                     systemImage: action.systemImage,
                     title: action.title,
                     role: action.role.toolRole,
@@ -40,7 +40,7 @@ struct EditorImmediateActionsRow: View {
 }
 
 private extension EditorChromeActionRole {
-    var toolRole: EditorToolSemanticRole {
+    var toolRole: ToolSemanticRole {
         switch self {
         case .neutral: return .neutral
         case .destructive: return .destructive

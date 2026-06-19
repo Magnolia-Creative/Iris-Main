@@ -84,11 +84,11 @@ struct ComponentLibraryClipToolsDemo: View {
     }
 
     var body: some View {
-        EditorExpandableToolTrayComponent(
+        ExpandableToolTrayComponent(
             expandedToolId: expandedToolSelection,
             showsLeadingWhenExpanded: !isSliderExpanded,
             leading: {
-                EditorToolCloseButtonComponent(title: "Deselect clip", action: {
+                ToolCloseButtonComponent(title: "Deselect clip", action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         context.expandedToolId.wrappedValue = nil
                         actions.onDeselectClip()
@@ -98,23 +98,23 @@ struct ComponentLibraryClipToolsDemo: View {
             collapsed: {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: .spacing(.sp1)) {
-                        EditorToolButtonComponent(
+                        ToolButtonComponent(
                             systemImage: "trash",
                             title: "Delete",
                             role: .destructive,
                             action: actions.onDeleteClip
                         )
-                        EditorToolButtonComponent(
+                        ToolButtonComponent(
                             systemImage: "scissors",
                             title: "Split",
                             action: actions.onSplitClip
                         )
-                        EditorToolButtonComponent(
+                        ToolButtonComponent(
                             systemImage: "camera.filters",
                             title: "Color",
                             action: { toggleTool(LibraryClipToolID.color.rawValue) }
                         )
-                        EditorToolButtonComponent(
+                        ToolButtonComponent(
                             systemImage: "speaker.wave.2",
                             title: "Volume",
                             action: { toggleTool(LibraryClipToolID.volume.rawValue) }
@@ -146,7 +146,7 @@ struct ComponentLibraryClipToolsDemo: View {
     private var colorControls: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp2)) {
             HStack(alignment: .top, spacing: .spacing(.sp2)) {
-                EditorToolBackButtonComponent(accessibilityLabel: "Back to clip tools") {
+                ToolBackButtonComponent(accessibilityLabel: "Back to clip tools") {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         context.expandedToolId.wrappedValue = nil
                     }
@@ -180,7 +180,7 @@ struct ComponentLibraryClipToolsDemo: View {
                 )
                 .frame(minWidth: 220)
                 .frame(maxWidth: .infinity)
-                EditorToolButtonComponent(
+                ToolButtonComponent(
                     systemImage: "arrow.counterclockwise",
                     title: "Reset \(activeColorProperty.title)",
                     shape: .roundedIcon,
@@ -197,7 +197,7 @@ struct ComponentLibraryClipToolsDemo: View {
 
     private var volumeControls: some View {
         HStack(spacing: .spacing(.sp2)) {
-            EditorToolBackButtonComponent(accessibilityLabel: "Back to clip tools") {
+            ToolBackButtonComponent(accessibilityLabel: "Back to clip tools") {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     context.expandedToolId.wrappedValue = nil
                 }
@@ -209,7 +209,7 @@ struct ComponentLibraryClipToolsDemo: View {
                 display: .inlineValue,
                 valueFormatter: { "\(Int(($0 * 100).rounded()))%" }
             )
-            EditorToolButtonComponent(
+            ToolButtonComponent(
                 systemImage: "arrow.counterclockwise",
                 title: "Reset volume",
                 shape: .roundedIcon,
