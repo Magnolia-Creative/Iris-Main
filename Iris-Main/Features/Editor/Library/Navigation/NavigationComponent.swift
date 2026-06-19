@@ -49,44 +49,33 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
         ]
     }
 
-    static func shellInset() -> CGFloat {
-        10
-    }
+    static let shellInset: CGFloat = 10
+    static let tabItemWidth: CGFloat = 62
+    static let tabRowHeight: CGFloat = 48
 
     static func navWidth(itemCount: Int = 3) -> CGFloat {
         let count = CGFloat(max(itemCount, 1))
         let hPad = horizontalPadding * 2
-        return count * tabItemWidth() + (count - 1) * tabSpacing + hPad
+        return count * tabItemWidth + (count - 1) * tabSpacing + hPad
     }
 
     static func containerWidth(itemCount: Int = 3) -> CGFloat {
-        navWidth(itemCount: itemCount) + shellInset() * 2
+        navWidth(itemCount: itemCount) + shellInset * 2
     }
 
     static func totalHeight() -> CGFloat {
         let rowInnerVertical = verticalPadding * 2
-        return tabRowHeight() + rowInnerVertical + shellInset() * 2
-    }
-
-    static func tabItemWidth() -> CGFloat {
-        62
-    }
-
-    static func tabRowHeight() -> CGFloat {
-        48
+        return tabRowHeight + rowInnerVertical + shellInset * 2
     }
 
     private static let tabSpacing: CGFloat = .spacing(.sp3)
     private static let horizontalPadding: CGFloat = .spacing(.sp2)
     private static let verticalPadding: CGFloat = .spacing(.sp2)
 
-    private var tabItemWidth: CGFloat { Self.tabItemWidth() }
-    private var tabRowHeight: CGFloat { Self.tabRowHeight() }
-
     var body: some View {
         navCard
-            .padding(.horizontal, Self.shellInset())
-            .padding(.vertical, Self.shellInset())
+            .padding(.horizontal, Self.shellInset)
+            .padding(.vertical, Self.shellInset)
             .frame(
                 width: Self.containerWidth(itemCount: items.count),
                 height: Self.totalHeight()
@@ -109,7 +98,7 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
                             .symbolRenderingMode(.monochrome)
                             .foregroundStyle(Color.white)
                             .contentTransition(.symbolEffect(.replace.downUp.byLayer, options: .nonRepeating))
-                            .frame(width: tabItemWidth, height: tabRowHeight)
+                            .frame(width: Self.tabItemWidth, height: Self.tabRowHeight)
                             .background {
                                 if activeItemId == item.id {
                                     selectionBubble
@@ -215,7 +204,7 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
     }
 
     private func tabCenterX(for index: Int) -> CGFloat {
-        Self.horizontalPadding + CGFloat(index) * (tabItemWidth + tabSpacing) + tabItemWidth / 2
+        Self.horizontalPadding + CGFloat(index) * (Self.tabItemWidth + tabSpacing) + Self.tabItemWidth / 2
     }
 }
 

@@ -59,12 +59,10 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     private static let interControlGap: CGFloat = .spacing(.sp3)
     private static let voiceHoldThresholdMs: UInt64 = 250
 
-    static func intelligenceDiameter() -> CGFloat {
-        60
-    }
+    static let intelligenceDiameter: CGFloat = 60
 
     static func containerWidth(itemCount: Int = 3) -> CGFloat {
-        intelligenceDiameter()
+        intelligenceDiameter
             + interControlGap
             + NavigationComponent.containerWidth(itemCount: itemCount)
     }
@@ -77,7 +75,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
         NavigationComponent.defaultShowcaseItems
     }
 
-    private var intelligenceDiameter: CGFloat { Self.intelligenceDiameter() }
+    private var intelligenceDiameter: CGFloat { Self.intelligenceDiameter }
     private var takeoverWidth: CGFloat {
         Self.containerWidth(itemCount: navigationItems.count)
     }
