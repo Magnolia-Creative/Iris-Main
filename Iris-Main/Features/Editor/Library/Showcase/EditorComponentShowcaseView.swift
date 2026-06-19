@@ -3,6 +3,7 @@ import SwiftUI
 struct EditorComponentShowcaseView: View {
     @State private var selectedCategory: EditorComponentCategory = .timeline
     @State private var selectedSize: EditorComponentSize = .standard
+    @Namespace private var connectedOptionSelectionNamespace
 
     @State private var currentTimeUs: Int64 = 1_500_000
     @State private var timelinePixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
@@ -85,7 +86,8 @@ struct EditorComponentShowcaseView: View {
                     ForEach(EditorComponentSize.allCases) { size in
                         showcaseConnectedOptionButton(
                             size.displayTitle,
-                            isSelected: selectedSize == size
+                            isSelected: selectedSize == size,
+                            selectionPillID: "showcase-size-picker"
                         ) {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 selectedSize = size
@@ -215,7 +217,8 @@ struct EditorComponentShowcaseView: View {
                                 let isSelected = resolvedTrackSize(for: track.id) == size
                                 showcaseConnectedOptionButton(
                                     size.displayTitle,
-                                    isSelected: isSelected
+                                    isSelected: isSelected,
+                                    selectionPillID: "track-size-\(track.id)"
                                 ) {
                                     withAnimation(.easeInOut(duration: 0.18)) {
                                         timelineTrackSizesById[track.id] = size
@@ -581,12 +584,19 @@ struct EditorComponentShowcaseView: View {
     private func showcaseConnectedOptionButton(
         _ title: String,
         isSelected: Bool,
+        selectionPillID: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Text(title)
         }
-        .buttonStyle(.irisConnectedOption(isSelected: isSelected))
+        .buttonStyle(
+            .irisConnectedOption(
+                isSelected: isSelected,
+                selectionPillID: selectionPillID,
+                in: connectedOptionSelectionNamespace
+            )
+        )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

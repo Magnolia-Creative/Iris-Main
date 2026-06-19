@@ -11,13 +11,17 @@ struct IrisChipPickerButtonStyle: ButtonStyle {
 
 struct IrisConnectedOptionButtonStyle: ButtonStyle {
     let isSelected: Bool
+    let selectionPillID: String?
+    let selectionNamespace: Namespace.ID?
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .modifier(
                 IrisConnectedOptionAppearanceModifier(
                     isSelected: isSelected,
-                    isPressed: configuration.isPressed
+                    isPressed: configuration.isPressed,
+                    selectionPillID: selectionPillID,
+                    selectionNamespace: selectionNamespace
                 )
             )
     }
@@ -30,8 +34,16 @@ extension ButtonStyle where Self == IrisChipPickerButtonStyle {
 }
 
 extension ButtonStyle where Self == IrisConnectedOptionButtonStyle {
-    static func irisConnectedOption(isSelected: Bool) -> IrisConnectedOptionButtonStyle {
-        IrisConnectedOptionButtonStyle(isSelected: isSelected)
+    static func irisConnectedOption(
+        isSelected: Bool,
+        selectionPillID: String? = nil,
+        in selectionNamespace: Namespace.ID? = nil
+    ) -> IrisConnectedOptionButtonStyle {
+        IrisConnectedOptionButtonStyle(
+            isSelected: isSelected,
+            selectionPillID: selectionPillID,
+            selectionNamespace: selectionNamespace
+        )
     }
 }
 
@@ -72,6 +84,8 @@ private struct IrisChipPickerAppearanceModifier: ViewModifier {
 private struct IrisConnectedOptionAppearanceModifier: ViewModifier {
     let isSelected: Bool
     let isPressed: Bool
+    let selectionPillID: String?
+    let selectionNamespace: Namespace.ID?
 
     func body(content: Content) -> some View {
         content
@@ -82,12 +96,25 @@ private struct IrisConnectedOptionAppearanceModifier: ViewModifier {
             .frame(maxWidth: .infinity, minHeight: 28)
             .lineLimit(1)
             .overlay(
-                Capsule()
-                    .strokeBorder(isSelected ? Color.ds.accentFg : Color.clear, lineWidth: 1.5)
-                    .padding(1)
+                selectionPill
             )
             .contentShape(Rectangle())
             .opacity(isPressed ? 0.8 : 1)
+    }
+
+    @ViewBuilder
+    private var selectionPill: some View {
+        if isSelected {
+            let outline = Capsule()
+                .strokeBorder(Color.ds.accentFg, lineWidth: 1.5)
+                .padding(1)
+
+            if let selectionPillID, let selectionNamespace {
+                outline.matchedGeometryEffect(id: selectionPillID, in: selectionNamespace)
+            } else {
+                outline
+            }
+        }
     }
 }
 
