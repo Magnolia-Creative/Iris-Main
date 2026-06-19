@@ -561,7 +561,7 @@ struct EditorComponentShowcaseView: View {
     }
 
     private var connectedOptionSelectionAnimation: Animation {
-        .spring(response: 0.34, dampingFraction: 0.58, blendDuration: 0.05)
+        .spring(response: 0.30, dampingFraction: 0.78, blendDuration: 0.04)
     }
 
     private func showcaseChipButton(
