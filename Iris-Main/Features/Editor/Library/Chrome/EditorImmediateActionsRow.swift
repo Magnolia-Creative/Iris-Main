@@ -12,22 +12,14 @@ struct EditorImmediateActionsRow: View {
         } else {
             HStack(spacing: .spacing(.sp2)) {
                 if isDismissable {
-                    HStack {
-                        Spacer(minLength: 0)
-                        EditorToolCloseButtonComponent(title: "Dismiss chrome", action: onDismiss)
-                        Spacer(minLength: 0)
-                    }
-                    .frame(maxWidth: .infinity)
+                    EditorToolCloseButtonComponent(title: "Dismiss chrome", action: onDismiss)
 
                     EditorToolDividerComponent()
                 }
 
-                HStack(spacing: .spacing(.sp1)) {
-                    Spacer(minLength: 0)
-                    actionButtons
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity)
+                actionButtons
+
+                Spacer(minLength: 0)
             }
             .frame(minHeight: .spacing(.sp8))
         }
