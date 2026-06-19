@@ -5,6 +5,7 @@ struct EditorBottomChromeStack<Dock: View>: View {
     @Binding var activeParameterGroupId: String
     @Binding var parameterValues: [String: EditorParameterValue]
     var onAction: (EditorChromeActionItem) -> Void = { _ in }
+    var onDismiss: () -> Void = {}
     var onScalarChange: ((String, Double) -> Void)?
     let dock: () -> Dock
 
@@ -16,6 +17,7 @@ struct EditorBottomChromeStack<Dock: View>: View {
         activeParameterGroupId: Binding<String>,
         parameterValues: Binding<[String: EditorParameterValue]>,
         onAction: @escaping (EditorChromeActionItem) -> Void = { _ in },
+        onDismiss: @escaping () -> Void = {},
         onScalarChange: ((String, Double) -> Void)? = nil,
         @ViewBuilder dock: @escaping () -> Dock
     ) {
@@ -23,6 +25,7 @@ struct EditorBottomChromeStack<Dock: View>: View {
         self._activeParameterGroupId = activeParameterGroupId
         self._parameterValues = parameterValues
         self.onAction = onAction
+        self.onDismiss = onDismiss
         self.onScalarChange = onScalarChange
         self.dock = dock
     }
@@ -31,6 +34,11 @@ struct EditorBottomChromeStack<Dock: View>: View {
         !plan.spatialParameters.isEmpty
             || !plan.parameterGroups.isEmpty
             || !plan.actions.isEmpty
+            || plan.isDismissable
+    }
+
+    private var stackSpacing: CGFloat {
+        showsSubchrome && plan.showsDock ? .spacing(.sp2) : plan.density.tierVerticalSpacing
     }
 
     private var navigationCutoutSize: CGSize {
@@ -45,7 +53,7 @@ struct EditorBottomChromeStack<Dock: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: plan.density.tierVerticalSpacing) {
+        VStack(spacing: stackSpacing) {
             if showsSubchrome {
                 subchromeContent
                     .background {
@@ -122,13 +130,18 @@ struct EditorBottomChromeStack<Dock: View>: View {
                 )
             }
 
-            if !plan.actions.isEmpty {
-                EditorImmediateActionsRow(actions: plan.actions, onAction: onAction)
+            if plan.isDismissable || !plan.actions.isEmpty {
+                EditorImmediateActionsRow(
+                    actions: plan.actions,
+                    isDismissable: plan.isDismissable,
+                    onDismiss: onDismiss,
+                    onAction: onAction
+                )
             }
         }
         .padding(.horizontal, .spacing(.sp3))
         .padding(.top, .spacing(.sp3))
-        .padding(.bottom, plan.showsDock ? IntelligenceComponent.totalHeight() + .spacing(.sp2) : .spacing(.sp3))
+        .padding(.bottom, .spacing(.sp3))
     }
 }
 

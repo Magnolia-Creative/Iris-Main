@@ -54,6 +54,17 @@ final class EditorBottomChromePlanTests: XCTestCase {
         XCTAssertEqual(plan.tierCountAboveDock, 3)
     }
 
+    func testDismissablePlanShowsActionsTierWithoutActions() {
+        let plan = EditorBottomChromePlan(
+            actions: [],
+            isDismissable: true,
+            showsDock: true
+        )
+
+        XCTAssertEqual(plan.visibleTiers, [.actions, .dock])
+        XCTAssertEqual(plan.tierCountAboveDock, 1)
+    }
+
     func testPreviewFixturesSeedScalarDefaults() {
         let groups = EditorChromePreviewFixtures.parameterGroups(for: .fourPlusGroups)
         let values = EditorChromePreviewFixtures.seedValues(for: groups)
@@ -85,6 +96,7 @@ final class EditorBottomChromePlanTests: XCTestCase {
         XCTAssertFalse(plan.showsDock)
         XCTAssertTrue(plan.parameterGroups.count == 1)
         XCTAssertTrue(plan.actions.isEmpty)
+        XCTAssertFalse(plan.isDismissable)
         XCTAssertEqual(plan.density, .compact)
         XCTAssertEqual(plan.visibleTiers, [.parameters])
     }

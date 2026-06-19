@@ -2,27 +2,42 @@ import SwiftUI
 
 struct EditorImmediateActionsRow: View {
     let actions: [EditorChromeActionItem]
+    var isDismissable: Bool = false
+    var onDismiss: () -> Void = {}
     let onAction: (EditorChromeActionItem) -> Void
 
     var body: some View {
-        if actions.isEmpty {
+        if actions.isEmpty, !isDismissable {
             EmptyView()
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: .spacing(.sp2)) {
+                if isDismissable {
+                    EditorToolCloseButtonComponent(title: "Dismiss chrome", action: onDismiss)
+                    EditorToolDividerComponent()
+                }
+
                 HStack(spacing: .spacing(.sp1)) {
-                    ForEach(actions) { action in
-                        EditorToolButtonComponent(
-                            systemImage: action.systemImage,
-                            title: action.title,
-                            role: action.role.toolRole,
-                            action: { onAction(action) }
-                        )
-                        .disabled(!action.isEnabled)
-                        .opacity(action.isEnabled ? 1 : 0.45)
-                    }
+                    Spacer(minLength: 0)
+                    actionButtons
+                    Spacer(minLength: 0)
                 }
             }
             .frame(minHeight: .spacing(.sp8))
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: .spacing(.sp1)) {
+            ForEach(actions) { action in
+                EditorToolButtonComponent(
+                    systemImage: action.systemImage,
+                    title: action.title,
+                    role: action.role.toolRole,
+                    action: { onAction(action) }
+                )
+                .disabled(!action.isEnabled)
+                .opacity(action.isEnabled ? 1 : 0.45)
+            }
         }
     }
 }

@@ -44,8 +44,7 @@ enum EditorChromePreviewActiveGroup: String, CaseIterable, Identifiable {
 enum EditorChromePreviewFixtures {
     static let defaultActions: [EditorChromeActionItem] = [
         EditorChromeActionItem(id: "delete", title: "Delete", systemImage: "trash", role: .destructive),
-        EditorChromeActionItem(id: "split", title: "Split", systemImage: "scissors"),
-        EditorChromeActionItem(id: "deselect", title: "Deselect", systemImage: "xmark")
+        EditorChromeActionItem(id: "split", title: "Split", systemImage: "scissors")
     ]
 
     static func makePlan(
@@ -62,6 +61,7 @@ enum EditorChromePreviewFixtures {
             spatialParameters: showsSpatialControls ? spatialDescriptors : [],
             parameterGroups: showsParameterGroups ? parameterGroups(for: groupScenario) : [],
             actions: showsActions ? defaultActions : [],
+            isDismissable: showsActions,
             showsDock: showsDock,
             showsOverflowChips: showsOverflowChips,
             activeParameterGroupId: parameterGroups(for: groupScenario).first?.id

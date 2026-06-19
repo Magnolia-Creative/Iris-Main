@@ -120,6 +120,7 @@ struct EditorBottomChromePlan: Equatable {
     var spatialParameters: [EditorSpatialParameterDescriptor] = []
     var parameterGroups: [EditorParameterGroup] = []
     var actions: [EditorChromeActionItem] = []
+    var isDismissable: Bool = false
     var showsDock: Bool = true
     var showsOverflowChips: Bool = true
     var activeParameterGroupId: String?
@@ -135,7 +136,7 @@ struct EditorBottomChromePlan: Equatable {
         var tiers: [EditorBottomChromeTier] = []
         if !spatialParameters.isEmpty { tiers.append(.spatialParameters) }
         if !parameterGroups.isEmpty { tiers.append(.parameters) }
-        if !actions.isEmpty { tiers.append(.actions) }
+        if isDismissable || !actions.isEmpty { tiers.append(.actions) }
         if showsDock { tiers.append(.dock) }
         return tiers
     }

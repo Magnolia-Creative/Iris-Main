@@ -55,6 +55,9 @@ struct EditorChromePreviewLab: View {
                 onAction: { action in
                     lastActionLabel = "Action: \(action.title)"
                 },
+                onDismiss: {
+                    lastActionLabel = "Dismissed chrome"
+                },
                 dock: { dockContent }
             )
         }
@@ -266,6 +269,7 @@ private struct ChromePreviewStage: View {
     @Binding var activeParameterGroupId: String
     @Binding var parameterValues: [String: EditorParameterValue]
     let onAction: (EditorChromeActionItem) -> Void
+    let onDismiss: () -> Void
     let dock: () -> AnyView
 
     init<Dock: View>(
@@ -274,6 +278,7 @@ private struct ChromePreviewStage: View {
         activeParameterGroupId: Binding<String>,
         parameterValues: Binding<[String: EditorParameterValue]>,
         onAction: @escaping (EditorChromeActionItem) -> Void,
+        onDismiss: @escaping () -> Void,
         @ViewBuilder dock: @escaping () -> Dock
     ) {
         self.plan = plan
@@ -281,6 +286,7 @@ private struct ChromePreviewStage: View {
         self._activeParameterGroupId = activeParameterGroupId
         self._parameterValues = parameterValues
         self.onAction = onAction
+        self.onDismiss = onDismiss
         self.dock = { AnyView(dock()) }
     }
 
@@ -299,6 +305,7 @@ private struct ChromePreviewStage: View {
                 activeParameterGroupId: $activeParameterGroupId,
                 parameterValues: $parameterValues,
                 onAction: onAction,
+                onDismiss: onDismiss,
                 dock: dock
             )
             .padding(.horizontal, .spacing(.sp3))
