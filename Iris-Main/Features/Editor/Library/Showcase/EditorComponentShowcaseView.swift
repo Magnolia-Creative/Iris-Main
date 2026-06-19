@@ -89,7 +89,7 @@ struct EditorComponentShowcaseView: View {
                             isSelected: selectedSize == size,
                             selectionPillID: "showcase-size-picker"
                         ) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(connectedOptionSelectionAnimation) {
                                 selectedSize = size
                             }
                         }
@@ -220,7 +220,7 @@ struct EditorComponentShowcaseView: View {
                                     isSelected: isSelected,
                                     selectionPillID: "track-size-\(track.id)"
                                 ) {
-                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                    withAnimation(connectedOptionSelectionAnimation) {
                                         timelineTrackSizesById[track.id] = size
                                     }
                                 }
@@ -567,6 +567,10 @@ struct EditorComponentShowcaseView: View {
         Text(title)
             .typography(.body)
             .foregroundColor(Color.ds.text)
+    }
+
+    private var connectedOptionSelectionAnimation: Animation {
+        .spring(response: 0.34, dampingFraction: 0.58, blendDuration: 0.05)
     }
 
     private func showcaseChipButton(
