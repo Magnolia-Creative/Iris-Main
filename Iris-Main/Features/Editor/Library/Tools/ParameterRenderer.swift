@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ParameterControlRenderer: View {
+struct ParameterRenderer: View {
     let descriptor: EditorParameterDescriptor
     @Binding var value: EditorParameterValue
     var onScalarChange: ((Double) -> Void)?

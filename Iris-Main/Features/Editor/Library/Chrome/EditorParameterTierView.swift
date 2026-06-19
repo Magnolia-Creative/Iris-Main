@@ -36,7 +36,7 @@ struct EditorParameterGroupPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: density.parameterControlSpacing) {
             ForEach(visibleControls) { control in
-                ParameterControlRenderer(
+                ParameterRenderer(
                     descriptor: control,
                     value: binding(for: control),
                     onScalarChange: { newValue in
