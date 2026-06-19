@@ -43,10 +43,12 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
                 .frame(width: max(contentWidth, 1), height: trackHeight)
 
             ForEach(model.segments) { segment in
+                let width = segmentWidth(segment)
+                let centerX = segmentX(segment) + width / 2
+
                 segmentView(segment)
-                    .frame(width: segmentWidth(segment), height: trackHeight)
-                    .clipped()
-                    .offset(x: segmentX(segment))
+                    .frame(width: width, height: trackHeight)
+                    .position(x: centerX, y: trackHeight / 2)
                     .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
                     .onTapGesture {
                         selectedSegmentId = segment.id
@@ -54,8 +56,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
                     }
             }
         }
-        .frame(minWidth: contentWidth, minHeight: trackHeight, alignment: .leading)
-        .frame(height: trackHeight, alignment: .leading)
+        .frame(width: contentWidth, height: trackHeight, alignment: .leading)
         .clipped()
     }
 

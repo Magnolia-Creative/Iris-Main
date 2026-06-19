@@ -5,7 +5,10 @@ struct EditorJITRecipeShowcaseView: View {
 
     @State private var currentTimeUs: Int64 = 1_500_000
     @State private var timelinePixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
-    @State private var selectedClipId: String?
+    @State private var selectedSegmentId: String?
+    @State private var expandedClipToolId: Int?
+    @State private var clipColorFilter = ClipColorFilter.neutral
+    @State private var clipVolume = ClipVolume.neutral
     @State private var isAddMenuOpen = false
     @State private var isPlaying = false
     @State private var showAspectSettings = false
@@ -36,6 +39,8 @@ struct EditorJITRecipeShowcaseView: View {
         .navigationBarHidden(true)
         .onChange(of: viewModel.renderState.id) { _, _ in
             syncParameterValuesForCurrentRecipe()
+            selectedSegmentId = nil
+            expandedClipToolId = nil
         }
         .onAppear {
             syncParameterValuesForCurrentRecipe()
@@ -158,7 +163,7 @@ struct EditorJITRecipeShowcaseView: View {
                     transitionPlans: viewModel.transitionPlans,
                     currentTimeUs: $currentTimeUs,
                     timelinePixelsPerSecond: $timelinePixelsPerSecond,
-                    selectedClipId: $selectedClipId,
+                    selectedSegmentId: $selectedSegmentId,
                     isAddMenuOpen: $isAddMenuOpen,
                     isPlaying: $isPlaying,
                     showAspectSettings: $showAspectSettings,
@@ -166,7 +171,10 @@ struct EditorJITRecipeShowcaseView: View {
                     parameterValues: $parameterValues,
                     activeNavItemId: $activeNavItemId,
                     promptPhase: $promptPhase,
-                    promptDraft: $promptDraft
+                    promptDraft: $promptDraft,
+                    expandedClipToolId: $expandedClipToolId,
+                    clipColorFilter: $clipColorFilter,
+                    clipVolume: $clipVolume
                 )
                 .frame(minHeight: 520)
                 .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous))

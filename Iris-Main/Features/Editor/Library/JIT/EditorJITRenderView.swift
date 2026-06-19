@@ -6,7 +6,7 @@ struct EditorJITRenderView: View {
 
     @Binding var currentTimeUs: Int64
     @Binding var timelinePixelsPerSecond: CGFloat
-    @Binding var selectedClipId: String?
+    @Binding var selectedSegmentId: String?
     @Binding var isAddMenuOpen: Bool
     @Binding var isPlaying: Bool
     @Binding var showAspectSettings: Bool
@@ -15,6 +15,9 @@ struct EditorJITRenderView: View {
     @Binding var activeNavItemId: String
     @Binding var promptPhase: IntelligencePromptPhase
     @Binding var promptDraft: String
+    @Binding var expandedClipToolId: Int?
+    @Binding var clipColorFilter: ClipColorFilter
+    @Binding var clipVolume: ClipVolume
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,13 +34,29 @@ struct EditorJITRenderView: View {
                 Spacer(minLength: 0)
             }
 
-            if !state.chromePlan.visibleTiers.isEmpty {
+            if !state.chromePlan.visibleTiers.isEmpty || showsClipTools {
                 chromeRegion
                     .transition(transition(for: "chrome.bottomStack"))
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.id)
         .background(Color.ds.bg)
+    }
+
+    private var timelineOrganizerModel: TimelineOrganizerModel {
+        EditorComponentShowcaseSamples.makeTimelineOrganizerModel(
+            size: state.timeline.size,
+            currentTimeUs: currentTimeUs,
+            pixelsPerSecond: timelinePixelsPerSecond
+        )
+    }
+
+    private var showsClipTools: Bool {
+        guard let selectedSegmentId else { return false }
+        return EditorJITTimelineSelection.isClipSelection(
+            selectedSegmentId,
+            in: timelineOrganizerModel.tracks
+        )
     }
 
     @ViewBuilder
@@ -73,15 +92,14 @@ struct EditorJITRenderView: View {
 
     private var fullTimeline: some View {
         TimelineOrganizerComponent(
-            model: EditorComponentShowcaseSamples.makeTimelineOrganizerModel(
-                size: state.timeline.size,
-                currentTimeUs: currentTimeUs,
-                pixelsPerSecond: timelinePixelsPerSecond
-            ),
+            model: timelineOrganizerModel,
             pixelsPerSecond: $timelinePixelsPerSecond,
+            selectedSegmentId: $selectedSegmentId,
+            onSelectSegment: handleSegmentSelection,
             onAddSelection: { _, _ in isAddMenuOpen = false },
             isAddMenuOpen: $isAddMenuOpen
         )
+        .padding(.horizontal, .spacing(.sp3))
     }
 
     private var trackOnlyTimeline: some View {
@@ -92,39 +110,90 @@ struct EditorJITRenderView: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             TimelineTrackComponent(
                 model: trackModel,
-                pixelsPerSecond: timelinePixelsPerSecond
+                pixelsPerSecond: timelinePixelsPerSecond,
+                selectedSegmentId: $selectedSegmentId,
+                onSelectSegment: handleSegmentSelection
             )
         }
         .padding(.horizontal, .spacing(.sp3))
     }
 
     private var chromeRegion: some View {
-        EditorBottomChromeStack(
-            plan: state.chromePlan,
-            activeParameterGroupId: $activeParameterGroupId,
-            parameterValues: $parameterValues,
-            onAction: { _ in },
-            onDismiss: {},
-            dock: {
-                IntelligenceComponent(
-                    navigationItems: IntelligenceComponent.defaultShowcaseItems,
-                    activeNavigationItemId: $activeNavItemId,
-                    promptPhase: $promptPhase,
-                    promptDraft: $promptDraft,
-                    liveTranscript: "",
-                    voiceLevel: 0,
-                    onIntelligenceTap: {},
-                    onVoiceHoldStart: {},
-                    onVoiceHoldEnd: {},
-                    onSubmitText: {},
-                    onCancelText: {},
-                    onCancelProcessing: {}
-                )
-                .frame(width: IntelligenceComponent.containerWidth())
+        VStack(spacing: .spacing(.sp2)) {
+            if showsClipTools {
+                clipToolsRegion
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-        )
+
+            if !state.chromePlan.visibleTiers.isEmpty {
+                EditorBottomChromeStack(
+                    plan: state.chromePlan,
+                    activeParameterGroupId: $activeParameterGroupId,
+                    parameterValues: $parameterValues,
+                    onAction: { _ in },
+                    onDismiss: {},
+                    dock: {
+                        IntelligenceComponent(
+                            navigationItems: IntelligenceComponent.defaultShowcaseItems,
+                            activeNavigationItemId: $activeNavItemId,
+                            promptPhase: $promptPhase,
+                            promptDraft: $promptDraft,
+                            liveTranscript: "",
+                            voiceLevel: 0,
+                            onIntelligenceTap: {},
+                            onVoiceHoldStart: {},
+                            onVoiceHoldEnd: {},
+                            onSubmitText: {},
+                            onCancelText: {},
+                            onCancelProcessing: {}
+                        )
+                        .frame(width: IntelligenceComponent.containerWidth())
+                    }
+                )
+            }
+        }
         .padding(.horizontal, .spacing(.sp3))
         .padding(.bottom, .spacing(.sp2))
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showsClipTools)
+    }
+
+    private var clipToolsRegion: some View {
+        ComponentLibraryClipToolsDemo(
+            context: EditorToolContext(
+                isClipSelected: true,
+                selectedClipColorFilter: clipColorFilter,
+                selectedClipVolume: clipVolume,
+                expandedToolId: $expandedClipToolId,
+                isReviewActive: false
+            ),
+            actions: EditorToolActions(
+                onSplitClip: {},
+                onDeleteClip: { clearSelection() },
+                onSetClipColorFilter: { clipColorFilter = $0 },
+                onResetClipColorFilter: { clipColorFilter = .neutral },
+                onSetClipVolume: { clipVolume = $0 },
+                onResetClipVolume: { clipVolume = .neutral },
+                onDeselectClip: { clearSelection() }
+            )
+        )
+        .padding(.horizontal, .spacing(.sp2))
+        .padding(.vertical, .spacing(.sp2))
+        .background(Color.ds.surface.opacity(0.35))
+        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+    }
+
+    private func handleSegmentSelection(_ segmentId: String) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            selectedSegmentId = segmentId
+            expandedClipToolId = nil
+        }
+    }
+
+    private func clearSelection() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            selectedSegmentId = nil
+            expandedClipToolId = nil
+        }
     }
 
     private func transition(for componentId: EditorComponentID) -> AnyTransition {

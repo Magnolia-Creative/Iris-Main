@@ -7,10 +7,11 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
 
     let model: TimelineOrganizerModel
     @Binding var pixelsPerSecond: CGFloat
+    @Binding var selectedSegmentId: String?
+    var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
     @Binding var isAddMenuOpen: Bool
 
-    @State private var selectedSegmentId: String?
     @State private var gestureStartPixelsPerSecond: CGFloat?
     @State private var localPixelsPerSecond: CGFloat
     private let usesExternalPixelsPerSecond: Bool
@@ -18,10 +19,14 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     init(
         model: TimelineOrganizerModel,
         pixelsPerSecond: Binding<CGFloat>? = nil,
+        selectedSegmentId: Binding<String?> = .constant(nil),
+        onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         isAddMenuOpen: Binding<Bool> = .constant(false)
     ) {
         self.model = model
+        self._selectedSegmentId = selectedSegmentId
+        self.onSelectSegment = onSelectSegment
         if let pixelsPerSecond {
             self._pixelsPerSecond = pixelsPerSecond
             self.usesExternalPixelsPerSecond = true
@@ -97,7 +102,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                         TimelineTrackComponent(
                                             model: track,
                                             pixelsPerSecond: resolvedPixelsPerSecond,
-                                            selectedSegmentId: $selectedSegmentId
+                                            selectedSegmentId: $selectedSegmentId,
+                                            onSelectSegment: onSelectSegment
                                         )
                                     }
                                 }
@@ -126,7 +132,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                 }
 
                 TimelineFixedRulerReadoutComponent(model: rulerModel, layout: layout)
-                    .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
+                    .padding(.leading, .spacing(.sp3))
+                    .frame(width: layout.readoutWidth + layout.rulerFadeWidth + .spacing(.sp3), height: layout.rulerHeight, alignment: .leading)
                     .allowsHitTesting(false)
 
                 if let onAddSelection {
@@ -435,11 +442,59 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
         TimelineOrganizerComponent(
             model: TimelineOrganizerModel(context: context),
             pixelsPerSecond: pixelsPerSecond,
+            selectedSegmentId: selectedSegmentId,
+            onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
             isAddMenuOpen: context.$isAddMenuOpen
         )
         .onChange(of: context.pixelsPerSecond) { _, newValue in
             livePixelsPerSecond = newValue
+        }
+    }
+
+    private var selectedSegmentId: Binding<String?> {
+        Binding(
+            get: { context.selectedClipId ?? context.selectedCaptionCueId },
+            set: { newValue in
+                guard let newValue else {
+                    context.selectedClipId = nil
+                    context.selectedCaptionCueId = nil
+                    return
+                }
+                applySelection(segmentId: newValue)
+            }
+        )
+    }
+
+    private func handleSegmentSelection(_ segmentId: String) {
+        applySelection(segmentId: segmentId)
+
+        for track in TimelineOrganizerModel(context: context).tracks {
+            guard track.segments.contains(where: { $0.id == segmentId }) else { continue }
+            switch track.kind {
+            case .caption:
+                actions.onCaptionCueSelected?(segmentId)
+            case .video, .audio:
+                actions.onClipSelected?()
+            }
+            return
+        }
+    }
+
+    private func applySelection(segmentId: String) {
+        let tracks = TimelineOrganizerModel(context: context).tracks
+        context.selectedClipId = nil
+        context.selectedCaptionCueId = nil
+
+        for track in tracks {
+            guard track.segments.contains(where: { $0.id == segmentId }) else { continue }
+            switch track.kind {
+            case .caption:
+                context.selectedCaptionCueId = segmentId
+            case .video, .audio:
+                context.selectedClipId = segmentId
+            }
+            return
         }
     }
 }
@@ -589,5 +644,6 @@ struct TimelineFixedRulerReadoutComponent: View {
                 .frame(width: 41)
         }
         .padding(.top, 2)
+        .padding(.leading, .spacing(.sp1))
     }
 }

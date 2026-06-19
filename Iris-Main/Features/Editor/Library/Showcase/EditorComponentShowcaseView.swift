@@ -10,6 +10,7 @@ struct EditorComponentShowcaseView: View {
     @State private var timelinePixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
     @State private var selectedClipId: String?
     @State private var selectedCaptionCueId: String?
+    @State private var selectedTimelineSegmentId: String?
     @State private var isAddMenuOpen = false
     @State private var expandedClipToolId: Int?
     @State private var expandedShowcaseToolId: String?
@@ -170,6 +171,7 @@ struct EditorComponentShowcaseView: View {
             TimelineOrganizerComponent(
                 model: organizerModel,
                 pixelsPerSecond: $timelinePixelsPerSecond,
+                selectedSegmentId: $selectedTimelineSegmentId,
                 onAddSelection: { _, _ in isAddMenuOpen = false },
                 isAddMenuOpen: $isAddMenuOpen
             )
