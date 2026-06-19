@@ -24,6 +24,22 @@ enum EditorComponentRegistry {
             workspaceWidgetId: "timeline.full"
         ),
         EditorComponentRegistryEntry(
+            id: "timeline.organizer",
+            displayName: "Timeline Organizer",
+            category: .timeline,
+            supportedSizes: [.compressed, .standard, .expanded],
+            supportedAxes: [.horizontal],
+            workspaceWidgetId: nil
+        ),
+        EditorComponentRegistryEntry(
+            id: "timeline.timeReadout",
+            displayName: "Timeline Time Readout",
+            category: .timeline,
+            supportedSizes: [.compressed, .standard, .expanded],
+            supportedAxes: [.horizontal],
+            workspaceWidgetId: nil
+        ),
+        EditorComponentRegistryEntry(
             id: "timeline.track",
             displayName: "Timeline Track",
             category: .timeline,
@@ -62,6 +78,14 @@ enum EditorComponentRegistry {
             supportedSizes: [.compressed, .standard, .expanded],
             supportedAxes: [.horizontal],
             workspaceWidgetId: "playback.viewer"
+        ),
+        EditorComponentRegistryEntry(
+            id: "playback.section",
+            displayName: "Playback Section",
+            category: .playback,
+            supportedSizes: [.compressed, .standard, .expanded],
+            supportedAxes: [.horizontal],
+            workspaceWidgetId: nil
         ),
         EditorComponentRegistryEntry(
             id: "playback.transport",
@@ -130,9 +154,21 @@ enum EditorComponentRegistry {
     }
 
     static func parseSize(_ variant: String?) -> EditorComponentSize {
-        guard let variant, let size = EditorComponentSize(rawValue: variant) else {
+        guard let variant else { return .standard }
+        if let size = EditorComponentSize(rawValue: variant) {
+            return size
+        }
+        return parseLegacyVariant(variant)
+    }
+
+    static func parseLegacyVariant(_ variant: String) -> EditorComponentSize {
+        switch variant.lowercased() {
+        case "compressed", "compact":
+            return .compressed
+        case "expanded", "large":
+            return .expanded
+        default:
             return .standard
         }
-        return size
     }
 }
