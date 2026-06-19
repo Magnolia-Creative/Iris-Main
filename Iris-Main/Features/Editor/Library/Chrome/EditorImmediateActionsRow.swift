@@ -18,10 +18,8 @@ struct EditorImmediateActionsRow: View {
                 }
 
                 actionButtons
-
-                Spacer(minLength: 0)
             }
-            .frame(minHeight: .spacing(.sp8))
+            .frame(maxWidth: .infinity, minHeight: .spacing(.sp8), alignment: .center)
         }
     }
 
