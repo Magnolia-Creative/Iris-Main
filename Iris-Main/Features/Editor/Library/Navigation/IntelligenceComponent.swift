@@ -31,9 +31,8 @@ enum IntelligencePromptPhase: Equatable {
 struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     static let componentId: EditorComponentID = "navigation.intelligence"
     static let category: EditorComponentCategory = .navigation
-    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
+    static let supportedSizes: Set<EditorComponentSize> = [.standard]
 
-    let size: EditorComponentSize
     let navigationItems: [NavigationItem]
     @Binding var activeNavigationItemId: String
     @Binding var promptPhase: IntelligencePromptPhase
@@ -60,31 +59,27 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     private static let interControlGap: CGFloat = .spacing(.sp3)
     private static let voiceHoldThresholdMs: UInt64 = 250
 
-    static func intelligenceDiameter(for size: EditorComponentSize) -> CGFloat {
-        switch size {
-        case .compressed: 48
-        case .standard: 60
-        case .expanded: 68
-        }
+    static func intelligenceDiameter() -> CGFloat {
+        60
     }
 
-    static func containerWidth(for size: EditorComponentSize, itemCount: Int = 3) -> CGFloat {
-        intelligenceDiameter(for: size)
+    static func containerWidth(itemCount: Int = 3) -> CGFloat {
+        intelligenceDiameter()
             + interControlGap
-            + NavigationComponent.containerWidth(for: size, itemCount: itemCount)
+            + NavigationComponent.containerWidth(itemCount: itemCount)
     }
 
-    static func totalHeight(for size: EditorComponentSize) -> CGFloat {
-        NavigationComponent.totalHeight(for: size)
+    static func totalHeight() -> CGFloat {
+        NavigationComponent.totalHeight()
     }
 
     static var defaultShowcaseItems: [NavigationItem] {
         NavigationComponent.defaultShowcaseItems
     }
 
-    private var intelligenceDiameter: CGFloat { Self.intelligenceDiameter(for: size) }
+    private var intelligenceDiameter: CGFloat { Self.intelligenceDiameter() }
     private var takeoverWidth: CGFloat {
-        Self.containerWidth(for: size, itemCount: navigationItems.count)
+        Self.containerWidth(itemCount: navigationItems.count)
     }
 
     private var isTypingPresented: Binding<Bool> {
@@ -141,7 +136,6 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
 
             if !promptPhase.isDockExpanded {
                 NavigationComponent(
-                    size: size,
                     style: .glass,
                     items: navigationItems,
                     activeItemId: $activeNavigationItemId
@@ -291,11 +285,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     }
 
     private var iconSize: CGFloat {
-        switch size {
-        case .compressed: 20
-        case .standard: 24
-        case .expanded: 26
-        }
+        24
     }
 
     private func intelligenceGesture(allowsTap: Bool) -> some Gesture {
@@ -529,11 +519,7 @@ struct IntelligenceComponent: View, EditorLibraryComponentSpec {
     }
 
     private var compactButtonSize: CGFloat {
-        switch size {
-        case .compressed: 32
-        case .standard: 38
-        case .expanded: 42
-        }
+        38
     }
 
     // MARK: - Pill chrome

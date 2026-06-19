@@ -15,9 +15,8 @@ struct NavigationItem: Identifiable, Equatable {
 struct NavigationComponent: View, EditorLibraryComponentSpec {
     static let componentId: EditorComponentID = "navigation.bottomBar"
     static let category: EditorComponentCategory = .navigation
-    static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
+    static let supportedSizes: Set<EditorComponentSize> = [.standard]
 
-    let size: EditorComponentSize
     let style: NavigationStyle
     let items: [NavigationItem]
     @Binding var activeItemId: String
@@ -50,59 +49,47 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
         ]
     }
 
-    static func shellInset(for size: EditorComponentSize) -> CGFloat {
-        switch size {
-        case .compressed: 8
-        case .standard: 10
-        case .expanded: 12
-        }
+    static func shellInset() -> CGFloat {
+        10
     }
 
-    static func navWidth(for size: EditorComponentSize, itemCount: Int = 3) -> CGFloat {
+    static func navWidth(itemCount: Int = 3) -> CGFloat {
         let count = CGFloat(max(itemCount, 1))
         let hPad = horizontalPadding * 2
-        return count * tabItemWidth(for: size) + (count - 1) * tabSpacing + hPad
+        return count * tabItemWidth() + (count - 1) * tabSpacing + hPad
     }
 
-    static func containerWidth(for size: EditorComponentSize, itemCount: Int = 3) -> CGFloat {
-        navWidth(for: size, itemCount: itemCount) + shellInset(for: size) * 2
+    static func containerWidth(itemCount: Int = 3) -> CGFloat {
+        navWidth(itemCount: itemCount) + shellInset() * 2
     }
 
-    static func totalHeight(for size: EditorComponentSize) -> CGFloat {
+    static func totalHeight() -> CGFloat {
         let rowInnerVertical = verticalPadding * 2
-        return tabRowHeight(for: size) + rowInnerVertical + shellInset(for: size) * 2
+        return tabRowHeight() + rowInnerVertical + shellInset() * 2
     }
 
-    static func tabItemWidth(for size: EditorComponentSize) -> CGFloat {
-        switch size {
-        case .compressed: 52
-        case .standard: 62
-        case .expanded: 72
-        }
+    static func tabItemWidth() -> CGFloat {
+        62
     }
 
-    static func tabRowHeight(for size: EditorComponentSize) -> CGFloat {
-        switch size {
-        case .compressed: 40
-        case .standard: 48
-        case .expanded: 52
-        }
+    static func tabRowHeight() -> CGFloat {
+        48
     }
 
     private static let tabSpacing: CGFloat = .spacing(.sp3)
     private static let horizontalPadding: CGFloat = .spacing(.sp2)
     private static let verticalPadding: CGFloat = .spacing(.sp2)
 
-    private var tabItemWidth: CGFloat { Self.tabItemWidth(for: size) }
-    private var tabRowHeight: CGFloat { Self.tabRowHeight(for: size) }
+    private var tabItemWidth: CGFloat { Self.tabItemWidth() }
+    private var tabRowHeight: CGFloat { Self.tabRowHeight() }
 
     var body: some View {
         navCard
-            .padding(.horizontal, Self.shellInset(for: size))
-            .padding(.vertical, Self.shellInset(for: size))
+            .padding(.horizontal, Self.shellInset())
+            .padding(.vertical, Self.shellInset())
             .frame(
-                width: Self.containerWidth(for: size, itemCount: items.count),
-                height: Self.totalHeight(for: size)
+                width: Self.containerWidth(itemCount: items.count),
+                height: Self.totalHeight()
             )
             .opacity(isSuppressedByIntelligence ? 0 : 1)
             .scaleEffect(isSuppressedByIntelligence ? 0.92 : 1, anchor: .trailing)
@@ -147,11 +134,7 @@ struct NavigationComponent: View, EditorLibraryComponentSpec {
     }
 
     private var iconSize: CGFloat {
-        switch size {
-        case .compressed: 18
-        case .standard: 21
-        case .expanded: 24
-        }
+        21
     }
 
     private var tabSpacing: CGFloat { Self.tabSpacing }

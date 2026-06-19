@@ -453,7 +453,6 @@ struct EditorComponentShowcaseView: View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
             showcaseSectionTitle("NavigationComponent")
             NavigationComponent(
-                size: selectedSize,
                 style: .glass,
                 items: NavigationComponent.defaultShowcaseItems,
                 activeItemId: $activeNavItemId
@@ -469,7 +468,6 @@ struct EditorComponentShowcaseView: View {
             HStack {
                 Spacer(minLength: 0)
                 IntelligenceComponent(
-                    size: selectedSize,
                     navigationItems: IntelligenceComponent.defaultShowcaseItems,
                     activeNavigationItemId: $activeNavItemId,
                     promptPhase: $intelligencePromptPhase,
@@ -556,7 +554,6 @@ struct EditorComponentShowcaseView: View {
                 toolbarItems: items,
                 navigation: {
                     IntelligenceComponent(
-                        size: .standard,
                         navigationItems: IntelligenceComponent.defaultShowcaseItems,
                         activeNavigationItemId: $activeNavItemId,
                         promptPhase: $intelligencePromptPhase,
@@ -570,7 +567,7 @@ struct EditorComponentShowcaseView: View {
                         onCancelText: handleIntelligenceCancelText,
                         onCancelProcessing: handleIntelligenceCancelProcessing
                     )
-                    .frame(width: IntelligenceComponent.containerWidth(for: .standard))
+                    .frame(width: IntelligenceComponent.containerWidth())
                 }
             )
         }
