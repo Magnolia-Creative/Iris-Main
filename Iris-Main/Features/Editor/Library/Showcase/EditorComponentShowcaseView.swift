@@ -82,11 +82,15 @@ struct EditorComponentShowcaseView: View {
         Group {
             if selectedCategory != .chrome {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: .spacing(.sp2)) {
-                        ForEach(EditorComponentSize.allCases) { size in
-                            showcaseChipButton(
+                    HStack(spacing: -1) {
+                        ForEach(Array(EditorComponentSize.allCases.enumerated()), id: \.element.id) { index, size in
+                            showcaseConnectedOptionButton(
                                 size.displayTitle,
-                                isSelected: selectedSize == size
+                                isSelected: selectedSize == size,
+                                position: connectedOptionPosition(
+                                    at: index,
+                                    count: EditorComponentSize.allCases.count
+                                )
                             ) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     selectedSize = size
@@ -210,12 +214,16 @@ struct EditorComponentShowcaseView: View {
                             .foregroundColor(Color.ds.text)
                             .frame(width: 72, alignment: .leading)
 
-                        HStack(spacing: .spacing(.sp1)) {
-                            ForEach(TimelineTrackDisplaySize.allCases) { size in
+                        HStack(spacing: -1) {
+                            ForEach(Array(TimelineTrackDisplaySize.allCases.enumerated()), id: \.element.id) { index, size in
                                 let isSelected = resolvedTrackSize(for: track.id) == size
-                                showcaseChipButton(
+                                showcaseConnectedOptionButton(
                                     size.displayTitle,
-                                    isSelected: isSelected
+                                    isSelected: isSelected,
+                                    position: connectedOptionPosition(
+                                        at: index,
+                                        count: TimelineTrackDisplaySize.allCases.count
+                                    )
                                 ) {
                                     withAnimation(.easeInOut(duration: 0.18)) {
                                         timelineTrackSizesById[track.id] = size
@@ -574,6 +582,31 @@ struct EditorComponentShowcaseView: View {
         }
         .buttonStyle(.irisChipPicker(isSelected: isSelected))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func showcaseConnectedOptionButton(
+        _ title: String,
+        isSelected: Bool,
+        position: IrisConnectedOptionPosition,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+        }
+        .buttonStyle(.irisConnectedOption(isSelected: isSelected, position: position))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func connectedOptionPosition(at index: Int, count: Int) -> IrisConnectedOptionPosition {
+        if count <= 1 {
+            return .single
+        } else if index == 0 {
+            return .leading
+        } else if index == count - 1 {
+            return .trailing
+        } else {
+            return .middle
+        }
     }
 
     private func handleIntelligenceTap() {
