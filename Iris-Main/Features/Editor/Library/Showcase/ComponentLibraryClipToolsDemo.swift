@@ -152,10 +152,10 @@ struct ComponentLibraryClipToolsDemo: View {
                     }
                 }
 
-                EditorSegmentedPillControlComponent(
+                ParameterSegmentedPillControlComponent(
                     title: nil,
                     options: LibraryClipColorProperty.allCases.map {
-                        EditorSegmentedPillOption(id: $0.id, title: $0.title)
+                        ParameterSegmentedPillOption(id: $0.id, title: $0.title)
                     },
                     selectionId: Binding(
                         get: { activeColorProperty.id },
@@ -168,7 +168,7 @@ struct ComponentLibraryClipToolsDemo: View {
                 )
             }
             HStack(spacing: .spacing(.sp2)) {
-                EditorSliderControlComponent(
+                ParameterSliderControlComponent(
                     title: activeColorProperty.title,
                     value: activeColorBinding,
                     bounds: EditorParameterBounds(
@@ -202,7 +202,7 @@ struct ComponentLibraryClipToolsDemo: View {
                     context.expandedToolId.wrappedValue = nil
                 }
             }
-            EditorSliderControlComponent(
+            ParameterSliderControlComponent(
                 title: "Volume",
                 value: volumeBinding,
                 bounds: EditorParameterBounds(lower: 0, upper: 2),

@@ -255,7 +255,7 @@ enum EditorComponentShowcaseSamples {
         if showsParameters {
             items.append(
                 EditorToolbarItem(id: "temperature", category: .tools, placementPriority: 5) {
-                    EditorParameterControlCardComponent(
+                    ParameterControlCardComponent(
                         title: "Temperature",
                         value: temperature,
                         bounds: EditorParameterBounds(lower: -1, upper: 1)
@@ -265,7 +265,7 @@ enum EditorComponentShowcaseSamples {
             )
             items.append(
                 EditorToolbarItem(id: "volume", category: .tools, placementPriority: 4) {
-                    EditorParameterControlCardComponent(
+                    ParameterControlCardComponent(
                         title: "Volume",
                         value: volume,
                         bounds: EditorParameterBounds(lower: 0, upper: 2)

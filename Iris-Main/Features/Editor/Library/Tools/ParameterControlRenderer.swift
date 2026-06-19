@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct EditorParameterControlRenderer: View {
+struct ParameterControlRenderer: View {
     let descriptor: EditorParameterDescriptor
     @Binding var value: EditorParameterValue
     var onScalarChange: ((Double) -> Void)?
@@ -21,7 +21,7 @@ struct EditorParameterControlRenderer: View {
     @ViewBuilder
     private var scalarSliderBody: some View {
         if case .scalar(let scalar) = value {
-            EditorParameterControlCardComponent(
+            ParameterControlCardComponent(
                 title: descriptor.title,
                 value: Binding(
                     get: { scalar },
@@ -39,7 +39,7 @@ struct EditorParameterControlRenderer: View {
     }
 
     @ViewBuilder
-    private func segmentedBody(options: [EditorSegmentedPillOption]) -> some View {
+    private func segmentedBody(options: [ParameterSegmentedPillOption]) -> some View {
         if case .scalar = value {
             let selectionBinding = Binding<String>(
                 get: {
@@ -60,7 +60,7 @@ struct EditorParameterControlRenderer: View {
                     }
                 }
             )
-            EditorSegmentedPillControlComponent(
+            ParameterSegmentedPillControlComponent(
                 title: descriptor.title,
                 options: options,
                 selectionId: selectionBinding

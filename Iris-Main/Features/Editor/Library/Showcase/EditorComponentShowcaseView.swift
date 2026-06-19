@@ -281,7 +281,7 @@ struct EditorComponentShowcaseView: View {
             Text("Buttons that directly change timeline state without opening a subview.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
-            EditorToolControlRowComponent {
+            ToolControlRowComponent {
                 EditorToolButtonComponent(
                     systemImage: "trash",
                     title: "Delete",
@@ -358,16 +358,16 @@ struct EditorComponentShowcaseView: View {
                         }
                     }
 
-                    EditorSegmentedPillControlComponent(
+                    ParameterSegmentedPillControlComponent(
                         title: nil,
                         options: LibraryClipColorPropertyPreview.allCases.map {
-                            EditorSegmentedPillOption(id: $0.rawValue, title: $0.title)
+                            ParameterSegmentedPillOption(id: $0.rawValue, title: $0.title)
                         },
                         selectionId: $colorPropertyId
                     )
                 }
 
-                EditorSliderControlComponent(
+                ParameterSliderControlComponent(
                     title: "Temperature",
                     value: $temperatureValue,
                     bounds: EditorParameterBounds(lower: -1, upper: 1),
@@ -386,7 +386,7 @@ struct EditorComponentShowcaseView: View {
                     }
                 }
 
-                EditorSliderControlComponent(
+                ParameterSliderControlComponent(
                     title: "Volume",
                     value: $volumeValue,
                     bounds: EditorParameterBounds(lower: 0, upper: 2),
@@ -404,25 +404,25 @@ struct EditorComponentShowcaseView: View {
             Text("Standalone controls used inside expanded tool subviews.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
-            EditorToolControlRowComponent(axis: .vertical) {
-                EditorSliderControlComponent(
+            ToolControlRowComponent(axis: .vertical) {
+                ParameterSliderControlComponent(
                     title: "Temperature",
                     value: $temperatureValue,
                     bounds: EditorParameterBounds(lower: -1, upper: 1),
                     display: .inlineValue,
                     valueFormatter: { String(format: "%.2f", $0) }
                 )
-                EditorSliderControlComponent(
+                ParameterSliderControlComponent(
                     title: "Volume",
                     value: $volumeValue,
                     bounds: EditorParameterBounds(lower: 0, upper: 2),
                     display: .inlineValue,
                     valueFormatter: { "\(Int(($0 * 100).rounded()))%" }
                 )
-                EditorSegmentedPillControlComponent(
+                ParameterSegmentedPillControlComponent(
                     title: "Color Property",
                     options: LibraryClipColorPropertyPreview.allCases.map {
-                        EditorSegmentedPillOption(id: $0.rawValue, title: $0.title)
+                        ParameterSegmentedPillOption(id: $0.rawValue, title: $0.title)
                     },
                     selectionId: $colorPropertyId
                 )

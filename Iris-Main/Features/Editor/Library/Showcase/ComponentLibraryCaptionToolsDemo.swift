@@ -109,10 +109,10 @@ struct ComponentLibraryCaptionToolsDemo: View {
 
             switch tool {
             case .style:
-                EditorSegmentedPillControlComponent(
+                ParameterSegmentedPillControlComponent(
                     title: nil,
                     options: CaptionStyle.allCases.map {
-                        EditorSegmentedPillOption(id: $0.rawValue, title: $0.rawValue.capitalized)
+                        ParameterSegmentedPillOption(id: $0.rawValue, title: $0.rawValue.capitalized)
                     },
                     selectionId: Binding(
                         get: { style.rawValue },
@@ -125,11 +125,11 @@ struct ComponentLibraryCaptionToolsDemo: View {
                     )
                 )
             case .background:
-                EditorSegmentedPillControlComponent(
+                ParameterSegmentedPillControlComponent(
                     title: nil,
                     options: [
-                        EditorSegmentedPillOption(id: "off", title: "Off"),
-                        EditorSegmentedPillOption(id: "on", title: "On")
+                        ParameterSegmentedPillOption(id: "off", title: "Off"),
+                        ParameterSegmentedPillOption(id: "on", title: "On")
                     ],
                     selectionId: Binding(
                         get: { hasBackground ? "on" : "off" },

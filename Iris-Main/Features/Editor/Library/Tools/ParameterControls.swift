@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct EditorSliderControlComponent: View {
+struct ParameterSliderControlComponent: View {
     let title: String
     @Binding var value: Double
     var bounds: EditorParameterBounds<Double> = EditorParameterBounds(lower: nil, upper: nil)
@@ -44,14 +44,14 @@ struct EditorSliderControlComponent: View {
     }
 }
 
-struct EditorSegmentedPillOption: Identifiable, Equatable {
+struct ParameterSegmentedPillOption: Identifiable, Equatable {
     let id: String
     let title: String
 }
 
-struct EditorSegmentedPillControlComponent: View {
+struct ParameterSegmentedPillControlComponent: View {
     let title: String?
-    let options: [EditorSegmentedPillOption]
+    let options: [ParameterSegmentedPillOption]
     @Binding var selectionId: String
 
     var body: some View {
@@ -81,7 +81,7 @@ struct EditorSegmentedPillControlComponent: View {
     }
 }
 
-struct EditorToolControlRowComponent: View {
+struct ToolControlRowComponent: View {
     let axis: EditorComponentAxis
     let content: AnyView
 
@@ -103,14 +103,14 @@ struct EditorToolControlRowComponent: View {
     }
 }
 
-struct EditorParameterControlCardComponent: View {
+struct ParameterControlCardComponent: View {
     let title: String
     @Binding var value: Double
     var bounds: EditorParameterBounds<Double>
     var display: EditorParameterDisplay = .compact
 
     var body: some View {
-        EditorSliderControlComponent(
+        ParameterSliderControlComponent(
             title: title,
             value: $value,
             bounds: bounds,

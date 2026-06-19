@@ -67,7 +67,7 @@ struct EditorChromeActionItem: Identifiable, Equatable {
 
 enum EditorParameterControlKind: Equatable {
     case slider
-    case segmented(options: [EditorSegmentedPillOption])
+    case segmented(options: [ParameterSegmentedPillOption])
     case toggle
     case spatialPlaceholder(title: String)
 }
