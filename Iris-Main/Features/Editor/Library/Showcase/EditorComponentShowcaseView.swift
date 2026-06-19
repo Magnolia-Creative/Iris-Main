@@ -3,6 +3,7 @@ import SwiftUI
 struct EditorComponentShowcaseView: View {
     @State private var selectedCategory: EditorComponentCategory = .timeline
     @State private var selectedSize: EditorComponentSize = .standard
+    @State private var isPresentingJITRecipeLab = false
     @Namespace private var connectedOptionSelectionNamespace
 
     @State private var currentTimeUs: Int64 = 1_500_000
@@ -59,6 +60,9 @@ struct EditorComponentShowcaseView: View {
         }
         .background(Color.ds.bg.ignoresSafeArea())
         .navigationBarHidden(true)
+        .navigationDestination(isPresented: $isPresentingJITRecipeLab) {
+            EditorJITRecipeShowcaseView()
+        }
     }
 
     private var header: some View {
@@ -67,6 +71,18 @@ struct EditorComponentShowcaseView: View {
                 .typography(.heading)
                 .foregroundColor(Color.ds.text)
             Spacer()
+            Button {
+                isPresentingJITRecipeLab = true
+            } label: {
+                HStack(spacing: .spacing(.sp1)) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("JIT Lab")
+                        .typography(.action)
+                }
+                .foregroundColor(Color.ds.accentFg)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, .spacing(.sp4))
         .padding(.top, .spacing(.sp4))
