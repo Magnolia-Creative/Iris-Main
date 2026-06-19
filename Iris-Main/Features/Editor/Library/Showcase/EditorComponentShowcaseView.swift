@@ -24,11 +24,24 @@ struct EditorComponentShowcaseView: View {
     @State private var temperatureValue = 0.0
     @State private var volumeValue = 1.0
     @State private var colorPropertyId = LibraryClipColorPropertyPreview.temperature.rawValue
-    @State private var toolbarShowsClipTools = true
-    @State private var toolbarShowsParameters = true
     @State private var clipColorFilter = ClipColorFilter.neutral
     @State private var clipVolume = ClipVolume.neutral
     @State private var timelineTrackSizesById: [String: TimelineTrackDisplaySize] = [:]
+
+    // Bottom chrome preview lab
+    @State private var chromeShowsDock = true
+    @State private var chromeShowsActions = true
+    @State private var chromeShowsParameterGroups = true
+    @State private var chromeShowsSpatialControls = false
+    @State private var chromeCompressTimeline = false
+    @State private var chromeShowsOverflowChips = true
+    @State private var chromeGroupScenario: EditorChromePreviewGroupScenario = .fourPlusGroups
+    @State private var chromeActiveGroup: EditorChromePreviewActiveGroup = .color
+    @State private var chromeDensity: EditorBottomChromeDensity = .standard
+    @State private var chromeActiveParameterGroupId = EditorChromePreviewActiveGroup.color.groupId
+    @State private var chromeParameterValues: [String: EditorParameterValue] = EditorChromePreviewFixtures.seedValues(
+        for: EditorChromePreviewFixtures.parameterGroups(for: .fourPlusGroups)
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -500,56 +513,34 @@ struct EditorComponentShowcaseView: View {
 
     private var chromeSection: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp4)) {
-            showcaseSectionTitle("Bottom Chrome Assembly")
-            Text("The dock stays visible while the subchrome surface extends underneath it when clip tools or parameter cards are visible.")
+            showcaseSectionTitle("Bottom Chrome Preview Lab")
+            Text("Toggle tiers, parameter group scenarios, dock phases, and density to inspect how the bottom chrome behaves before live editor wiring.")
                 .typography(.bodySmall)
                 .foregroundColor(Color.ds.textMuted)
 
-            Toggle(isOn: $toolbarShowsClipTools) {
-                Text("Show clip tools")
-                    .typography(.bodySmall)
-            }
-            Toggle(isOn: $toolbarShowsParameters) {
-                Text("Show parameter cards")
-                    .typography(.bodySmall)
-            }
-
-            let toolContext = EditorToolContext(
-                isClipSelected: true,
-                selectedClipColorFilter: clipColorFilter,
-                selectedClipVolume: clipVolume,
-                expandedToolId: $expandedClipToolId,
-                isReviewActive: false
-            )
-            let items = EditorComponentShowcaseSamples.demoToolbarItems(
-                showsClipTools: toolbarShowsClipTools,
-                showsParameters: toolbarShowsParameters,
-                toolContext: toolContext,
-                toolActions: .noop,
-                temperature: $temperatureValue,
-                volume: $volumeValue
-            )
-
-            EditorBottomChromeAssemblyComponent(
-                showsNavigation: true,
-                toolbarItems: items,
-                navigation: {
-                    IntelligenceComponent(
-                        navigationItems: IntelligenceComponent.defaultShowcaseItems,
-                        activeNavigationItemId: $activeNavItemId,
-                        promptPhase: $intelligencePromptPhase,
-                        promptDraft: $intelligencePromptDraft,
-                        liveTranscript: intelligenceLiveTranscript,
-                        voiceLevel: intelligenceVoiceLevel,
-                        onIntelligenceTap: handleIntelligenceTap,
-                        onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
-                        onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
-                        onSubmitText: handleIntelligenceSubmitText,
-                        onCancelText: handleIntelligenceCancelText,
-                        onCancelProcessing: handleIntelligenceCancelProcessing
-                    )
-                    .frame(width: IntelligenceComponent.containerWidth())
-                }
+            EditorChromePreviewLab(
+                showsDock: $chromeShowsDock,
+                showsActions: $chromeShowsActions,
+                showsParameterGroups: $chromeShowsParameterGroups,
+                showsSpatialControls: $chromeShowsSpatialControls,
+                compressTimeline: $chromeCompressTimeline,
+                showsOverflowChips: $chromeShowsOverflowChips,
+                groupScenario: $chromeGroupScenario,
+                activeGroup: $chromeActiveGroup,
+                density: $chromeDensity,
+                promptPhase: $intelligencePromptPhase,
+                activeNavItemId: $activeNavItemId,
+                promptDraft: $intelligencePromptDraft,
+                parameterValues: $chromeParameterValues,
+                activeParameterGroupId: $chromeActiveParameterGroupId,
+                liveTranscript: intelligenceLiveTranscript,
+                voiceLevel: intelligenceVoiceLevel,
+                onIntelligenceTap: handleIntelligenceTap,
+                onVoiceHoldStart: handleIntelligenceVoiceHoldStart,
+                onVoiceHoldEnd: handleIntelligenceVoiceHoldEnd,
+                onSubmitText: handleIntelligenceSubmitText,
+                onCancelText: handleIntelligenceCancelText,
+                onCancelProcessing: handleIntelligenceCancelProcessing
             )
         }
     }
