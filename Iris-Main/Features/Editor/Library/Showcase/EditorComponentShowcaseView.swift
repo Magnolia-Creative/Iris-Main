@@ -81,25 +81,21 @@ struct EditorComponentShowcaseView: View {
     private var sizePicker: some View {
         Group {
             if selectedCategory != .chrome {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: -1) {
-                        ForEach(Array(EditorComponentSize.allCases.enumerated()), id: \.element.id) { index, size in
-                            showcaseConnectedOptionButton(
-                                size.displayTitle,
-                                isSelected: selectedSize == size,
-                                position: connectedOptionPosition(
-                                    at: index,
-                                    count: EditorComponentSize.allCases.count
-                                )
-                            ) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selectedSize = size
-                                }
+                HStack(spacing: 0) {
+                    ForEach(EditorComponentSize.allCases) { size in
+                        showcaseConnectedOptionButton(
+                            size.displayTitle,
+                            isSelected: selectedSize == size
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedSize = size
                             }
                         }
                     }
-                    .padding(.horizontal, .spacing(.sp4))
                 }
+                .irisConnectedOptionGroupBackground()
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, .spacing(.sp4))
                 .padding(.bottom, .spacing(.sp3))
             }
         }
@@ -214,16 +210,12 @@ struct EditorComponentShowcaseView: View {
                             .foregroundColor(Color.ds.text)
                             .frame(width: 72, alignment: .leading)
 
-                        HStack(spacing: -1) {
-                            ForEach(Array(TimelineTrackDisplaySize.allCases.enumerated()), id: \.element.id) { index, size in
+                        HStack(spacing: 0) {
+                            ForEach(TimelineTrackDisplaySize.allCases) { size in
                                 let isSelected = resolvedTrackSize(for: track.id) == size
                                 showcaseConnectedOptionButton(
                                     size.displayTitle,
-                                    isSelected: isSelected,
-                                    position: connectedOptionPosition(
-                                        at: index,
-                                        count: TimelineTrackDisplaySize.allCases.count
-                                    )
+                                    isSelected: isSelected
                                 ) {
                                     withAnimation(.easeInOut(duration: 0.18)) {
                                         timelineTrackSizesById[track.id] = size
@@ -231,6 +223,8 @@ struct EditorComponentShowcaseView: View {
                                 }
                             }
                         }
+                        .irisConnectedOptionGroupBackground()
+                        .frame(maxWidth: .infinity)
                     }
                 }
             }
@@ -587,26 +581,13 @@ struct EditorComponentShowcaseView: View {
     private func showcaseConnectedOptionButton(
         _ title: String,
         isSelected: Bool,
-        position: IrisConnectedOptionPosition,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Text(title)
         }
-        .buttonStyle(.irisConnectedOption(isSelected: isSelected, position: position))
+        .buttonStyle(.irisConnectedOption(isSelected: isSelected))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func connectedOptionPosition(at index: Int, count: Int) -> IrisConnectedOptionPosition {
-        if count <= 1 {
-            return .single
-        } else if index == 0 {
-            return .leading
-        } else if index == count - 1 {
-            return .trailing
-        } else {
-            return .middle
-        }
     }
 
     private func handleIntelligenceTap() {
