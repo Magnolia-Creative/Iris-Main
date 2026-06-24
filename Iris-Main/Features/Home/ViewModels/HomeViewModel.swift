@@ -9,6 +9,7 @@ final class HomeViewModel: ObservableObject {
     @Published var isPresentingProjectSetup = false
     @Published var isPresentingProfile = false
     @Published var isPresentingComponentShowcase = false
+    @Published var isPresentingUIIntentDemo = false
     @Published var selectedProject: Project?
 
     private let db: DatabaseManager
@@ -41,6 +42,10 @@ final class HomeViewModel: ObservableObject {
 
     func presentComponentShowcase() {
         isPresentingComponentShowcase = true
+    }
+
+    func presentUIIntentDemo() {
+        isPresentingUIIntentDemo = true
     }
 
     func returnHomeFromEditor() {

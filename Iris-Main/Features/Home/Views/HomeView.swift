@@ -27,6 +27,9 @@ struct HomeView: View {
             .navigationDestination(isPresented: $viewModel.isPresentingComponentShowcase) {
                 EditorComponentShowcaseView()
             }
+            .navigationDestination(isPresented: $viewModel.isPresentingUIIntentDemo) {
+                UIIntentDemoView()
+            }
             .navigationDestination(item: $viewModel.selectedProject) { project in
                 editorDestination(for: project)
             }
@@ -113,6 +116,24 @@ struct HomeView: View {
                         .font(.system(size: 14, weight: .semibold))
 
                     Text("Component Library")
+                        .typography(.action)
+                }
+                .foregroundStyle(Color.white.opacity(0.92))
+                .padding(.horizontal, .sp4)
+                .padding(.vertical, .sp3)
+                .background(Color.white.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                viewModel.presentUIIntentDemo()
+            } label: {
+                HStack(spacing: .spacing(.sp2)) {
+                    Image(systemName: "text.magnifyingglass")
+                        .font(.system(size: 14, weight: .semibold))
+
+                    Text("UI Intent Compiler")
                         .typography(.action)
                 }
                 .foregroundStyle(Color.white.opacity(0.92))
