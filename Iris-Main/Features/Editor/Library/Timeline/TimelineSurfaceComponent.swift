@@ -119,6 +119,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                         .frame(width: scrollContentWidth, alignment: .leading)
                     }
                     .background(Color.ds.bg)
+                    .scrollDisabled(isAddMenuOpen)
                     .simultaneousGesture(zoomGesture)
                     .onAppear {
                         scrollToPlayhead(with: proxy)
@@ -135,6 +136,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
                     .allowsHitTesting(false)
                     .zIndex(20)
+
+                if isAddMenuOpen {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
+                                isAddMenuOpen = false
+                            }
+                        }
+                }
 
                 if let onAddSelection {
                     TimelineAddMediaButtonComponent(
