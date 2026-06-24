@@ -36,25 +36,42 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
         return max(1, CGFloat(maxEnd) / 1_000_000 * pixelsPerSecond)
     }
 
+    private var laidOutSegments: [LaidOutTimelineSegment] {
+        var cursorX: CGFloat = 0
+        return model.segments
+            .sorted { $0.rangeUs.start < $1.rangeUs.start }
+            .map { segment in
+                let x = segmentX(segment)
+                let width = segmentWidth(segment)
+                let gap = max(0, x - cursorX)
+                cursorX = max(cursorX, x + width)
+                return LaidOutTimelineSegment(segment: segment, leadingGap: gap, width: width)
+            }
+    }
+
     var body: some View {
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: .spacing(.sp1))
                 .fill(Color.ds.surface.opacity(0.18))
                 .frame(width: max(contentWidth, 1), height: trackHeight)
 
-            ForEach(model.segments) { segment in
-                let width = segmentWidth(segment)
-                let centerX = segmentX(segment) + width / 2
+            HStack(spacing: 0) {
+                ForEach(laidOutSegments) { laidOut in
+                    Color.clear
+                        .frame(width: laidOut.leadingGap)
+                        .allowsHitTesting(false)
 
-                segmentView(segment)
-                    .frame(width: width, height: trackHeight)
-                    .position(x: centerX, y: trackHeight / 2)
-                    .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
-                    .onTapGesture {
-                        selectedSegmentId = segment.id
-                        onSelectSegment?(segment.id)
+                    segmentView(laidOut.segment)
+                        .frame(width: laidOut.width, height: trackHeight)
+                        .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
+                        .onTapGesture {
+                            selectedSegmentId = laidOut.segment.id
+                            onSelectSegment?(laidOut.segment.id)
+                        }
                     }
+                Spacer(minLength: 0)
             }
+            .frame(width: contentWidth, height: trackHeight, alignment: .leading)
         }
         .frame(width: contentWidth, height: trackHeight, alignment: .leading)
         .clipped()
@@ -80,6 +97,14 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     private func segmentWidth(_ segment: TimelineSegmentModel) -> CGFloat {
         max(layout.minimumSegmentWidth, CGFloat(segment.durationUs) / 1_000_000 * pixelsPerSecond)
     }
+}
+
+private struct LaidOutTimelineSegment: Identifiable {
+    let segment: TimelineSegmentModel
+    let leadingGap: CGFloat
+    let width: CGFloat
+
+    var id: String { segment.id }
 }
 
 private struct TimelineVideoSegmentView: View {

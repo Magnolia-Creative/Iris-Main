@@ -132,9 +132,9 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                 }
 
                 TimelineFixedRulerReadoutComponent(model: rulerModel, layout: layout)
-                    .padding(.leading, .spacing(.sp3))
-                    .frame(width: layout.readoutWidth + layout.rulerFadeWidth + .spacing(.sp3), height: layout.rulerHeight, alignment: .leading)
+                    .frame(width: layout.readoutWidth + layout.rulerFadeWidth, height: layout.rulerHeight, alignment: .leading)
                     .allowsHitTesting(false)
+                    .zIndex(20)
 
                 if let onAddSelection {
                     TimelineAddMediaButtonComponent(
@@ -609,11 +609,11 @@ struct TimelineFixedRulerReadoutComponent: View {
         HStack(alignment: .top, spacing: 0) {
             readout
                 .frame(width: layout.readoutWidth, height: layout.rulerHeight, alignment: .topLeading)
-                .background(Color.ds.bg)
 
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: Color.ds.bg, location: 0),
+                    .init(color: Color.ds.bg, location: 0.72),
                     .init(color: Color.ds.bg.opacity(0), location: 1)
                 ]),
                 startPoint: .leading,
@@ -622,6 +622,7 @@ struct TimelineFixedRulerReadoutComponent: View {
             .frame(width: layout.rulerFadeWidth, height: layout.rulerHeight)
         }
         .frame(height: layout.rulerHeight, alignment: .topLeading)
+        .background(Color.ds.bg)
     }
 
     private var readout: some View {

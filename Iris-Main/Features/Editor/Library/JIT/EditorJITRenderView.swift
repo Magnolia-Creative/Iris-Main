@@ -118,43 +118,59 @@ struct EditorJITRenderView: View {
         .padding(.horizontal, .spacing(.sp3))
     }
 
+    @ViewBuilder
     private var chromeRegion: some View {
-        VStack(spacing: .spacing(.sp2)) {
-            if showsClipTools {
-                clipToolsRegion
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-            if !state.chromePlan.visibleTiers.isEmpty {
-                EditorBottomChromeStack(
-                    plan: state.chromePlan,
-                    activeParameterGroupId: $activeParameterGroupId,
-                    parameterValues: $parameterValues,
-                    onAction: { _ in },
-                    onDismiss: {},
-                    dock: {
-                        IntelligenceComponent(
-                            navigationItems: IntelligenceComponent.defaultShowcaseItems,
-                            activeNavigationItemId: $activeNavItemId,
-                            promptPhase: $promptPhase,
-                            promptDraft: $promptDraft,
-                            liveTranscript: "",
-                            voiceLevel: 0,
-                            onIntelligenceTap: {},
-                            onVoiceHoldStart: {},
-                            onVoiceHoldEnd: {},
-                            onSubmitText: {},
-                            onCancelText: {},
-                            onCancelProcessing: {}
-                        )
-                        .frame(width: IntelligenceComponent.containerWidth())
-                    }
-                )
-            }
+        if showsClipTools {
+            EditorBottomChromeAssemblyComponent(
+                showsNavigation: state.chromePlan.showsDock,
+                toolbarItems: clipToolToolbarItems,
+                toolbarAxis: .horizontal,
+                navigation: { dockContent }
+            )
+            .padding(.horizontal, .spacing(.sp3))
+            .padding(.bottom, .spacing(.sp2))
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if !state.chromePlan.visibleTiers.isEmpty {
+            EditorBottomChromeStack(
+                plan: state.chromePlan,
+                activeParameterGroupId: $activeParameterGroupId,
+                parameterValues: $parameterValues,
+                onAction: { _ in },
+                onDismiss: {},
+                dock: { dockContent }
+            )
+            .padding(.horizontal, .spacing(.sp3))
+            .padding(.bottom, .spacing(.sp2))
         }
-        .padding(.horizontal, .spacing(.sp3))
-        .padding(.bottom, .spacing(.sp2))
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showsClipTools)
+    }
+
+    private var clipToolToolbarItems: [EditorToolbarItem] {
+        [
+            EditorToolbarItem(
+                id: "jit-clip-tools",
+                category: .tools,
+                placementPriority: 100,
+                content: { clipToolsRegion }
+            )
+        ]
+    }
+
+    private var dockContent: some View {
+        IntelligenceComponent(
+            navigationItems: IntelligenceComponent.defaultShowcaseItems,
+            activeNavigationItemId: $activeNavItemId,
+            promptPhase: $promptPhase,
+            promptDraft: $promptDraft,
+            liveTranscript: "",
+            voiceLevel: 0,
+            onIntelligenceTap: {},
+            onVoiceHoldStart: {},
+            onVoiceHoldEnd: {},
+            onSubmitText: {},
+            onCancelText: {},
+            onCancelProcessing: {}
+        )
+        .frame(width: IntelligenceComponent.containerWidth())
     }
 
     private var clipToolsRegion: some View {
@@ -176,10 +192,6 @@ struct EditorJITRenderView: View {
                 onDeselectClip: { clearSelection() }
             )
         )
-        .padding(.horizontal, .spacing(.sp2))
-        .padding(.vertical, .spacing(.sp2))
-        .background(Color.ds.surface.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp3)))
     }
 
     private func handleSegmentSelection(_ segmentId: String) {
