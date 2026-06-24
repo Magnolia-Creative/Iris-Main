@@ -55,7 +55,7 @@ private extension UIIntentSchemaBuilder {
                 warnings.append("Compressed preview because timeline was expanded.")
             }
         } else if componentId.rawValue.hasPrefix("toolbar.") || componentId.rawValue.hasPrefix("chrome.") {
-            chromePlan = chromePlan(for: candidate.operation, requestedSize: candidate.requestedSize)
+            chromePlan = makeChromePlan(for: candidate.operation, requestedSize: candidate.requestedSize)
         } else {
             return nil
         }
@@ -78,7 +78,7 @@ private extension UIIntentSchemaBuilder {
         context: EditorUICompilerContext,
         prompt: NormalizedEditorUIPrompt
     ) -> UIIntentSchemaBuildResult {
-        let chromePlan = chromePlan(
+        let chromePlan = makeChromePlan(
             for: candidate.operation,
             requestedSize: candidate.requestedSize
         )
@@ -114,7 +114,7 @@ private extension UIIntentSchemaBuilder {
         }
     }
 
-    func chromePlan(
+    func makeChromePlan(
         for operation: UIIntentOperation,
         requestedSize: EditorComponentSize?
     ) -> EditorBottomChromePlan {

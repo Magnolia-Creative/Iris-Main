@@ -4,7 +4,7 @@ import Foundation
 @MainActor
 final class UIIntentDemoViewModel: ObservableObject {
     @Published var prompt = "Make the timeline bigger"
-    @Published var selectedContextId = UICompilerDemoFixtures.defaultContext.id
+    @Published var selectedContextId = UICompilerDemoFixtures.allContexts[0].id
     @Published private(set) var outputText = ""
     @Published private(set) var statusMessage = "Local UI compiler ready."
     @Published private(set) var resultKind = "Waiting"

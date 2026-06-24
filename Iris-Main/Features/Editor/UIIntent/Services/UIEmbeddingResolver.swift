@@ -32,12 +32,12 @@ actor UIEmbeddingResolver {
     private var cachedExampleVectors: [String: [Float]] = [:]
 
     init(
-        provider: any EditorUITextEmbeddingProvider = NLContextualUIEmbeddingProvider(),
-        examples: [UIEmbeddingExample] = Self.defaultExamples,
+        provider: (any EditorUITextEmbeddingProvider)? = nil,
+        examples: [UIEmbeddingExample]? = nil,
         minimumScore: Double = 0.52
     ) {
-        self.provider = provider
-        self.examples = examples
+        self.provider = provider ?? NLContextualUIEmbeddingProvider()
+        self.examples = examples ?? UIEmbeddingResolver.defaultExamples
         self.minimumScore = minimumScore
     }
 
