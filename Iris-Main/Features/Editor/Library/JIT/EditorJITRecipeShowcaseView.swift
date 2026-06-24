@@ -6,7 +6,6 @@ struct EditorJITRecipeShowcaseView: View {
     @State private var currentTimeUs: Int64 = 1_500_000
     @State private var timelinePixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
     @State private var selectedSegmentId: String?
-    @State private var expandedClipToolId: Int?
     @State private var clipColorFilter = ClipColorFilter.neutral
     @State private var clipVolume = ClipVolume.neutral
     @State private var isAddMenuOpen = false
@@ -40,7 +39,6 @@ struct EditorJITRecipeShowcaseView: View {
         .onChange(of: viewModel.renderState.id) { _, _ in
             syncParameterValuesForCurrentRecipe()
             selectedSegmentId = nil
-            expandedClipToolId = nil
         }
         .onAppear {
             syncParameterValuesForCurrentRecipe()
@@ -172,7 +170,6 @@ struct EditorJITRecipeShowcaseView: View {
                     activeNavItemId: $activeNavItemId,
                     promptPhase: $promptPhase,
                     promptDraft: $promptDraft,
-                    expandedClipToolId: $expandedClipToolId,
                     clipColorFilter: $clipColorFilter,
                     clipVolume: $clipVolume
                 )

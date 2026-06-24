@@ -145,15 +145,23 @@ private struct TimelineVideoSegmentView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
+        .overlay(baseStroke)
         .overlay(selectionStroke)
+        .animation(.easeInOut(duration: 0.18), value: isSelected)
         .task(id: segment.thumbnailStripPath) {
             thumbnailStrip = loadImage(storedPath: segment.thumbnailStripPath)
         }
     }
 
+    private var baseStroke: some View {
+        RoundedRectangle(cornerRadius: .spacing(.sp1))
+            .stroke(Color.ds.border, lineWidth: 1)
+    }
+
     private var selectionStroke: some View {
         RoundedRectangle(cornerRadius: .spacing(.sp1))
-            .stroke(isSelected ? Color.ds.accentFg : Color.ds.border, lineWidth: isSelected ? 2 : 1)
+            .stroke(Color.ds.accentFg, lineWidth: 2)
+            .opacity(isSelected ? 1 : 0)
     }
 }
 
@@ -183,8 +191,14 @@ private struct TimelineAudioSegmentView: View {
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
         .overlay(
             RoundedRectangle(cornerRadius: .spacing(.sp1))
-                .stroke(isSelected ? Color.ds.accentFg : Color.ds.border, lineWidth: isSelected ? 2 : 1)
+                .stroke(Color.ds.border, lineWidth: 1)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp1))
+                .stroke(Color.ds.accentFg, lineWidth: 2)
+                .opacity(isSelected ? 1 : 0)
+        )
+        .animation(.easeInOut(duration: 0.18), value: isSelected)
         .task(id: segment.waveformPath) {
             waveformImage = loadImage(storedPath: segment.waveformPath)
         }
@@ -208,8 +222,14 @@ private struct TimelineCaptionSegmentView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: .spacing(.sp1))
-                    .stroke(isSelected ? Color.ds.accentFg : Color.ds.border, lineWidth: isSelected ? 2 : 1)
+                    .stroke(Color.ds.border, lineWidth: 1)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: .spacing(.sp1))
+                    .stroke(Color.ds.accentFg, lineWidth: 2)
+                    .opacity(isSelected ? 1 : 0)
+            )
+            .animation(.easeInOut(duration: 0.18), value: isSelected)
     }
 }
 

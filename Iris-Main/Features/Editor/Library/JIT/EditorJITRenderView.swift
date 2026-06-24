@@ -15,7 +15,6 @@ struct EditorJITRenderView: View {
     @Binding var activeNavItemId: String
     @Binding var promptPhase: IntelligencePromptPhase
     @Binding var promptDraft: String
-    @Binding var expandedClipToolId: Int?
     @Binding var clipColorFilter: ClipColorFilter
     @Binding var clipVolume: ClipVolume
 
@@ -118,39 +117,49 @@ struct EditorJITRenderView: View {
         .padding(.horizontal, .spacing(.sp3))
     }
 
-    @ViewBuilder
     private var chromeRegion: some View {
-        if showsClipTools {
-            EditorBottomChromeAssemblyComponent(
-                showsNavigation: state.chromePlan.showsDock,
-                toolbarItems: clipToolToolbarItems,
-                toolbarAxis: .horizontal,
-                navigation: { dockContent }
-            )
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.bottom, .spacing(.sp2))
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if !state.chromePlan.visibleTiers.isEmpty {
-            EditorBottomChromeStack(
-                plan: state.chromePlan,
-                activeParameterGroupId: $activeParameterGroupId,
-                parameterValues: $parameterValues,
-                onAction: { _ in },
-                onDismiss: {},
-                dock: { dockContent }
-            )
-            .padding(.horizontal, .spacing(.sp3))
-            .padding(.bottom, .spacing(.sp2))
-        }
+        EditorBottomChromeStack(
+            plan: effectiveChromePlan,
+            activeParameterGroupId: $activeParameterGroupId,
+            parameterValues: $parameterValues,
+            onAction: handleChromeAction,
+            onDismiss: { clearSelection() },
+            dock: { dockContent }
+        )
+        .padding(.horizontal, .spacing(.sp3))
+        .padding(.bottom, .spacing(.sp2))
     }
 
-    private var clipToolToolbarItems: [EditorToolbarItem] {
+    private var effectiveChromePlan: EditorBottomChromePlan {
+        guard showsClipTools else { return state.chromePlan }
+        var plan = state.chromePlan
+        plan.actions = clipSelectionActions
+        plan.isDismissable = true
+        return plan
+    }
+
+    private var clipSelectionActions: [EditorChromeActionItem] {
         [
-            EditorToolbarItem(
-                id: "jit-clip-tools",
-                category: .tools,
-                placementPriority: 100,
-                content: { clipToolsRegion }
+            EditorChromeActionItem(
+                id: "delete",
+                title: "Delete",
+                systemImage: "trash",
+                role: .destructive
+            ),
+            EditorChromeActionItem(
+                id: "split",
+                title: "Split",
+                systemImage: "scissors"
+            ),
+            EditorChromeActionItem(
+                id: "color",
+                title: "Color",
+                systemImage: "circle.lefthalf.filled"
+            ),
+            EditorChromeActionItem(
+                id: "volume",
+                title: "Volume",
+                systemImage: "speaker.wave.2"
             )
         ]
     }
@@ -173,38 +182,28 @@ struct EditorJITRenderView: View {
         .frame(width: IntelligenceComponent.containerWidth())
     }
 
-    private var clipToolsRegion: some View {
-        ComponentLibraryClipToolsDemo(
-            context: EditorToolContext(
-                isClipSelected: true,
-                selectedClipColorFilter: clipColorFilter,
-                selectedClipVolume: clipVolume,
-                expandedToolId: $expandedClipToolId,
-                isReviewActive: false
-            ),
-            actions: EditorToolActions(
-                onSplitClip: {},
-                onDeleteClip: { clearSelection() },
-                onSetClipColorFilter: { clipColorFilter = $0 },
-                onResetClipColorFilter: { clipColorFilter = .neutral },
-                onSetClipVolume: { clipVolume = $0 },
-                onResetClipVolume: { clipVolume = .neutral },
-                onDeselectClip: { clearSelection() }
-            )
-        )
-    }
-
     private func handleSegmentSelection(_ segmentId: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedSegmentId = segmentId
-            expandedClipToolId = nil
         }
     }
 
     private func clearSelection() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedSegmentId = nil
-            expandedClipToolId = nil
+        }
+    }
+
+    private func handleChromeAction(_ action: EditorChromeActionItem) {
+        switch action.id {
+        case "delete":
+            clearSelection()
+        case "color":
+            clipColorFilter = clipColorFilter == .neutral ? ClipColorFilter(temperature: 0.25) : .neutral
+        case "volume":
+            clipVolume = clipVolume == .neutral ? ClipVolume(gain: 1.25) : .neutral
+        default:
+            break
         }
     }
 
