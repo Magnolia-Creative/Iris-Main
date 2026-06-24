@@ -71,6 +71,51 @@ final class JITWorkspaceTests: XCTestCase {
         XCTAssertTrue(UIWorkspaceCatalog.isSupportedWorkspaceParameter("saturation"))
     }
 
+    func testLocalTimelineHidePromptProducesHiddenTimelinePlan() {
+        let plan = UIWorkspaceCatalog.localPlan(
+            for: "Make the timeline disappear",
+            editorContext: UIEditorContext(activeSpace: EditorSpace.edit.rawValue)
+        )
+
+        let unwrappedPlan = tryUnwrap(plan)
+        XCTAssertEqual(unwrappedPlan?.workspaceId, "timeline_hidden")
+        XCTAssertFalse(containsWidget("timeline.full", in: unwrappedPlan?.layout))
+        XCTAssertTrue(containsWidget("playback.viewer", in: unwrappedPlan?.layout))
+        XCTAssertTrue(unwrappedPlan?.hiddenBecauseIrrelevant.contains("timeline.full") == true)
+    }
+
+    func testLocalTimelineHidePromptDoesNotCaptureClipRemoval() {
+        let plan = UIWorkspaceCatalog.localPlan(
+            for: "Remove this clip from the timeline",
+            editorContext: UIEditorContext(activeSpace: EditorSpace.edit.rawValue)
+        )
+
+        XCTAssertNil(plan)
+    }
+
+    @MainActor
+    func testCoordinatorAppliesLocalTimelineHideWithoutProjectId() async {
+        let coordinator = JITWorkspaceCoordinator(activeSpace: .edit, hasSelectedClip: false)
+        await coordinator.activateIntentWorkspace(
+            prompt: "Make the timeline disappear",
+            context: IntentCompilerContext(
+                timelineId: "timeline-1",
+                selectedClipId: nil,
+                selectedTrackId: nil,
+                selectedRange: nil,
+                playheadTimeUs: nil,
+                clipsById: [:],
+                orderedClipIdsByTrackId: [:]
+            ),
+            editorContext: UIEditorContext(activeSpace: EditorSpace.edit.rawValue),
+            projectId: nil
+        )
+
+        XCTAssertEqual(coordinator.activePlan.workspaceId, "timeline_hidden")
+        XCTAssertNil(coordinator.lastErrorMessage)
+        XCTAssertEqual(coordinator.timelinePresentation(for: coordinator.activePlan), .hidden)
+    }
+
     func testDecodeWorkspacePlanResponse() throws {
         let json = """
         {
@@ -116,5 +161,15 @@ final class JITWorkspaceTests: XCTestCase {
     private func containsWidget(_ widgetId: String, in node: UILayoutNode) -> Bool {
         if node.widget?.widgetId == widgetId { return true }
         return node.children.contains { containsWidget(widgetId, in: $0) }
+    }
+
+    private func containsWidget(_ widgetId: String, in node: UILayoutNode?) -> Bool {
+        guard let node else { return false }
+        return containsWidget(widgetId, in: node)
+    }
+
+    private func tryUnwrap<T>(_ value: T?, file: StaticString = #filePath, line: UInt = #line) -> T? {
+        XCTAssertNotNil(value, file: file, line: line)
+        return value
     }
 }

@@ -87,6 +87,15 @@ final class JITWorkspaceCoordinator: ObservableObject {
         intentResult: IntentCompileResult? = nil,
         projectId: String?
     ) async {
+        lastCompiledPrompt = prompt
+        lastIntentResult = intentResult
+
+        if let localPlan = UIWorkspaceCatalog.localPlan(for: prompt, editorContext: editorContext) {
+            lastErrorMessage = nil
+            applyPlan(sanitize(plan: localPlan), previous: activePlan)
+            return
+        }
+
         guard let projectId, !projectId.isEmpty else {
             lastErrorMessage = UIWorkspaceServiceError.missingProjectId.localizedDescription
             return
@@ -94,9 +103,6 @@ final class JITWorkspaceCoordinator: ObservableObject {
         isLoadingPlan = true
         lastErrorMessage = nil
         defer { isLoadingPlan = false }
-
-        lastCompiledPrompt = prompt
-        lastIntentResult = intentResult
 
         let request = UIWorkspacePlanRequest(
             prompt: prompt,
@@ -129,7 +135,7 @@ final class JITWorkspaceCoordinator: ObservableObject {
             return
         }
         let nextSlice = activePlan.intentSlices[nextIndex]
-        var request = UIWorkspacePlanRequest(
+        let request = UIWorkspacePlanRequest(
             prompt: lastCompiledPrompt,
             context: context,
             editorContext: editorContext,
