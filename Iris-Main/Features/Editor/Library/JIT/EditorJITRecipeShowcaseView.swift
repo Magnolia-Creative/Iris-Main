@@ -18,6 +18,7 @@ struct EditorJITRecipeShowcaseView: View {
     @State private var parameterValues: [String: EditorParameterValue] = EditorChromePreviewFixtures.seedValues(
         for: EditorChromePreviewFixtures.parameterGroups(for: .fourPlusGroups)
     )
+    @State private var selectedViewport: EditorJITShowcaseViewport = .compact
 
     var body: some View {
         VStack(spacing: 0) {
@@ -151,9 +152,7 @@ struct EditorJITRecipeShowcaseView: View {
 
     private var renderStage: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp2)) {
-            Text("Live render")
-                .typography(.body)
-                .foregroundColor(Color.ds.text)
+            renderStageHeader
 
             if viewModel.validationResult.isValid {
                 EditorJITRenderView(
@@ -173,15 +172,45 @@ struct EditorJITRecipeShowcaseView: View {
                     clipColorFilter: $clipColorFilter,
                     clipVolume: $clipVolume
                 )
-                .frame(minHeight: 520)
+                .frame(height: selectedViewport.stageHeight)
                 .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: .spacing(.sp4), style: .continuous)
                         .strokeBorder(Color.ds.border.opacity(0.35), lineWidth: 1)
                 )
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedViewport)
             } else {
                 invalidRenderPlaceholder
             }
+        }
+    }
+
+    private var renderStageHeader: some View {
+        VStack(alignment: .leading, spacing: .spacing(.sp2)) {
+            HStack {
+                Text("Live render")
+                    .typography(.body)
+                    .foregroundColor(Color.ds.text)
+
+                Spacer()
+
+                HStack(spacing: .spacing(.sp1)) {
+                    ForEach(EditorJITShowcaseViewport.allCases) { viewport in
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                selectedViewport = viewport
+                            }
+                        } label: {
+                            Text(viewport.displayTitle)
+                        }
+                        .buttonStyle(.irisChipPicker(isSelected: selectedViewport == viewport))
+                    }
+                }
+            }
+
+            Text(selectedViewport.description)
+                .typography(.bodySmall)
+                .foregroundColor(Color.ds.textMuted)
         }
     }
 
@@ -211,6 +240,36 @@ struct EditorJITRecipeShowcaseView: View {
             activeParameterGroupId = first.id
         } else {
             activeParameterGroupId = ""
+        }
+    }
+}
+
+private enum EditorJITShowcaseViewport: String, CaseIterable, Identifiable {
+    case compact
+    case large
+
+    var id: String { rawValue }
+
+    var displayTitle: String {
+        switch self {
+        case .compact: "Compact"
+        case .large: "Large"
+        }
+    }
+
+    var stageHeight: CGFloat {
+        switch self {
+        case .compact: 520
+        case .large: 760
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .compact:
+            "Compact preview keeps the timeline close to the dock."
+        case .large:
+            "Large viewport pins the dock at the bottom so actions can sprout upward from it."
         }
     }
 }
