@@ -1,6 +1,7 @@
 import XCTest
 @testable import Iris_Main
 
+@MainActor
 final class EditorBottomChromePlanTests: XCTestCase {
     func testVisibleControlsCapsAtThree() {
         let group = EditorParameterGroup(
