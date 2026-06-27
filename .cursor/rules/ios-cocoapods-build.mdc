@@ -1,0 +1,22 @@
+---
+description: Build Iris-Main through the CocoaPods workspace
+alwaysApply: true
+---
+
+# Build Iris-Main With CocoaPods
+
+`VideoLab` is integrated through CocoaPods, so CLI builds must use the generated workspace, not the Xcode project.
+
+Use this command for a compile-only simulator build:
+
+```bash
+cd "/Users/abdur-rahmanrana/Documents/Magnolia Creative/Dev/Iris-Main"
+xcodebuild build \
+  -workspace "Iris-Main.xcworkspace" \
+  -scheme "Iris-Main" \
+  -configuration Debug \
+  -destination "generic/platform=iOS Simulator" \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Do not build with `-project "Iris-Main.xcodeproj"` for normal verification. That bypasses CocoaPods integration and can fail with `no such module 'VideoLab'`.
