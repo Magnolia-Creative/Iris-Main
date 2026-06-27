@@ -14,6 +14,8 @@ struct EditorCanvasView: View {
     let renderBridge: TimelineRenderBridge
     let activeSpace: EditorSpace
     @ObservedObject var captionsFlow: CaptionsFlowController
+    let renderState: EditorJITRenderState
+    let transitionPlans: [EditorJITTransitionPlan]
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     var bottomChromeContent: AnyView? = nil
     @State private var isTimelineAddMenuOpen = false
@@ -38,6 +40,8 @@ struct EditorCanvasView: View {
         renderBridge: TimelineRenderBridge,
         activeSpace: EditorSpace,
         captionsFlow: CaptionsFlowController,
+        renderState: EditorJITRenderState,
+        transitionPlans: [EditorJITTransitionPlan] = [],
         showPlaybackAspectSettings: Binding<Bool> = .constant(false),
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         bottomChromeContent: AnyView? = nil,
@@ -50,6 +54,8 @@ struct EditorCanvasView: View {
         self.renderBridge = renderBridge
         self.activeSpace = activeSpace
         self.captionsFlow = captionsFlow
+        self.renderState = renderState
+        self.transitionPlans = transitionPlans
         self._showPlaybackAspectSettings = showPlaybackAspectSettings
         self.onAddSelection = onAddSelection
         self.bottomChromeContent = bottomChromeContent
@@ -131,7 +137,7 @@ struct EditorCanvasView: View {
         ZStack(alignment: .topLeading) {
             EditorJITRenderView(
                 state: canvasJITRenderState(presentation: presentation),
-                transitionPlans: [],
+                transitionPlans: transitionPlans,
                 timelineContext: makeTimelineContext(state: state, presentation: presentation),
                 timelineActions: makeTimelineActions(layout: layout, presentation: presentation),
                 playbackContext: makePlaybackContext(playback: playback),
@@ -162,9 +168,7 @@ struct EditorCanvasView: View {
     }
 
     private func canvasJITRenderState(presentation: JITTimelinePresentation) -> EditorJITRenderState {
-        var state = EditorJITRecipeCatalog.defaultRecipe.makeRawState()
-        state.playback.size = previewComponentSize
-        state.timeline.size = effectiveTimelineLayout(for: presentation).componentSize
+        var state = renderState
         state.chromePlan = EditorBottomChromePlan(showsDock: bottomChromeContent != nil)
         return state
     }

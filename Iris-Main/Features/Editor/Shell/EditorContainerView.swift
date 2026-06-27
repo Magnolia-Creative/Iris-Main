@@ -10,6 +10,7 @@ struct EditorContainerView: View {
     @StateObject private var captionsFlow = CaptionsFlowController()
     @StateObject private var editorPromptBarViewModel: EditorPromptBarViewModel
     @StateObject private var renderBridge = TimelineRenderBridge()
+    @StateObject private var jitRenderState = EditorJITLiveRenderState()
     @ObservedObject private var agentSessionViewModel: AgentViewModel
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
@@ -266,6 +267,8 @@ struct EditorContainerView: View {
                 renderBridge: renderBridge,
                 activeSpace: activeSpace,
                 captionsFlow: captionsFlow,
+                renderState: jitRenderState.renderState,
+                transitionPlans: jitRenderState.transitionPlans,
                 showPlaybackAspectSettings: $showPlaybackAspectSettings,
                 onAddSelection: handleEditorAddSelection(kind:source:),
                 bottomChromeContent: isAgentCutReviewActive ? nil : AnyView(jitBottomChromeContent),
@@ -689,5 +692,34 @@ private extension EditorPromptBarPhase {
         case .error(let message):
             return .error(message)
         }
+    }
+}
+
+@MainActor
+final class EditorJITLiveRenderState: ObservableObject {
+    static let defaultRenderState: EditorJITRenderState = {
+        let (state, _) = EditorJITRenderValidator.validate(EditorJITRecipeCatalog.defaultRecipe.makeRawState())
+        return state
+    }()
+
+    @Published private(set) var renderState: EditorJITRenderState
+    @Published private(set) var previousRenderState: EditorJITRenderState?
+    @Published private(set) var transitionPlans: [EditorJITTransitionPlan] = []
+
+    init(renderState: EditorJITRenderState? = nil) {
+        let renderState = renderState ?? EditorJITLiveRenderState.defaultRenderState
+        let (validated, _) = EditorJITRenderValidator.validate(renderState)
+        self.renderState = validated
+    }
+
+    func apply(_ nextState: EditorJITRenderState) -> Bool {
+        let previous = renderState
+        let (validated, validation) = EditorJITRenderValidator.validate(nextState)
+        guard validation.isValid else { return false }
+
+        previousRenderState = previous
+        transitionPlans = EditorJITRenderTransitionCoordinator.plan(from: previous, to: validated)
+        renderState = validated
+        return true
     }
 }
