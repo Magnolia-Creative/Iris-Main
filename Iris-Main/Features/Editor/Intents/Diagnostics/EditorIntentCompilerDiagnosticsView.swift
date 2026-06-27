@@ -36,7 +36,7 @@ struct EditorIntentCompilerDiagnosticsView: View {
                 .padding(.vertical, .spacing(.sp5))
             }
         }
-        .navigationTitle("UI Intent Compiler")
+        .navigationTitle("Intent Compiler Diagnostics")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: viewModel.selectedContextId) { _, _ in
             viewModel.resetToSelectedContext()
@@ -50,8 +50,6 @@ struct EditorIntentCompilerDiagnosticsView: View {
         }
     }
 }
-
-typealias UIIntentDemoView = EditorIntentCompilerDiagnosticsView
 
 private extension EditorIntentCompilerDiagnosticsView {
     var header: some View {
