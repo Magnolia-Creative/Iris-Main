@@ -16,6 +16,16 @@ struct EditorCanvasView: View {
     @ObservedObject var captionsFlow: CaptionsFlowController
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     @State private var isTimelineAddMenuOpen = false
+    @State private var jitSelectedSegmentId: String?
+    @State private var activeParameterGroupId = EditorChromePreviewFixtures.colorGroup.id
+    @State private var parameterValues: [String: EditorParameterValue] = EditorChromePreviewFixtures.seedValues(
+        for: EditorChromePreviewFixtures.parameterGroups(for: .fourPlusGroups)
+    )
+    @State private var activeNavItemId = EditorSpace.edit.rawValue
+    @State private var promptPhase: IntelligencePromptPhase = .idle
+    @State private var promptDraft = ""
+    @State private var clipColorFilter = ClipColorFilter.neutral
+    @State private var clipVolume = ClipVolume.neutral
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
     var promptActionPreview: TimelinePromptActionPreview? = nil
@@ -93,7 +103,7 @@ struct EditorCanvasView: View {
         let state = controller.state
         let playback = resolvedPlaybackController()
 
-        legacyCanvasBody(state: state, playback: playback)
+        jitCanvasBody(state: state, playback: playback)
         .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showPlaybackAspectSettings)
         .onChange(of: activeSpace) { _, newSpace in
@@ -108,6 +118,55 @@ struct EditorCanvasView: View {
         playbackController ?? PlaybackController(
             statePublisher: controller.$state.eraseToAnyPublisher(),
             actions: controller
+        )
+    }
+
+    @ViewBuilder
+    private func jitCanvasBody(state: TimelineState, playback: PlaybackController) -> some View {
+        let presentation = JITTimelinePresentation.full
+        let layout = effectiveTimelineLayout(for: presentation)
+        ZStack(alignment: .topLeading) {
+            EditorJITRenderView(
+                state: canvasJITRenderState(presentation: presentation),
+                transitionPlans: [],
+                timelineContext: makeTimelineContext(state: state, presentation: presentation),
+                timelineActions: makeTimelineActions(layout: layout, presentation: presentation),
+                playbackContext: makePlaybackContext(playback: playback),
+                playbackActions: makePlaybackActions(playback: playback),
+                renderEngine: renderBridge.engine,
+                currentTimeUs: controller.binding(\.currentTimeAtCenter),
+                timelinePixelsPerSecond: controller.binding(\.pixelsPerSecond),
+                selectedSegmentId: $jitSelectedSegmentId,
+                isAddMenuOpen: $isTimelineAddMenuOpen,
+                isPlaying: playbackPlayingBinding(playback: playback),
+                showAspectSettings: $showPlaybackAspectSettings,
+                activeParameterGroupId: $activeParameterGroupId,
+                parameterValues: $parameterValues,
+                activeNavItemId: $activeNavItemId,
+                promptPhase: $promptPhase,
+                promptDraft: $promptDraft,
+                clipColorFilter: $clipColorFilter,
+                clipVolume: $clipVolume
+            )
+
+            aspectSettingsOverlayIfNeeded
+        }
+    }
+
+    private func canvasJITRenderState(presentation: JITTimelinePresentation) -> EditorJITRenderState {
+        var state = EditorJITRecipeCatalog.defaultRecipe.makeRawState()
+        state.playback.size = previewComponentSize
+        state.timeline.size = effectiveTimelineLayout(for: presentation).componentSize
+        state.chromePlan = EditorBottomChromePlan(showsDock: false)
+        return state
+    }
+
+    private func playbackPlayingBinding(playback: PlaybackController) -> Binding<Bool> {
+        Binding(
+            get: { playback.isPlaying() },
+            set: { isPlaying in
+                isPlaying ? playback.play() : playback.pause()
+            }
         )
     }
 
