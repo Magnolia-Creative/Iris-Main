@@ -201,6 +201,104 @@ struct EditorCanvasView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func makeTimelineContext(
+        state: TimelineState,
+        presentation: JITTimelinePresentation
+    ) -> EditorTimelineContext {
+        let layout = effectiveTimelineLayout(for: presentation)
+        let displayTracks = displayTracks(state: state, presentation: presentation)
+        let clipsByTrackId = clipsByTrackId(state: state, presentation: presentation)
+        let canAddToTimeline = layout == .expanded && allowsTimelineAdditions
+        let highlight = captionsFlow.highlightRangeUs(playheadUs: state.currentTimeAtCenter)
+        let playheadTint = captionsFlow.playheadUsesAccentTint ? Color.ds.accentFg : Color.ds.text
+
+        return EditorTimelineContext(
+            tracks: displayTracks,
+            clipsByTrackId: clipsByTrackId,
+            mediaById: state.mediaById,
+            captionGroups: state.captionGroups,
+            captionCues: state.captionCues,
+            layoutSize: layout.componentSize,
+            pixelsPerSecond: state.pixelsPerSecond,
+            timelineDurationUs: state.calculatedTimelineDurationUs,
+            scrollableDurationUs: state.scrollableDurationUs,
+            playbackState: state.playbackState,
+            reviewFocusedClipIds: reviewFocusedClipIds,
+            isReviewInteractionDisabled: isReviewInteractionDisabled,
+            captionHighlightRangeUs: highlight,
+            playheadTint: playheadTint,
+            showAddButton: canAddToTimeline,
+            currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),
+            scrollTargetTimeUs: controller.binding(\.scrollTargetTimeUs),
+            selectedClipId: controller.binding(\.selectedClipId),
+            selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
+            isAddMenuOpen: $isTimelineAddMenuOpen
+        )
+    }
+
+    private func makeTimelineActions(
+        layout: TimelineLayout,
+        presentation: JITTimelinePresentation
+    ) -> EditorTimelineActions {
+        let canAddToTimeline = layout == .expanded && allowsTimelineAdditions
+        let addSelection: (TrackKind, ImportSource) -> Void
+        if allowsTimelineAdditions {
+            addSelection = onAddSelection ?? controller.handleAddSelection(kind:source:)
+        } else {
+            addSelection = { _, _ in }
+        }
+
+        return EditorTimelineActions(
+            onAddSelection: canAddToTimeline ? addSelection : nil,
+            onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
+            onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
+            onDropImportedSegmentAtTime: activeSpace == .importMedia ? { item, timeUs in
+                controller.insertClipSegment(
+                    mediaId: item.mediaId,
+                    sourceRange: item.sourceRange,
+                    at: timeUs
+                )
+            } : nil,
+            onPreviewScrub: { timeUs, velocity in
+                renderBridge.handleScroll(timeUs: timeUs, velocity: velocity)
+            },
+            onCaptionCueSelected: { cueId in
+                controller.clearSelection()
+                captionsFlow.openStyleEditor(forCueId: cueId)
+            },
+            onClipSelected: {
+                captionsFlow.cancelStyleEditing()
+            }
+        )
+    }
+
+    private func makePlaybackContext(playback: PlaybackController) -> EditorPlaybackContext {
+        EditorPlaybackContext(
+            isPlaying: playback.isPlaying(),
+            canUndo: controller.canUndo,
+            canRedo: controller.canRedo,
+            previewAspect: controller.state.effectiveOutputAspect?.aspectCGFloat,
+            viewerSize: previewComponentSize,
+            showAspectSettings: $showPlaybackAspectSettings
+        )
+    }
+
+    private func makePlaybackActions(playback: PlaybackController) -> EditorPlaybackActions {
+        EditorPlaybackActions(
+            onPlay: { playback.play() },
+            onPause: { playback.pause() },
+            onJumpToStart: { playback.jumpToStart() },
+            onJumpToEnd: { playback.jumpToEnd() },
+            onUndo: { controller.undoLastActionGroup() },
+            onRedo: { controller.redoLastActionGroup() },
+            onToggleAspectSettings: {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    showPlaybackAspectSettings.toggle()
+                }
+            }
+        )
+    }
+
     private func timelineView(state: TimelineState, presentation: JITTimelinePresentation) -> some View {
         let layout = effectiveTimelineLayout(for: presentation)
         let canAddToTimeline = layout == .expanded && allowsTimelineAdditions
@@ -302,4 +400,21 @@ struct EditorCanvasView: View {
         }
     }
 
+}
+
+private extension TimelineLayout {
+    var componentSize: EditorComponentSize {
+        self == .expanded ? .expanded : .compressed
+    }
+}
+
+private extension EditorCanvasView {
+    var previewComponentSize: EditorComponentSize {
+        switch activeSpace {
+        case .importMedia:
+            return .compressed
+        case .edit, .export:
+            return .standard
+        }
+    }
 }
