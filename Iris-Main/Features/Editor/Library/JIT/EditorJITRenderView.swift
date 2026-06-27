@@ -9,6 +9,8 @@ struct EditorJITRenderView: View {
     var playbackActions: EditorPlaybackActions = .noop
     var renderEngine: VideoLabRenderEngine?
     var dockContentOverride: AnyView?
+    var onChromeAction: ((EditorChromeActionItem) -> Void)?
+    var onChromeDismiss: (() -> Void)?
 
     @Binding var currentTimeUs: Int64
     @Binding var timelinePixelsPerSecond: CGFloat
@@ -199,8 +201,20 @@ struct EditorJITRenderView: View {
             plan: effectiveChromePlan,
             activeParameterGroupId: $activeParameterGroupId,
             parameterValues: $parameterValues,
-            onAction: handleChromeAction,
-            onDismiss: { clearSelection() },
+            onAction: { action in
+                if let onChromeAction {
+                    onChromeAction(action)
+                } else {
+                    handleChromeAction(action)
+                }
+            },
+            onDismiss: {
+                if let onChromeDismiss {
+                    onChromeDismiss()
+                } else {
+                    clearSelection()
+                }
+            },
             dock: { dockContent }
         )
         .padding(.horizontal, .spacing(.sp3))

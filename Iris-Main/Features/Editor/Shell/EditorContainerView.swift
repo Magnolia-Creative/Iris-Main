@@ -97,14 +97,28 @@ struct EditorContainerView: View {
         return controller.clipVolume(for: clipId)
     }
 
+    private var jitBottomChromeContent: some View {
+        jitIntelligenceDock
+        .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
+        .transition(.opacity)
+        .padding(.bottom, .spacing(.sp2))
+    }
+
+    private var showsEditorTopChromeContent: Bool {
+        activeSpace != .edit
+            || controller.state.selectedClipId != nil
+            || captionsFlow.isCaptionsChromeActive
+            || isPromptActionReviewActive
+    }
+
     @ViewBuilder
-    private var editorTabBarChrome: some View {
+    private var editorTopChromeContent: some View {
         EditorGlassEffectContainer(spacing: 20) {
             ZStack(alignment: .bottom) {
                 EditorTabBar(
                     activeSpace: $activeSpace,
                     isClipSelected: controller.state.selectedClipId != nil,
-                    promptBarIsTakingOver: editorPromptBarViewModel.isTakingOver,
+                    promptBarIsTakingOver: false,
                     selectedClipColorFilter: selectedClipColorFilter,
                     onSplitClip: {
                         guard let clipId = controller.state.selectedClipId else { return }
@@ -145,16 +159,12 @@ struct EditorContainerView: View {
                     isPromptActionReviewActive: isPromptActionReviewActive,
                     promptActionReviewReplacement: promptActionReviewReplacement(),
                     promptReviewReplacementSlotIdentity: promptReviewReplacementSlotIdentity,
-                    bottomReservedSpace: EditorBottomNavBar.totalHeight,
+                    bottomReservedSpace: 0,
                     chromeMaxWidth: activeSpace == .edit
                         ? EditorBottomNavBar.containerWidth + .spacing(.sp4) * 2
                         : nil,
-                    promptBar: { isClipSelected, micNamespace in
-                        EditorPromptBarView(
-                            viewModel: editorPromptBarViewModel,
-                            isClipSelected: isClipSelected,
-                            micNamespace: micNamespace
-                        )
+                    promptBar: { _, _ in
+                        EmptyView()
                     },
                     captionsEditContent: captionsFlow.isCaptionsChromeActive
                         ? AnyView(CaptionsChromeView(flow: captionsFlow, controller: controller))
@@ -184,13 +194,66 @@ struct EditorContainerView: View {
                 }
                 .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
                 .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
-
-                EditorBottomNavBar(activeSpace: $activeSpace)
             }
         }
-        .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
-        .transition(.opacity)
-        .padding(.bottom, .spacing(.sp2))
+    }
+
+    private var jitIntelligenceDock: some View {
+        IntelligenceComponent(
+            navigationItems: IntelligenceComponent.defaultShowcaseItems,
+            activeNavigationItemId: intelligenceActiveNavigationItemId,
+            promptPhase: intelligencePromptPhase,
+            promptDraft: $editorPromptBarViewModel.promptDraft,
+            liveTranscript: editorPromptBarViewModel.liveTranscript,
+            voiceLevel: editorPromptBarViewModel.voiceLevel,
+            onIntelligenceTap: {
+                editorPromptBarViewModel.openTextPrompt()
+            },
+            onVoiceHoldStart: {
+                Task { await editorPromptBarViewModel.beginVoicePrompt() }
+            },
+            onVoiceHoldEnd: {
+                Task { await editorPromptBarViewModel.endVoicePrompt() }
+            },
+            onSubmitText: {
+                Task { await editorPromptBarViewModel.submitTextPrompt() }
+            },
+            onCancelText: {
+                editorPromptBarViewModel.cancelTextPrompt()
+            },
+            onCancelProcessing: {
+                editorPromptBarViewModel.cancelProcessing()
+            }
+        )
+        .frame(width: IntelligenceComponent.containerWidth())
+    }
+
+    private var intelligenceActiveNavigationItemId: Binding<String> {
+        Binding(
+            get: { activeSpace.rawValue },
+            set: { itemId in
+                guard let nextSpace = EditorSpace(rawValue: itemId) else { return }
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    activeSpace = nextSpace
+                }
+            }
+        )
+    }
+
+    private var intelligencePromptPhase: Binding<IntelligencePromptPhase> {
+        Binding(
+            get: { editorPromptBarViewModel.phase.intelligencePhase },
+            set: { phase in
+                switch phase {
+                case .typing:
+                    editorPromptBarViewModel.openTextPrompt()
+                case .idle:
+                    editorPromptBarViewModel.cancelTextPrompt()
+                case .recording, .submitting, .clarification, .error:
+                    break
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -205,6 +268,7 @@ struct EditorContainerView: View {
                 captionsFlow: captionsFlow,
                 showPlaybackAspectSettings: $showPlaybackAspectSettings,
                 onAddSelection: handleEditorAddSelection(kind:source:),
+                bottomChromeContent: isAgentCutReviewActive ? nil : AnyView(jitBottomChromeContent),
                 reviewFocusedClipIds: reviewFocusedClipIds,
                 isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
                 promptActionPreview: controller.promptActionPreview
@@ -236,8 +300,6 @@ struct EditorContainerView: View {
                     .transition(.opacity)
                     .padding(.horizontal, .spacing(.sp3))
                     .padding(.bottom, .spacing(.sp3))
-                } else {
-                    editorTabBarChrome
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isAgentCutReviewActive)
@@ -607,6 +669,25 @@ private struct EditorClipImportSheet: View {
         )
         .task {
             viewModel.updateProcessingMode(.embeddingsAndAgentPreprocessing)
+        }
+    }
+}
+
+private extension EditorPromptBarPhase {
+    var intelligencePhase: IntelligencePromptPhase {
+        switch self {
+        case .idle:
+            return .idle
+        case .recording:
+            return .recording
+        case .typing:
+            return .typing
+        case .submitting(let status):
+            return .submitting(status)
+        case .clarification(let message):
+            return .clarification(message)
+        case .error(let message):
+            return .error(message)
         }
     }
 }

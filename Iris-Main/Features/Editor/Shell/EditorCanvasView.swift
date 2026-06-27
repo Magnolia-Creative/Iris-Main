@@ -15,6 +15,7 @@ struct EditorCanvasView: View {
     let activeSpace: EditorSpace
     @ObservedObject var captionsFlow: CaptionsFlowController
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
+    var bottomChromeContent: AnyView? = nil
     @State private var isTimelineAddMenuOpen = false
     @State private var jitSelectedSegmentId: String?
     @State private var activeParameterGroupId = EditorChromePreviewFixtures.colorGroup.id
@@ -39,6 +40,7 @@ struct EditorCanvasView: View {
         captionsFlow: CaptionsFlowController,
         showPlaybackAspectSettings: Binding<Bool> = .constant(false),
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
+        bottomChromeContent: AnyView? = nil,
         reviewFocusedClipIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
         promptActionPreview: TimelinePromptActionPreview? = nil
@@ -50,6 +52,7 @@ struct EditorCanvasView: View {
         self.captionsFlow = captionsFlow
         self._showPlaybackAspectSettings = showPlaybackAspectSettings
         self.onAddSelection = onAddSelection
+        self.bottomChromeContent = bottomChromeContent
         self.reviewFocusedClipIds = reviewFocusedClipIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
         self.promptActionPreview = promptActionPreview
@@ -134,6 +137,11 @@ struct EditorCanvasView: View {
                 playbackContext: makePlaybackContext(playback: playback),
                 playbackActions: makePlaybackActions(playback: playback),
                 renderEngine: renderBridge.engine,
+                dockContentOverride: bottomChromeContent,
+                onChromeAction: handleJITChromeAction(_:),
+                onChromeDismiss: {
+                    controller.clearSelection()
+                },
                 currentTimeUs: controller.binding(\.currentTimeAtCenter),
                 timelinePixelsPerSecond: controller.binding(\.pixelsPerSecond),
                 selectedSegmentId: $jitSelectedSegmentId,
@@ -157,7 +165,7 @@ struct EditorCanvasView: View {
         var state = EditorJITRecipeCatalog.defaultRecipe.makeRawState()
         state.playback.size = previewComponentSize
         state.timeline.size = effectiveTimelineLayout(for: presentation).componentSize
-        state.chromePlan = EditorBottomChromePlan(showsDock: false)
+        state.chromePlan = EditorBottomChromePlan(showsDock: bottomChromeContent != nil)
         return state
     }
 
@@ -340,6 +348,38 @@ struct EditorCanvasView: View {
             viewerSize: previewComponentSize,
             showAspectSettings: $showPlaybackAspectSettings
         )
+    }
+
+    private func handleJITChromeAction(_ action: EditorChromeActionItem) {
+        guard let clipId = controller.state.selectedClipId else { return }
+        switch action.id {
+        case "delete":
+            controller.applyActions([
+                Action.removeClip(timelineId: controller.state.timelineId, clipId: clipId)
+            ])
+        case "split":
+            controller.applyActions([
+                Action.splitClip(
+                    timelineId: controller.state.timelineId,
+                    clipId: clipId,
+                    atTimeUs: controller.state.currentTimeAtCenter
+                )
+            ])
+        case "color":
+            let current = controller.clipColorFilter(for: clipId)
+            controller.setClipColorFilter(
+                clipId: clipId,
+                filter: current == .neutral ? ClipColorFilter(temperature: 0.25) : .neutral
+            )
+        case "volume":
+            let current = controller.clipVolume(for: clipId)
+            controller.setClipVolume(
+                clipId: clipId,
+                volume: current == .neutral ? ClipVolume(gain: 1.25) : .neutral
+            )
+        default:
+            break
+        }
     }
 
     private func makePlaybackActions(playback: PlaybackController) -> EditorPlaybackActions {
