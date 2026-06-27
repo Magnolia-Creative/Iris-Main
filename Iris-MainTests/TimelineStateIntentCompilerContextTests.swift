@@ -45,21 +45,6 @@ struct TimelineStateIntentCompilerContextTests {
         #expect(clipPayload?["fullText"] == nil)
     }
 
-    @Test func backendProjectIdForUIPlanningUsesBackendIdNotLocalProjectUUID() {
-        var state = TimelineState(timelineId: "tid-1")
-        state.timeline = Timeline(
-            timelineId: "tid-1",
-            projectId: "AD330933-3098-4CE3-BD88-0CA3B272B2E3"
-        )
-        state.backendProjectId = "163"
-
-        #expect(state.backendProjectIdForUIPlanning == "163")
-        #expect(state.backendProjectIdForUIPlanning != state.timeline?.projectId)
-
-        state.backendProjectId = nil
-        #expect(state.backendProjectIdForUIPlanning == nil)
-    }
-
     @Test func needsIntentTranscriptHydrationPrompt_detectsQuotedAndSilenceSignals() {
         let state = TimelineState(timelineId: "tid")
         #expect(state.needsIntentTranscriptHydrationPrompt("trim the silence") == true)

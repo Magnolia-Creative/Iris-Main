@@ -10,11 +10,9 @@ struct EditorContainerView: View {
     @StateObject private var captionsFlow = CaptionsFlowController()
     @StateObject private var editorPromptBarViewModel: EditorPromptBarViewModel
     @StateObject private var renderBridge = TimelineRenderBridge()
-    @StateObject private var jitWorkspaceCoordinator: JITWorkspaceCoordinator
     @ObservedObject private var agentSessionViewModel: AgentViewModel
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
-    @State private var workspaceParameterValues: [String: Double] = [:]
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var editorImportRequest: EditorImportRequest?
     @State private var showPlaybackAspectSettings = false
@@ -32,12 +30,7 @@ struct EditorContainerView: View {
         self.initialImportSeed = initialImportSeed
         self.onReturnHome = onReturnHome
         let timelineController = TimelineController(timelineId: timelineId)
-        let workspaceCoordinator = JITWorkspaceCoordinator(
-            activeSpace: .edit,
-            hasSelectedClip: false
-        )
         self._controller = StateObject(wrappedValue: timelineController)
-        self._jitWorkspaceCoordinator = StateObject(wrappedValue: workspaceCoordinator)
         self._editorPromptBarViewModel = StateObject(
             wrappedValue: EditorPromptBarViewModel(
                 contextProvider: {
@@ -55,20 +48,9 @@ struct EditorContainerView: View {
                 attemptStartPromptActionReview: { actions, prompt in
                     timelineController.startPromptActionReview(actions: actions, prompt: prompt)
                 },
-                onIntentCompiled: { prompt, result in
-                    await workspaceCoordinator.activateIntentWorkspace(
-                        prompt: prompt,
-                        context: timelineController.state.makeIntentCompilerContextForUIPlanning(),
-                        editorContext: timelineController.state.makeUIEditorContext(
-                            activeSpace: .edit,
-                            isReviewActive: false,
-                            isPromptActionReviewActive: timelineController.promptActionReview != nil,
-                            isCaptionsChromeActive: false
-                        ),
-                        intentResult: result,
-                        projectId: timelineController.state.backendProjectIdForUIPlanning
-                    )
-                    return workspaceCoordinator.usesIntentWorkspace
+                onIntentCompiled: { _, _ in
+                    // Temporary no-op while the old Workspace planner is removed.
+                    false
                 }
             )
         )
@@ -117,15 +99,6 @@ struct EditorContainerView: View {
 
     @ViewBuilder
     private var editorTabBarChrome: some View {
-        if jitWorkspaceCoordinator.usesIntentWorkspace {
-            jitIntentToolbarChrome
-        } else {
-            defaultEditorTabBarChrome
-        }
-    }
-
-    @ViewBuilder
-    private var defaultEditorTabBarChrome: some View {
         EditorGlassEffectContainer(spacing: 20) {
             ZStack(alignment: .bottom) {
                 EditorTabBar(
@@ -212,63 +185,12 @@ struct EditorContainerView: View {
                 .frame(maxHeight: canvasExpandsVertically ? nil : .infinity)
                 .padding(.horizontal, activeSpace == .edit ? .spacing(.sp4) : .spacing(.sp3))
 
-                if jitWorkspaceCoordinator.showsBottomNavigation {
-                    EditorBottomNavBar(activeSpace: $activeSpace)
-                }
+                EditorBottomNavBar(activeSpace: $activeSpace)
             }
         }
         .matchedGeometryEffect(id: "editor-bottom-shell", in: bottomChromeNamespace)
         .transition(.opacity)
         .padding(.bottom, .spacing(.sp2))
-    }
-
-    @ViewBuilder
-    private var jitIntentToolbarChrome: some View {
-        let showsBottomNav = jitWorkspaceCoordinator.showsBottomNavigation
-        EditorGlassEffectContainer(spacing: 20) {
-            ZStack(alignment: .bottom) {
-                VStack(spacing: .spacing(.sp2)) {
-                    if let parameterPlacement = jitWorkspaceCoordinator.activePlan.toolbar.widgets.first(
-                        where: { $0.widgetId == "toolbar.parameterControls" }
-                    ) {
-                        JITWorkspaceParameterControlsView(
-                            placement: parameterPlacement,
-                            values: workspaceParameterValues,
-                            onValueChange: { parameterId, value in
-                                workspaceParameterValues[parameterId] = value
-                                applyWorkspaceParameter(parameterId: parameterId, value: value)
-                            }
-                        )
-                    }
-                    if showsJITReviewActions {
-                        JITWorkspaceReviewActionsView(
-                            onApply: { handleJITWorkspaceApply() },
-                            onCancel: { handleJITWorkspaceCancel() },
-                            onRefine: { handleJITWorkspaceRefine() },
-                            showsNextSlice: hasNextIntentSlice
-                        )
-                    }
-                }
-                .padding(.horizontal, .spacing(.sp3))
-                .padding(.top, .spacing(.sp3))
-                .padding(.bottom, .spacing(.sp3) + (showsBottomNav ? EditorBottomNavBar.totalHeight : 0))
-
-                if showsBottomNav {
-                    EditorBottomNavBar(activeSpace: $activeSpace)
-                }
-            }
-        }
-        .padding(.bottom, .spacing(.sp2))
-    }
-
-    private var showsJITReviewActions: Bool {
-        isPromptActionReviewActive
-            || hasNextIntentSlice
-            || jitWorkspaceCoordinator.activePlan.toolbar.widgets.contains { $0.widgetId == "toolbar.reviewActions" }
-    }
-
-    private var hasNextIntentSlice: Bool {
-        jitWorkspaceCoordinator.activePlan.currentSliceIndex + 1 < jitWorkspaceCoordinator.activePlan.intentSlices.count
     }
 
     var body: some View {
@@ -285,15 +207,7 @@ struct EditorContainerView: View {
                 onAddSelection: handleEditorAddSelection(kind:source:),
                 reviewFocusedClipIds: reviewFocusedClipIds,
                 isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
-                promptActionPreview: controller.promptActionPreview,
-                jitTimelinePresentation: jitWorkspaceCoordinator.timelinePresentation(
-                    for: jitWorkspaceCoordinator.activePlan
-                ),
-                usesJITWorkspaceLayout: jitWorkspaceCoordinator.usesIntentWorkspace,
-                jitWorkspacePlan: jitWorkspaceCoordinator.usesIntentWorkspace
-                    ? jitWorkspaceCoordinator.activePlan
-                    : nil,
-                jitTransitionPlans: jitWorkspaceCoordinator.transitionPlans
+                promptActionPreview: controller.promptActionPreview
             )
             .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
@@ -412,22 +326,6 @@ struct EditorContainerView: View {
             } else {
                 controller.finishCutReview()
             }
-        }
-        .onChange(of: activeSpace) { _, newSpace in
-            jitWorkspaceCoordinator.syncDefaultWorkspace(
-                activeSpace: newSpace,
-                hasSelectedClip: controller.state.selectedClipId != nil
-            )
-        }
-        .onChange(of: controller.state.selectedClipId) { _, _ in
-            guard !jitWorkspaceCoordinator.usesIntentWorkspace else { return }
-            jitWorkspaceCoordinator.syncDefaultWorkspace(
-                activeSpace: activeSpace,
-                hasSelectedClip: controller.state.selectedClipId != nil
-            )
-        }
-        .onChange(of: jitWorkspaceCoordinator.activePlan.workspaceId) { _, _ in
-            seedWorkspaceParameterValues(from: jitWorkspaceCoordinator.activePlan)
         }
         .onChange(of: activeSpace) { oldSpace, newSpace in
             if oldSpace == .edit, newSpace != .edit {
@@ -660,104 +558,6 @@ struct EditorContainerView: View {
 
         controller.generateThumbnailStrips(for: media)
         controller.syncSemanticIndexForImportedMedia()
-    }
-
-    private func seedWorkspaceParameterValues(from plan: UIWorkspacePlan) {
-        var values: [String: Double] = workspaceParameterValues
-        for widget in plan.toolbar.widgets where widget.widgetId == "toolbar.parameterControls" {
-            for control in widget.controls {
-                if values[control.parameterId] == nil {
-                    values[control.parameterId] = control.defaultValue ?? 0
-                }
-            }
-        }
-        workspaceParameterValues = values
-    }
-
-    private func applyWorkspaceParameter(parameterId: String, value: Double) {
-        guard let clipId = controller.state.selectedClipId else { return }
-        switch parameterId {
-        case "volumeGain":
-            controller.setClipVolume(clipId: clipId, volume: ClipVolume(gain: Float(value)))
-        case "temperature":
-            var filter = controller.clipColorFilter(for: clipId)
-            filter.temperature = Float(value)
-            controller.setClipColorFilter(clipId: clipId, filter: filter)
-        case "saturation", "contrast", "exposure", "highlights", "shadows":
-            var filter = controller.clipColorFilter(for: clipId)
-            applyColorPatch(parameterId: parameterId, value: value, on: &filter)
-            controller.setClipColorFilter(clipId: clipId, filter: filter)
-        case "vintageIntensity":
-            var filter = controller.clipColorFilter(for: clipId)
-            let scale = Float(value)
-            filter.temperature = 0.25 * scale
-            filter.saturation = -0.18 * scale
-            filter.brightness = -0.04 * scale
-            controller.setClipColorFilter(clipId: clipId, filter: filter)
-        default:
-            break
-        }
-    }
-
-    private func applyColorPatch(parameterId: String, value: Double, on filter: inout ClipColorFilter) {
-        let floatValue = Float(value)
-        switch parameterId {
-        case "saturation": filter.saturation = floatValue
-        case "contrast": filter.contrast = floatValue
-        case "exposure": filter.exposure = floatValue
-        case "highlights": filter.highlights = floatValue
-        case "shadows": filter.shadows = floatValue
-        default:
-            break
-        }
-    }
-
-    private func handleJITWorkspaceApply() {
-        if hasNextIntentSlice {
-            Task {
-                await jitWorkspaceCoordinator.advanceToNextSlice(
-                    context: controller.state.makeIntentCompilerContextForUIPlanning(),
-                    editorContext: controller.state.makeUIEditorContext(
-                        activeSpace: activeSpace,
-                        isReviewActive: isAgentCutReviewActive,
-                        isPromptActionReviewActive: isPromptActionReviewActive,
-                        isCaptionsChromeActive: captionsFlow.isCaptionsChromeActive
-                    ),
-                    projectId: controller.state.backendProjectIdForUIPlanning,
-                    activeSpace: activeSpace,
-                    hasSelectedClip: controller.state.selectedClipId != nil
-                )
-            }
-            return
-        }
-        if isPromptActionReviewActive {
-            controller.approveCurrentPromptAction()
-        }
-        jitWorkspaceCoordinator.completeIntentFlow(
-            activeSpace: activeSpace,
-            hasSelectedClip: controller.state.selectedClipId != nil
-        )
-    }
-
-    private func handleJITWorkspaceCancel() {
-        if isPromptActionReviewActive {
-            _ = controller.discardPromptActionReviewReturningPrompt()
-        }
-        jitWorkspaceCoordinator.restoreDefaultWorkspace(
-            activeSpace: activeSpace,
-            hasSelectedClip: controller.state.selectedClipId != nil
-        )
-    }
-
-    private func handleJITWorkspaceRefine() {
-        let original = controller.discardPromptActionReviewReturningPrompt()
-            ?? jitWorkspaceCoordinator.lastCompiledPrompt
-        let draft = original.isEmpty ? "" : "\(original)\n"
-        editorPromptBarViewModel.openRepromptDraft(draft)
-        jitWorkspaceCoordinator.restoreDefaultWorkspace(
-            activeSpace: activeSpace,
-            hasSelectedClip: controller.state.selectedClipId != nil
-        )
     }
 
     private func submitCutReviewReprompt() {

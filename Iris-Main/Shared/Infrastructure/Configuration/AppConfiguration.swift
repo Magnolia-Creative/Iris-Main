@@ -121,13 +121,6 @@ enum AppConfiguration {
             .appending(path: "transcript-search")
     }
 
-    static func projectUIWorkspacePlanEndpoint(projectID: String) -> URL {
-        backendBaseURL
-            .appending(path: "projects")
-            .appending(path: projectID)
-            .appending(path: "ui-workspace-plan")
-    }
-
     static func agentWebSocketEndpoint(sessionID: String, basedOn baseURL: URL = backendBaseURL) -> URL? {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             return nil

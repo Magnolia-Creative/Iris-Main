@@ -1,6 +1,13 @@
 import SwiftUI
 internal import Combine
 
+private enum JITTimelinePresentation {
+    case full
+    case primaryTrackOnly
+    case focusedClipStrip
+    case hidden
+}
+
 struct EditorCanvasView: View {
     @ObservedObject var controller: TimelineController
     let playbackController: PlaybackController?
@@ -12,10 +19,6 @@ struct EditorCanvasView: View {
     var reviewFocusedClipIds: Set<String> = []
     var isReviewInteractionDisabled = false
     var promptActionPreview: TimelinePromptActionPreview? = nil
-    var jitTimelinePresentation: JITTimelinePresentation = .full
-    var usesJITWorkspaceLayout = false
-    var jitWorkspacePlan: UIWorkspacePlan?
-    var jitTransitionPlans: [JITWorkspaceTransitionPlan] = []
     @Binding var showPlaybackAspectSettings: Bool
 
     init(
@@ -28,11 +31,7 @@ struct EditorCanvasView: View {
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         reviewFocusedClipIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
-        promptActionPreview: TimelinePromptActionPreview? = nil,
-        jitTimelinePresentation: JITTimelinePresentation = .full,
-        usesJITWorkspaceLayout: Bool = false,
-        jitWorkspacePlan: UIWorkspacePlan? = nil,
-        jitTransitionPlans: [JITWorkspaceTransitionPlan] = []
+        promptActionPreview: TimelinePromptActionPreview? = nil
     ) {
         self.controller = controller
         self.playbackController = playbackController
@@ -44,10 +43,6 @@ struct EditorCanvasView: View {
         self.reviewFocusedClipIds = reviewFocusedClipIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
         self.promptActionPreview = promptActionPreview
-        self.jitTimelinePresentation = jitTimelinePresentation
-        self.usesJITWorkspaceLayout = usesJITWorkspaceLayout
-        self.jitWorkspacePlan = jitWorkspacePlan
-        self.jitTransitionPlans = jitTransitionPlans
     }
 
     private var showsPlaybackControls: Bool {
@@ -58,15 +53,7 @@ struct EditorCanvasView: View {
         activeSpace == .edit || activeSpace == .export
     }
 
-    private var usesLargeJITPreview: Bool {
-        guard usesJITWorkspaceLayout, let plan = jitWorkspacePlan else { return false }
-        return widgetIds(in: plan.layout).contains("playback.beforeAfterViewer")
-    }
-
     private var effectivePreviewHeight: CGFloat {
-        if usesLargeJITPreview {
-            return 260
-        }
         switch activeSpace {
         case .importMedia:
             return 140
@@ -95,7 +82,7 @@ struct EditorCanvasView: View {
     }
 
     private var allowsTimelineAdditions: Bool {
-        activeSpace == .edit && !isReviewInteractionDisabled && jitTimelinePresentation == .full
+        activeSpace == .edit && !isReviewInteractionDisabled
     }
 
     private var rulerVerticalOffset: CGFloat {
@@ -106,19 +93,13 @@ struct EditorCanvasView: View {
         let state = controller.state
         let playback = resolvedPlaybackController()
 
-        Group {
-            if usesJITWorkspaceLayout, let plan = jitWorkspacePlan {
-                jitCanvasBody(state: state, playback: playback, plan: plan)
-            } else {
-                legacyCanvasBody(state: state, playback: playback)
-            }
-        }
+        legacyCanvasBody(state: state, playback: playback)
         .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showPlaybackAspectSettings)
         .onChange(of: activeSpace) { _, newSpace in
             EditorDebugTrace.log(
                 "EditorCanvasView",
-                "canvas updated activeSpace=\(newSpace.rawValue) previewHeight=\(Int(effectivePreviewHeight)) jit=\(usesJITWorkspaceLayout)"
+                "canvas updated activeSpace=\(newSpace.rawValue) previewHeight=\(Int(effectivePreviewHeight))"
             )
         }
     }
@@ -132,53 +113,23 @@ struct EditorCanvasView: View {
 
     @ViewBuilder
     private func legacyCanvasBody(state: TimelineState, playback: PlaybackController) -> some View {
-        let layout = effectiveTimelineLayout(for: jitTimelinePresentation)
+        let presentation = JITTimelinePresentation.full
+        let layout = effectiveTimelineLayout(for: presentation)
         ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
                 timelineTopSection(playback: playback)
 
                 Color.clear
-                    .frame(height: layout.sectionHeight(for: displayTracks(state: state, presentation: jitTimelinePresentation)))
+                    .frame(height: layout.sectionHeight(for: displayTracks(state: state, presentation: presentation)))
                     .transaction { transaction in
                         transaction.animation = nil
                     }
             }
 
-            if jitTimelinePresentation != .hidden {
-                timelineViewContainer(state: state, presentation: jitTimelinePresentation)
-                    .padding(.top, timelineTopInset(for: jitTimelinePresentation))
+            if presentation != .hidden {
+                timelineViewContainer(state: state, presentation: presentation)
+                    .padding(.top, timelineTopInset(for: presentation))
             }
-
-            aspectSettingsOverlayIfNeeded
-        }
-    }
-
-    @ViewBuilder
-    private func jitCanvasBody(state: TimelineState, playback: PlaybackController, plan: UIWorkspacePlan) -> some View {
-        ZStack(alignment: .topLeading) {
-            JITWorkspaceLayoutRenderer(
-                plan: plan,
-                transitionPlans: jitTransitionPlans,
-                timelinePresentation: jitTimelinePresentation,
-                preview: {
-                    timelineTopSection(playback: playback)
-                },
-                timeline: { presentation in
-                    Group {
-                        if presentation == .hidden {
-                            Color.clear.frame(height: 0)
-                        } else {
-                            timelineViewContainer(state: state, presentation: presentation)
-                        }
-                    }
-                },
-                panel: { panelId in
-                    jitPanelContent(panelId: panelId)
-                },
-                toolbarSlot: {
-                    EmptyView()
-                }
-            )
 
             aspectSettingsOverlayIfNeeded
         }
@@ -198,18 +149,6 @@ struct EditorCanvasView: View {
                             .combined(with: .opacity)
                     )
                 )
-        }
-    }
-
-    @ViewBuilder
-    private func jitPanelContent(panelId: String) -> some View {
-        switch panelId {
-        case "panel.importBrowser":
-            EmptyView()
-        case "panel.exportSettings":
-            EmptyView()
-        default:
-            EmptyView()
         }
     }
 
@@ -363,14 +302,4 @@ struct EditorCanvasView: View {
         }
     }
 
-    private func widgetIds(in node: UILayoutNode) -> [String] {
-        var ids: [String] = []
-        if let widget = node.widget {
-            ids.append(widget.widgetId)
-        }
-        for child in node.children {
-            ids.append(contentsOf: widgetIds(in: child))
-        }
-        return ids
-    }
 }

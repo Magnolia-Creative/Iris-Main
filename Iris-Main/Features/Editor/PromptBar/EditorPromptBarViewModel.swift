@@ -236,14 +236,14 @@ final class EditorPromptBarViewModel: ObservableObject {
                 return
             }
 
-            let workspaceActivated = await onIntentCompiled?(trimmedPrompt, result) ?? false
-            let prefersJITWorkspace = !result.experimentalEffectOperations.isEmpty
+            let intentWorkspaceActivated = await onIntentCompiled?(trimmedPrompt, result) ?? false
+            let prefersIntentWorkspace = !result.experimentalEffectOperations.isEmpty
 
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
-                if prefersJITWorkspace && workspaceActivated {
+                if prefersIntentWorkspace && intentWorkspaceActivated {
                     Self.logger.info(
-                        "[PromptBar] JIT workspace active; applying actions without legacy color review"
+                        "[PromptBar] Intent workspace active; applying actions without legacy color review"
                     )
                     let didApply = applyActions(result.actions)
                     guard didApply else {
