@@ -1,0 +1,26 @@
+---
+description: Require planned Argent-driven simulator verification for UI changes
+alwaysApply: true
+---
+
+# Argent Verification For UI Changes
+
+For any change that affects visible iOS UI behavior, layout, navigation, animation, accessibility, or interactive state, the agent must plan for hands-on simulator verification before treating the work as complete.
+
+## Planning Requirement
+
+- Include a final verification step in the plan, usually in `Z. Cleanup + verification`.
+- Name the exact UI flow or screen state to exercise.
+- State the expected behavior or visual result that must be confirmed.
+- Account for build/run prerequisites needed to get the changed UI into the simulator.
+
+## Verification Requirement
+
+After implementation and compile-level verification, use Argent to take control of the iOS Simulator and exercise the changed UI directly.
+
+- Navigate, tap, type, scroll, or otherwise interact with the app through the simulator instead of relying only on code inspection.
+- Confirm the changed UI reaches the expected state and remains usable through the relevant interaction path.
+- Capture screenshots or observations when useful for review.
+- Do not claim UI verification is complete if Argent or the simulator is unavailable; report the blocker and the exact flow that still needs verification.
+
+This is manual agent-driven simulator verification, not an instruction to run Xcode simulator UI tests. Keep following `no-xcode-simulator-ui-tests.mdc` unless the user explicitly requests those tests.
