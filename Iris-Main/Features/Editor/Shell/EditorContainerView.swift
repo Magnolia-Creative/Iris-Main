@@ -112,7 +112,6 @@ struct EditorContainerView: View {
 
     private var showsEditorTopChromeContent: Bool {
         activeSpace != .edit
-            || controller.state.selectedClipId != nil
             || captionsFlow.isCaptionsChromeActive
             || isPromptActionReviewActive
     }
@@ -266,23 +265,32 @@ struct EditorContainerView: View {
         VStack(spacing: 0) {
             activeHeaderBar
 
-            EditorCanvasView(
-                controller: controller,
-                playbackController: playbackController,
-                renderBridge: renderBridge,
-                activeSpace: activeSpace,
-                captionsFlow: captionsFlow,
-                renderState: jitRenderState.renderState,
-                transitionPlans: jitRenderState.transitionPlans,
-                showPlaybackAspectSettings: $showPlaybackAspectSettings,
-                onAddSelection: handleEditorAddSelection(kind:source:),
-                bottomChromeContent: isAgentCutReviewActive ? nil : AnyView(jitBottomChromeContent),
-                reviewFocusedClipIds: reviewFocusedClipIds,
-                isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
-                promptActionPreview: controller.promptActionPreview
-            )
-            .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
+            ZStack(alignment: .bottom) {
+                EditorCanvasView(
+                    controller: controller,
+                    playbackController: playbackController,
+                    renderBridge: renderBridge,
+                    activeSpace: activeSpace,
+                    captionsFlow: captionsFlow,
+                    renderState: jitRenderState.renderState,
+                    transitionPlans: jitRenderState.transitionPlans,
+                    showPlaybackAspectSettings: $showPlaybackAspectSettings,
+                    onAddSelection: handleEditorAddSelection(kind:source:),
+                    bottomChromeContent: isAgentCutReviewActive ? nil : AnyView(jitBottomChromeContent),
+                    reviewFocusedClipIds: reviewFocusedClipIds,
+                    isReviewInteractionDisabled: isTimelineReviewInteractionDisabled,
+                    promptActionPreview: controller.promptActionPreview
+                )
+                .frame(maxWidth: .infinity, maxHeight: canvasExpandsVertically ? .infinity : nil)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: activeSpace)
+
+                if !isAgentCutReviewActive && showsEditorTopChromeContent {
+                    editorTopChromeContent
+                        .padding(.bottom, IntelligenceComponent.totalHeight() + .spacing(.sp4))
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
+                }
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showsEditorTopChromeContent)
 
             ZStack(alignment: .bottom) {
                 if isAgentCutReviewActive, let cutReview = controller.cutReview {
