@@ -85,33 +85,43 @@ enum UIWorkspaceCatalog {
             ]
             : [])
 
-        var layoutChildren: [UILayoutNode] = [
-            UILayoutNode(
-                type: .widget,
-                widget: UIWidgetPlacement(
-                    widgetId: "playback.viewer",
-                    variant: "compact",
-                    prominence: .primary,
-                    size: UIWidgetSizeHint(weight: 0.35, minHeight: nil, maxHeight: nil, importance: .primary, collapsible: nil),
-                    intentSliceId: "default",
-                    reason: "Preview"
-                )
-            ),
-            UILayoutNode(
-                type: .widget,
-                widget: UIWidgetPlacement(
-                    widgetId: "timeline.full",
-                    variant: activeSpace == .edit ? "expanded" : "compressed",
-                    prominence: .primary,
-                    size: UIWidgetSizeHint(weight: 0.45, minHeight: nil, maxHeight: nil, importance: .primary, collapsible: nil),
-                    intentSliceId: "default",
-                    reason: "Timeline"
-                )
+        let previewNode = UILayoutNode(
+            type: .widget,
+            widget: UIWidgetPlacement(
+                widgetId: "playback.viewer",
+                variant: "compact",
+                prominence: .primary,
+                size: UIWidgetSizeHint(weight: 0.35, minHeight: nil, maxHeight: nil, importance: .primary, collapsible: nil),
+                intentSliceId: "default",
+                reason: "Preview"
             )
+        )
+        let timelineNode = UILayoutNode(
+            type: .widget,
+            widget: UIWidgetPlacement(
+                widgetId: "timeline.full",
+                variant: "expanded",
+                prominence: .primary,
+                size: UIWidgetSizeHint(weight: 0.45, minHeight: nil, maxHeight: nil, importance: .primary, collapsible: nil),
+                intentSliceId: "default",
+                reason: "Timeline"
+            )
+        )
+        let hiddenTimelineWidgets = [
+            "timeline.full",
+            "timeline.primaryTrack",
+            "timeline.focusedClipStrip"
         ]
 
-        if activeSpace == .importMedia {
-            layoutChildren.append(
+        let layoutChildren: [UILayoutNode]
+        let hiddenBecauseIrrelevant: [String]
+        switch activeSpace {
+        case .edit:
+            layoutChildren = [previewNode, timelineNode]
+            hiddenBecauseIrrelevant = []
+        case .importMedia:
+            layoutChildren = [
+                previewNode,
                 UILayoutNode(
                     type: .widget,
                     widget: UIWidgetPlacement(
@@ -122,10 +132,11 @@ enum UIWorkspaceCatalog {
                         reason: "Import"
                     )
                 )
-            )
-        }
-        if activeSpace == .export {
-            layoutChildren.append(
+            ]
+            hiddenBecauseIrrelevant = hiddenTimelineWidgets
+        case .export:
+            layoutChildren = [
+                previewNode,
                 UILayoutNode(
                     type: .widget,
                     widget: UIWidgetPlacement(
@@ -136,7 +147,8 @@ enum UIWorkspaceCatalog {
                         reason: "Export"
                     )
                 )
-            )
+            ]
+            hiddenBecauseIrrelevant = hiddenTimelineWidgets
         }
 
         return UIWorkspacePlan(
@@ -160,7 +172,7 @@ enum UIWorkspaceCatalog {
                 showNavigation: true,
                 showPromptBar: true
             ),
-            hiddenBecauseIrrelevant: [],
+            hiddenBecauseIrrelevant: hiddenBecauseIrrelevant,
             warnings: [],
             isDefaultWorkspace: true,
             restoreDefaultOnComplete: false
