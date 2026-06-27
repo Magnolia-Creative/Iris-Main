@@ -216,7 +216,6 @@ struct EditorCanvasView: View {
             playbackState: state.playbackState,
             reviewFocusedClipIds: reviewFocusedClipIds,
             isReviewInteractionDisabled: isReviewInteractionDisabled,
-            promptActionPreview: promptActionPreview,
             captionHighlightRangeUs: highlight,
             playheadTint: playheadTint,
             showAddButton: canAddToTimeline,
