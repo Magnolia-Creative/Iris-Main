@@ -2,9 +2,9 @@ internal import Combine
 import Foundation
 
 @MainActor
-final class UIIntentDemoViewModel: ObservableObject {
+final class EditorIntentCompilerDiagnosticsViewModel: ObservableObject {
     @Published var prompt = "Make the timeline bigger"
-    @Published var selectedContextId = UICompilerDemoFixtures.allContexts[0].id
+    @Published var selectedContextId = EditorIntentCompilerDiagnosticsFixtures.allContexts[0].id
     @Published private(set) var outputText = ""
     @Published private(set) var statusMessage = "Local UI compiler ready."
     @Published private(set) var resultKind = "Waiting"
@@ -12,14 +12,14 @@ final class UIIntentDemoViewModel: ObservableObject {
     @Published private(set) var transitionPlans: [EditorJITTransitionPlan] = []
     @Published private(set) var validationResult: EditorJITValidationResult
 
-    let contexts = UICompilerDemoFixtures.allContexts
+    let contexts = EditorIntentCompilerDiagnosticsFixtures.allContexts
 
-    private let compiler: LocalUICompiler
+    private let compiler: EditorIntentCompiler
     private let encoder: JSONEncoder
 
-    init(compiler: LocalUICompiler = LocalUICompiler()) {
+    init(compiler: EditorIntentCompiler = EditorIntentCompiler()) {
         self.compiler = compiler
-        let defaultState = UICompilerDemoFixtures.defaultContext.currentRenderState
+        let defaultState = EditorIntentCompilerDiagnosticsFixtures.defaultContext.currentRenderState
         let (validatedState, validationResult) = EditorJITRenderValidator.validate(defaultState)
         self.renderState = validatedState
         self.validationResult = validationResult
@@ -27,7 +27,7 @@ final class UIIntentDemoViewModel: ObservableObject {
         self.encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
-    var selectedContext: NamedUICompilerContext {
+    var selectedContext: NamedEditorIntentCompilerContext {
         contexts.first { $0.id == selectedContextId } ?? contexts[0]
     }
 
@@ -70,8 +70,8 @@ final class UIIntentDemoViewModel: ObservableObject {
     }
 }
 
-private extension UIIntentDemoViewModel {
-    func apply(result: EditorUICompilerResult, previous: EditorJITRenderState) {
+private extension EditorIntentCompilerDiagnosticsViewModel {
+    func apply(result: EditorIntentCompilerResult, previous: EditorJITRenderState) {
         switch result {
         case .resolved(let renderState, let interpretation, let report):
             let (validatedState, validationResult) = EditorJITRenderValidator.validate(renderState)
@@ -96,7 +96,7 @@ private extension UIIntentDemoViewModel {
         }
     }
 
-    func formatted(report: UIIntentCompilerReport) -> String {
+    func formatted(report: EditorIntentCompilerReport) -> String {
         do {
             let data = try encoder.encode(report)
             return String(data: data, encoding: .utf8) ?? "{}"

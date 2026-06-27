@@ -1,14 +1,14 @@
 import Foundation
 
-struct UIIntentCandidateGenerator {
-    private let directMatcher: UIDirectRuleMatcher
-    private let embeddingResolver: UIEmbeddingResolver?
-    private let policy: UIResolutionPolicy
+struct EditorIntentCandidateGenerator {
+    private let directMatcher: EditorIntentDirectRuleMatcher
+    private let embeddingResolver: EditorIntentEmbeddingResolver?
+    private let policy: EditorIntentResolutionPolicy
 
     init(
-        directMatcher: UIDirectRuleMatcher = UIDirectRuleMatcher(),
-        embeddingResolver: UIEmbeddingResolver? = UIEmbeddingResolver(),
-        policy: UIResolutionPolicy = .default
+        directMatcher: EditorIntentDirectRuleMatcher = EditorIntentDirectRuleMatcher(),
+        embeddingResolver: EditorIntentEmbeddingResolver? = EditorIntentEmbeddingResolver(),
+        policy: EditorIntentResolutionPolicy = .default
     ) {
         self.directMatcher = directMatcher
         self.embeddingResolver = embeddingResolver
@@ -16,9 +16,9 @@ struct UIIntentCandidateGenerator {
     }
 
     func candidates(
-        for prompt: NormalizedEditorUIPrompt,
-        context: EditorUICompilerContext
-    ) async -> (candidates: [EditorUIIntentCandidate], embeddingWarnings: [UIEmbeddingResolverWarning]) {
+        for prompt: NormalizedEditorIntentPrompt,
+        context: EditorIntentCompilerContext
+    ) async -> (candidates: [EditorIntentCandidate], embeddingWarnings: [EditorIntentEmbeddingResolverWarning]) {
         let directCandidates = directMatcher.candidates(for: prompt, context: context)
         let bestDirectScore = directCandidates.map(\.totalScore).max() ?? 0
         guard bestDirectScore < policy.decisiveDirectScore, let embeddingResolver else {

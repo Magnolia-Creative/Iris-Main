@@ -1,23 +1,23 @@
 import Foundation
 
-enum UIIntentRankedResolution: Equatable {
-    case selected(UIIntentScoredCandidate)
-    case ambiguous([UIIntentScoredCandidate])
-    case deferred(reason: String, candidates: [UIIntentScoredCandidate])
+enum EditorIntentRankedResolution: Equatable {
+    case selected(EditorIntentScoredCandidate)
+    case ambiguous([EditorIntentScoredCandidate])
+    case deferred(reason: String, candidates: [EditorIntentScoredCandidate])
     case unsupported(reason: String)
 }
 
-struct UIIntentCandidateRanker {
-    private let policy: UIResolutionPolicy
+struct EditorIntentCandidateRanker {
+    private let policy: EditorIntentResolutionPolicy
 
-    init(policy: UIResolutionPolicy = .default) {
+    init(policy: EditorIntentResolutionPolicy = .default) {
         self.policy = policy
     }
 
     func rank(
-        candidates: [EditorUIIntentCandidate],
-        context: EditorUICompilerContext
-    ) -> UIIntentRankedResolution {
+        candidates: [EditorIntentCandidate],
+        context: EditorIntentCompilerContext
+    ) -> EditorIntentRankedResolution {
         guard !candidates.isEmpty else {
             return .unsupported(reason: "No local UI component or workspace terms matched the request.")
         }
@@ -49,9 +49,9 @@ struct UIIntentCandidateRanker {
     }
 
     private func score(
-        candidate: EditorUIIntentCandidate,
-        context: EditorUICompilerContext
-    ) -> UIIntentScoredCandidate {
+        candidate: EditorIntentCandidate,
+        context: EditorIntentCompilerContext
+    ) -> EditorIntentScoredCandidate {
         var score = candidate.totalScore
         var penalties: [String] = []
 
@@ -74,7 +74,7 @@ struct UIIntentCandidateRanker {
             penalties.append("weak-embedding")
         }
 
-        return UIIntentScoredCandidate(
+        return EditorIntentScoredCandidate(
             candidate: candidate,
             score: max(0, score),
             penalties: penalties
@@ -82,8 +82,8 @@ struct UIIntentCandidateRanker {
     }
 
     private func isNoOp(
-        candidate: EditorUIIntentCandidate,
-        context: EditorUICompilerContext
+        candidate: EditorIntentCandidate,
+        context: EditorIntentCompilerContext
     ) -> Bool {
         switch candidate.target {
         case .workspaceRecipe(let recipeId):

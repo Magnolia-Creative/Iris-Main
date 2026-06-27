@@ -2,19 +2,19 @@ import Foundation
 import Testing
 @testable import Iris_Main
 
-struct UIIntentCompilerTests {
+struct EditorIntentCompilerTests {
     @Test func normalizerCanonicalizesCommonPhrases() {
-        let prompt = UIPromptNormalizer.normalize("  Make the timeline bigger!!  ")
+        let prompt = EditorIntentPromptNormalizer.normalize("  Make the timeline bigger!!  ")
 
         #expect(prompt.normalizedText == "make the timeline expanded")
         #expect(prompt.tokens.contains("timeline"))
         #expect(prompt.tokens.contains("expanded"))
-        #expect(prompt.canonicalPhraseReplacements.contains(UIIntentPhraseReplacement(source: "bigger", canonical: "expanded")))
+        #expect(prompt.canonicalPhraseReplacements.contains(EditorIntentPhraseReplacement(source: "bigger", canonical: "expanded")))
     }
 
     @Test func lexiconMapsTimelineAliasToExistingComponent() {
-        let prompt = UIPromptNormalizer.normalize("expand the tracks")
-        let matches = UIIntentLexicon.componentMatches(in: prompt)
+        let prompt = EditorIntentPromptNormalizer.normalize("expand the tracks")
+        let matches = EditorIntentLexicon.componentMatches(in: prompt)
 
         #expect(matches.contains { $0.value == "timeline.full" })
     }
@@ -23,7 +23,7 @@ struct UIIntentCompilerTests {
         let compiler = makeCompilerWithoutEmbeddings()
         let result = await compiler.compile(
             prompt: "Make the timeline bigger",
-            context: UICompilerDemoFixtures.defaultContext
+            context: EditorIntentCompilerDiagnosticsFixtures.defaultContext
         )
 
         guard case .resolved(let state, _, let report) = result else {
@@ -41,7 +41,7 @@ struct UIIntentCompilerTests {
         let compiler = makeCompilerWithoutEmbeddings()
         let result = await compiler.compile(
             prompt: "Hide the parameter controls",
-            context: UICompilerDemoFixtures.controlsContext
+            context: EditorIntentCompilerDiagnosticsFixtures.controlsContext
         )
 
         guard case .resolved(let state, _, _) = result else {
@@ -58,7 +58,7 @@ struct UIIntentCompilerTests {
         let compiler = makeCompilerWithoutEmbeddings()
         let result = await compiler.compile(
             prompt: "Make this bigger",
-            context: UICompilerDemoFixtures.previewContext
+            context: EditorIntentCompilerDiagnosticsFixtures.previewContext
         )
 
         guard case .resolved(let state, _, let report) = result else {
@@ -68,14 +68,14 @@ struct UIIntentCompilerTests {
 
         #expect(state.playback.componentId == "playback.section")
         #expect(state.playback.size == .expanded)
-        #expect(report.selectedCandidate?.source == UIIntentCandidateSource.contextual.rawValue)
+        #expect(report.selectedCandidate?.source == EditorIntentCandidateSource.contextual.rawValue)
     }
 
     @Test func missingContextDefersThisPrompt() async {
         let compiler = makeCompilerWithoutEmbeddings()
         let result = await compiler.compile(
             prompt: "Make this bigger",
-            context: UICompilerDemoFixtures.defaultContext
+            context: EditorIntentCompilerDiagnosticsFixtures.defaultContext
         )
 
         guard case .deferredToRemote(let request, _) = result else {
@@ -90,7 +90,7 @@ struct UIIntentCompilerTests {
         let compiler = makeCompilerWithoutEmbeddings()
         let result = await compiler.compile(
             prompt: "Move the timeline onto a second monitor",
-            context: UICompilerDemoFixtures.defaultContext
+            context: EditorIntentCompilerDiagnosticsFixtures.defaultContext
         )
 
         guard case .unsupported(let reason, _) = result else {
@@ -103,10 +103,10 @@ struct UIIntentCompilerTests {
 
     @Test func fakeEmbeddingProviderCanResolveSemanticWorkspacePrompt() async {
         let provider = TestUIEmbeddingProvider()
-        let resolver = UIEmbeddingResolver(
+        let resolver = EditorIntentEmbeddingResolver(
             provider: provider,
             examples: [
-                UIEmbeddingExample(
+                EditorIntentEmbeddingExample(
                     id: "clean",
                     text: "clean workspace example",
                     source: .embedding,
@@ -118,13 +118,13 @@ struct UIIntentCompilerTests {
             ],
             minimumScore: 0.5
         )
-        let compiler = LocalUICompiler(
-            candidateGenerator: UIIntentCandidateGenerator(embeddingResolver: resolver)
+        let compiler = EditorIntentCompiler(
+            candidateGenerator: EditorIntentCandidateGenerator(embeddingResolver: resolver)
         )
 
         let result = await compiler.compile(
             prompt: "arrange a tidy interface",
-            context: UICompilerDemoFixtures.defaultContext
+            context: EditorIntentCompilerDiagnosticsFixtures.defaultContext
         )
 
         guard case .resolved(let state, _, let report) = result else {
@@ -133,13 +133,13 @@ struct UIIntentCompilerTests {
         }
 
         #expect(state.id == EditorJITRecipeCatalog.lessCluttered.id)
-        #expect(report.selectedCandidate?.source == UIIntentCandidateSource.embedding.rawValue)
+        #expect(report.selectedCandidate?.source == EditorIntentCandidateSource.embedding.rawValue)
     }
 }
 
-private func makeCompilerWithoutEmbeddings() -> LocalUICompiler {
-    LocalUICompiler(
-        candidateGenerator: UIIntentCandidateGenerator(embeddingResolver: nil)
+private func makeCompilerWithoutEmbeddings() -> EditorIntentCompiler {
+    EditorIntentCompiler(
+        candidateGenerator: EditorIntentCandidateGenerator(embeddingResolver: nil)
     )
 }
 

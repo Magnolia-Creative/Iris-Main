@@ -1,16 +1,16 @@
 import Foundation
 
-struct LocalUICompiler {
-    private let candidateGenerator: UIIntentCandidateGenerator
-    private let ranker: UIIntentCandidateRanker
-    private let schemaBuilder: UIIntentSchemaBuilder
-    private let validator: UIIntentValidator
+struct EditorIntentCompiler {
+    private let candidateGenerator: EditorIntentCandidateGenerator
+    private let ranker: EditorIntentCandidateRanker
+    private let schemaBuilder: EditorIntentSchemaBuilder
+    private let validator: EditorIntentCompilerValidator
 
     init(
-        candidateGenerator: UIIntentCandidateGenerator = UIIntentCandidateGenerator(),
-        ranker: UIIntentCandidateRanker = UIIntentCandidateRanker(),
-        schemaBuilder: UIIntentSchemaBuilder = UIIntentSchemaBuilder(),
-        validator: UIIntentValidator = UIIntentValidator()
+        candidateGenerator: EditorIntentCandidateGenerator = EditorIntentCandidateGenerator(),
+        ranker: EditorIntentCandidateRanker = EditorIntentCandidateRanker(),
+        schemaBuilder: EditorIntentSchemaBuilder = EditorIntentSchemaBuilder(),
+        validator: EditorIntentCompilerValidator = EditorIntentCompilerValidator()
     ) {
         self.candidateGenerator = candidateGenerator
         self.ranker = ranker
@@ -20,9 +20,9 @@ struct LocalUICompiler {
 
     func compile(
         prompt: String,
-        context: EditorUICompilerContext
-    ) async -> EditorUICompilerResult {
-        let normalized = UIPromptNormalizer.normalize(prompt)
+        context: EditorIntentCompilerContext
+    ) async -> EditorIntentCompilerResult {
+        let normalized = EditorIntentPromptNormalizer.normalize(prompt)
         guard !normalized.normalizedText.isEmpty else {
             let report = makeReport(
                 interpretation: "No prompt text was provided.",
@@ -49,7 +49,7 @@ struct LocalUICompiler {
             )
         case .ambiguous(let scoredCandidates):
             let options = scoredCandidates.map { scored in
-                UIIntentClarificationOption(
+                EditorIntentClarificationOption(
                     id: scored.candidate.id,
                     title: scored.candidate.target.displayName,
                     subtitle: "\(scored.candidate.operation.rawValue) · score \(String(format: "%.2f", scored.score))"
@@ -118,16 +118,16 @@ struct LocalUICompiler {
     }
 }
 
-private extension LocalUICompiler {
+private extension EditorIntentCompiler {
     func resolve(
-        scoredCandidate: UIIntentScoredCandidate,
-        normalized: NormalizedEditorUIPrompt,
-        context: EditorUICompilerContext,
-        embeddingWarnings: [UIEmbeddingResolverWarning]
-    ) -> EditorUICompilerResult {
+        scoredCandidate: EditorIntentScoredCandidate,
+        normalized: NormalizedEditorIntentPrompt,
+        context: EditorIntentCompilerContext,
+        embeddingWarnings: [EditorIntentEmbeddingResolverWarning]
+    ) -> EditorIntentCompilerResult {
         let candidate = scoredCandidate.candidate
         guard let buildResult = schemaBuilder.build(from: candidate, context: context, prompt: normalized) else {
-            let reason = "The selected UI intent could not be represented with existing editor schema."
+            let reason = "The selected editor intent could not be represented with existing editor schema."
             let report = makeReport(
                 interpretation: reason,
                 normalized: normalized,
@@ -170,8 +170,8 @@ private extension LocalUICompiler {
     }
 
     func interpretation(
-        for candidate: EditorUIIntentCandidate,
-        validation: UIIntentValidationOutput
+        for candidate: EditorIntentCandidate,
+        validation: EditorIntentValidationOutput
     ) -> String {
         var text = "\(candidate.operation.rawValue) \(candidate.target.displayName)"
         if let requestedSize = candidate.requestedSize {
@@ -185,19 +185,19 @@ private extension LocalUICompiler {
 
     func makeReport(
         interpretation: String,
-        normalized: NormalizedEditorUIPrompt,
-        scoredCandidates: [UIIntentScoredCandidate],
-        selected: UIIntentScoredCandidate?,
+        normalized: NormalizedEditorIntentPrompt,
+        scoredCandidates: [EditorIntentScoredCandidate],
+        selected: EditorIntentScoredCandidate?,
         renderState: EditorJITRenderState?,
         validationWarnings: [String],
         validationErrors: [String]
-    ) -> UIIntentCompilerReport {
-        UIIntentCompilerReport(
+    ) -> EditorIntentCompilerReport {
+        EditorIntentCompilerReport(
             interpretation: interpretation,
             normalizedPrompt: normalized.normalizedText,
-            selectedCandidate: selected.map { UIIntentCandidateDiagnostic(candidate: $0.candidate, score: $0.score) },
-            candidates: scoredCandidates.map { UIIntentCandidateDiagnostic(candidate: $0.candidate, score: $0.score) },
-            renderState: renderState.map(UIIntentRenderStateSnapshot.init),
+            selectedCandidate: selected.map { EditorIntentCandidateDiagnostic(candidate: $0.candidate, score: $0.score) },
+            candidates: scoredCandidates.map { EditorIntentCandidateDiagnostic(candidate: $0.candidate, score: $0.score) },
+            renderState: renderState.map(EditorIntentRenderStateSnapshot.init),
             validationWarnings: validationWarnings,
             validationErrors: validationErrors
         )
@@ -205,28 +205,28 @@ private extension LocalUICompiler {
 
     func remoteRequest(
         prompt: String,
-        normalized: NormalizedEditorUIPrompt,
-        candidates: [UIIntentScoredCandidate],
-        context: EditorUICompilerContext,
+        normalized: NormalizedEditorIntentPrompt,
+        candidates: [EditorIntentScoredCandidate],
+        context: EditorIntentCompilerContext,
         reason: String
-    ) -> EditorUIRemoteResolutionRequest {
+    ) -> EditorIntentRemoteResolutionRequest {
         let supportedStates = Dictionary(
             uniqueKeysWithValues: EditorComponentRegistry.entries.map { entry in
                 (entry.id.rawValue, entry.supportedSizes.map(\.rawValue).sorted())
             }
         )
-        return EditorUIRemoteResolutionRequest(
+        return EditorIntentRemoteResolutionRequest(
             prompt: prompt,
             normalizedPrompt: normalized.normalizedText,
             activeSpace: context.activeSpace.rawValue,
             availableComponentIds: EditorComponentRegistry.entries.map(\.id.rawValue).sorted(),
             supportedStates: supportedStates,
-            localCandidates: candidates.map { UIIntentCandidateDiagnostic(candidate: $0.candidate, score: $0.score) },
+            localCandidates: candidates.map { EditorIntentCandidateDiagnostic(candidate: $0.candidate, score: $0.score) },
             reason: reason
         )
     }
 
-    func shouldDeferUnsupportedPrompt(_ prompt: NormalizedEditorUIPrompt) -> Bool {
+    func shouldDeferUnsupportedPrompt(_ prompt: NormalizedEditorIntentPrompt) -> Bool {
         let unsupportedTerms = [
             "second monitor",
             "external display",

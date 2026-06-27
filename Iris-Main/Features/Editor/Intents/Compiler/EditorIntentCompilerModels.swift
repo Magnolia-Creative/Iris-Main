@@ -1,21 +1,21 @@
 import Foundation
 
-struct NormalizedEditorUIPrompt: Equatable {
+struct NormalizedEditorIntentPrompt: Equatable {
     let originalText: String
     let normalizedText: String
     let tokens: [String]
     let bigrams: [String]
     let trigrams: [String]
     let numericTokens: [String]
-    let canonicalPhraseReplacements: [UIIntentPhraseReplacement]
+    let canonicalPhraseReplacements: [EditorIntentPhraseReplacement]
 }
 
-struct UIIntentPhraseReplacement: Codable, Equatable {
+struct EditorIntentPhraseReplacement: Codable, Equatable {
     let source: String
     let canonical: String
 }
 
-struct EditorUICompilerContext: Equatable {
+struct EditorIntentCompilerContext: Equatable {
     var activeSpace: EditorSpace
     var currentRenderState: EditorJITRenderState
     var lastInteractedComponent: EditorComponentID?
@@ -40,14 +40,14 @@ struct EditorUICompilerContext: Equatable {
     }
 }
 
-enum UIIntentCandidateSource: String, Codable, Equatable {
+enum EditorIntentCandidateSource: String, Codable, Equatable {
     case direct
     case contextual
     case workspacePhrase
     case embedding
 }
 
-enum UIIntentOperation: String, Codable, Equatable {
+enum EditorIntentOperation: String, Codable, Equatable {
     case show
     case hide
     case expand
@@ -57,7 +57,7 @@ enum UIIntentOperation: String, Codable, Equatable {
     case applyWorkspace
 }
 
-enum UIIntentTarget: Codable, Equatable {
+enum EditorIntentTarget: Codable, Equatable {
     case component(EditorComponentID)
     case workspaceRecipe(String)
     case chromeControls
@@ -74,11 +74,11 @@ enum UIIntentTarget: Codable, Equatable {
     }
 }
 
-struct EditorUIIntentCandidate: Equatable {
+struct EditorIntentCandidate: Equatable {
     let id: String
-    let source: UIIntentCandidateSource
-    let operation: UIIntentOperation
-    let target: UIIntentTarget
+    let source: EditorIntentCandidateSource
+    let operation: EditorIntentOperation
+    let target: EditorIntentTarget
     let requestedSize: EditorComponentSize?
     let matchedTerms: [String]
     let explicitTargetMatch: Bool
@@ -94,29 +94,29 @@ struct EditorUIIntentCandidate: Equatable {
     }
 }
 
-struct UIIntentScoredCandidate: Equatable {
-    let candidate: EditorUIIntentCandidate
+struct EditorIntentScoredCandidate: Equatable {
+    let candidate: EditorIntentCandidate
     let score: Double
     let penalties: [String]
 }
 
-struct UIIntentClarificationOption: Codable, Equatable, Identifiable {
+struct EditorIntentClarificationOption: Codable, Equatable, Identifiable {
     let id: String
     let title: String
     let subtitle: String
 }
 
-struct EditorUIRemoteResolutionRequest: Codable, Equatable {
+struct EditorIntentRemoteResolutionRequest: Codable, Equatable {
     let prompt: String
     let normalizedPrompt: String
     let activeSpace: String
     let availableComponentIds: [String]
     let supportedStates: [String: [String]]
-    let localCandidates: [UIIntentCandidateDiagnostic]
+    let localCandidates: [EditorIntentCandidateDiagnostic]
     let reason: String
 }
 
-struct UIIntentCandidateDiagnostic: Codable, Equatable, Identifiable {
+struct EditorIntentCandidateDiagnostic: Codable, Equatable, Identifiable {
     let id: String
     let source: String
     let operation: String
@@ -127,54 +127,54 @@ struct UIIntentCandidateDiagnostic: Codable, Equatable, Identifiable {
     let assumptions: [String]
 }
 
-struct UIIntentRenderStateSnapshot: Codable, Equatable {
+struct EditorIntentRenderStateSnapshot: Codable, Equatable {
     let id: String
     let title: String
     let category: String
-    let playback: UIIntentComponentSnapshot
-    let timeline: UIIntentComponentSnapshot
+    let playback: EditorIntentComponentSnapshot
+    let timeline: EditorIntentComponentSnapshot
     let chromeDensity: String
     let chromeVisibleTiers: [String]
     let validationWarnings: [String]
     let isValid: Bool
 }
 
-struct UIIntentComponentSnapshot: Codable, Equatable {
+struct EditorIntentComponentSnapshot: Codable, Equatable {
     let componentId: String
     let size: String
     let isVisible: Bool
 }
 
-struct UIIntentCompilerReport: Codable, Equatable {
+struct EditorIntentCompilerReport: Codable, Equatable {
     let interpretation: String
     let normalizedPrompt: String
-    let selectedCandidate: UIIntentCandidateDiagnostic?
-    let candidates: [UIIntentCandidateDiagnostic]
-    let renderState: UIIntentRenderStateSnapshot?
+    let selectedCandidate: EditorIntentCandidateDiagnostic?
+    let candidates: [EditorIntentCandidateDiagnostic]
+    let renderState: EditorIntentRenderStateSnapshot?
     let validationWarnings: [String]
     let validationErrors: [String]
 }
 
-enum EditorUICompilerResult: Equatable {
+enum EditorIntentCompilerResult: Equatable {
     case resolved(
         renderState: EditorJITRenderState,
         interpretation: String,
-        report: UIIntentCompilerReport
+        report: EditorIntentCompilerReport
     )
     case clarificationRequired(
-        options: [UIIntentClarificationOption],
-        report: UIIntentCompilerReport
+        options: [EditorIntentClarificationOption],
+        report: EditorIntentCompilerReport
     )
     case deferredToRemote(
-        request: EditorUIRemoteResolutionRequest,
-        report: UIIntentCompilerReport
+        request: EditorIntentRemoteResolutionRequest,
+        report: EditorIntentCompilerReport
     )
     case unsupported(
         reason: String,
-        report: UIIntentCompilerReport
+        report: EditorIntentCompilerReport
     )
 
-    var report: UIIntentCompilerReport {
+    var report: EditorIntentCompilerReport {
         switch self {
         case .resolved(_, _, let report),
              .clarificationRequired(_, let report),
@@ -185,8 +185,8 @@ enum EditorUICompilerResult: Equatable {
     }
 }
 
-extension UIIntentCandidateDiagnostic {
-    init(candidate: EditorUIIntentCandidate, score: Double? = nil) {
+extension EditorIntentCandidateDiagnostic {
+    init(candidate: EditorIntentCandidate, score: Double? = nil) {
         self.init(
             id: candidate.id,
             source: candidate.source.rawValue,
@@ -200,23 +200,23 @@ extension UIIntentCandidateDiagnostic {
     }
 }
 
-extension UIIntentRenderStateSnapshot {
+extension EditorIntentRenderStateSnapshot {
     init(_ state: EditorJITRenderState) {
         self.init(
             id: state.id,
             title: state.title,
             category: state.resolutionCategory.rawValue,
-            playback: UIIntentComponentSnapshot(state.playback),
-            timeline: UIIntentComponentSnapshot(state.timeline),
+            playback: EditorIntentComponentSnapshot(state.playback),
+            timeline: EditorIntentComponentSnapshot(state.timeline),
             chromeDensity: state.chromePlan.density.rawValue,
-            chromeVisibleTiers: state.chromePlan.visibleTiers.map(\.uiIntentDisplayTitle),
+            chromeVisibleTiers: state.chromePlan.visibleTiers.map(\.editorIntentDisplayTitle),
             validationWarnings: state.validationWarnings,
             isValid: state.isValid
         )
     }
 }
 
-extension UIIntentComponentSnapshot {
+extension EditorIntentComponentSnapshot {
     init(_ state: EditorJITComponentState) {
         self.init(
             componentId: state.componentId.rawValue,
@@ -227,7 +227,7 @@ extension UIIntentComponentSnapshot {
 }
 
 private extension EditorBottomChromeTier {
-    var uiIntentDisplayTitle: String {
+    var editorIntentDisplayTitle: String {
         switch self {
         case .spatialParameters: return "spatial"
         case .parameters: return "parameters"

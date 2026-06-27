@@ -2,11 +2,11 @@ import Testing
 @testable import Iris_Main
 
 @MainActor
-struct UIIntentDemoViewModelTests {
+struct EditorIntentCompilerDiagnosticsViewModelTests {
     @Test func compilePromptUpdatesOutputAndRenderState() async {
-        let viewModel = UIIntentDemoViewModel(
-            compiler: LocalUICompiler(
-                candidateGenerator: UIIntentCandidateGenerator(embeddingResolver: nil)
+        let viewModel = EditorIntentCompilerDiagnosticsViewModel(
+            compiler: EditorIntentCompiler(
+                candidateGenerator: EditorIntentCandidateGenerator(embeddingResolver: nil)
             )
         )
 

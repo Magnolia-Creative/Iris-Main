@@ -1,7 +1,7 @@
 import Foundation
 
-enum UICompilerDemoFixtures {
-    static let defaultContext = EditorUICompilerContext(
+enum EditorIntentCompilerDiagnosticsFixtures {
+    static let defaultContext = EditorIntentCompilerContext(
         activeSpace: .edit,
         currentRenderState: EditorJITRecipeCatalog.defaultRecipe.makeRawState(),
         lastInteractedComponent: nil,
@@ -10,7 +10,7 @@ enum UICompilerDemoFixtures {
         controlsAvailable: false
     )
 
-    static let timelineContext = EditorUICompilerContext(
+    static let timelineContext = EditorIntentCompilerContext(
         activeSpace: .edit,
         currentRenderState: EditorJITRecipeCatalog.defaultRecipe.makeRawState(),
         lastInteractedComponent: "timeline.full",
@@ -19,7 +19,7 @@ enum UICompilerDemoFixtures {
         controlsAvailable: true
     )
 
-    static let previewContext = EditorUICompilerContext(
+    static let previewContext = EditorIntentCompilerContext(
         activeSpace: .edit,
         currentRenderState: EditorJITRecipeCatalog.defaultRecipe.makeRawState(),
         lastInteractedComponent: "playback.section",
@@ -28,7 +28,7 @@ enum UICompilerDemoFixtures {
         controlsAvailable: false
     )
 
-    static let controlsContext = EditorUICompilerContext(
+    static let controlsContext = EditorIntentCompilerContext(
         activeSpace: .edit,
         currentRenderState: EditorJITRecipeCatalog.colorCorrection.makeRawState(),
         lastInteractedComponent: "chrome.bottomStack",
@@ -37,23 +37,23 @@ enum UICompilerDemoFixtures {
         controlsAvailable: true
     )
 
-    static let allContexts: [NamedUICompilerContext] = [
-        NamedUICompilerContext(
+    static let allContexts: [NamedEditorIntentCompilerContext] = [
+        NamedEditorIntentCompilerContext(
             id: "default",
             title: "Default Editor",
             context: defaultContext
         ),
-        NamedUICompilerContext(
+        NamedEditorIntentCompilerContext(
             id: "timeline",
             title: "Timeline Recently Used",
             context: timelineContext
         ),
-        NamedUICompilerContext(
+        NamedEditorIntentCompilerContext(
             id: "preview",
             title: "Preview Recently Used",
             context: previewContext
         ),
-        NamedUICompilerContext(
+        NamedEditorIntentCompilerContext(
             id: "controls",
             title: "Controls Available",
             context: controlsContext
@@ -61,8 +61,8 @@ enum UICompilerDemoFixtures {
     ]
 }
 
-struct NamedUICompilerContext: Identifiable, Equatable {
+struct NamedEditorIntentCompilerContext: Identifiable, Equatable {
     let id: String
     let title: String
-    let context: EditorUICompilerContext
+    let context: EditorIntentCompilerContext
 }

@@ -1,56 +1,56 @@
 import Foundation
 
-struct UIIntentComponentAlias: Equatable {
+struct EditorIntentComponentAlias: Equatable {
     let componentId: EditorComponentID
     let aliases: Set<String>
     let spatialAliases: Set<String>
     let workflowTerms: Set<String>
 }
 
-struct UIIntentOperationAlias: Equatable {
-    let operation: UIIntentOperation
+struct EditorIntentOperationAlias: Equatable {
+    let operation: EditorIntentOperation
     let size: EditorComponentSize?
     let aliases: Set<String>
 }
 
-struct UIIntentWorkspaceAlias: Equatable {
+struct EditorIntentWorkspaceAlias: Equatable {
     let recipeId: String
     let aliases: Set<String>
 }
 
-struct UIIntentCapability: Equatable {
-    let target: UIIntentTarget
-    let supportedOperations: Set<UIIntentOperation>
+struct EditorIntentCapability: Equatable {
+    let target: EditorIntentTarget
+    let supportedOperations: Set<EditorIntentOperation>
     let supportedSizes: Set<EditorComponentSize>
 }
 
-struct UIIntentLexiconMatch<Value: Equatable>: Equatable {
+struct EditorIntentLexiconMatch<Value: Equatable>: Equatable {
     let value: Value
     let matchedTerm: String
     let isPhraseMatch: Bool
 }
 
-enum UIIntentLexicon {
-    static let componentAliases: [UIIntentComponentAlias] = [
-        UIIntentComponentAlias(
+enum EditorIntentLexicon {
+    static let componentAliases: [EditorIntentComponentAlias] = [
+        EditorIntentComponentAlias(
             componentId: "timeline.full",
             aliases: ["timeline", "tracks", "track", "clips", "sequence"],
             spatialAliases: ["bottom", "bottom area", "bottom section", "lower section"],
             workflowTerms: ["edit clips", "editing clips", "trim clips", "clip editing"]
         ),
-        UIIntentComponentAlias(
+        EditorIntentComponentAlias(
             componentId: "playback.section",
             aliases: ["preview", "viewer", "player", "video", "screen", "playback"],
             spatialAliases: ["top", "top area", "viewer area", "video area"],
             workflowTerms: ["watch video", "review video", "focus video", "preview video"]
         ),
-        UIIntentComponentAlias(
+        EditorIntentComponentAlias(
             componentId: "chrome.bottomStack",
             aliases: ["controls", "parameter controls", "inspector", "chrome", "bottom chrome"],
             spatialAliases: ["bottom controls", "control area"],
             workflowTerms: ["adjust parameters", "tune controls", "edit controls"]
         ),
-        UIIntentComponentAlias(
+        EditorIntentComponentAlias(
             componentId: "toolbar.collection",
             aliases: ["tools", "edit tools", "toolbar", "tool bar"],
             spatialAliases: ["tool area"],
@@ -58,68 +58,68 @@ enum UIIntentLexicon {
         )
     ]
 
-    static let operationAliases: [UIIntentOperationAlias] = [
-        UIIntentOperationAlias(
+    static let operationAliases: [EditorIntentOperationAlias] = [
+        EditorIntentOperationAlias(
             operation: .expand,
             size: .expanded,
             aliases: ["expanded", "expand", "bigger", "larger", "more room", "more space", "focus"]
         ),
-        UIIntentOperationAlias(
+        EditorIntentOperationAlias(
             operation: .compress,
             size: .compressed,
             aliases: ["compressed", "compress", "collapse", "smaller", "shrink", "less room", "less space"]
         ),
-        UIIntentOperationAlias(
+        EditorIntentOperationAlias(
             operation: .restore,
             size: .standard,
             aliases: ["standard", "normal", "restore", "default", "regular"]
         ),
-        UIIntentOperationAlias(
+        EditorIntentOperationAlias(
             operation: .hide,
             size: nil,
             aliases: ["hide", "hidden", "close", "remove", "dismiss", "off"]
         ),
-        UIIntentOperationAlias(
+        EditorIntentOperationAlias(
             operation: .show,
             size: .standard,
             aliases: ["show", "open", "visible", "bring back", "on"]
         ),
-        UIIntentOperationAlias(
+        EditorIntentOperationAlias(
             operation: .focus,
             size: .expanded,
             aliases: ["focus", "focus on", "prioritize"]
         )
     ]
 
-    static let workspaceAliases: [UIIntentWorkspaceAlias] = [
-        UIIntentWorkspaceAlias(
+    static let workspaceAliases: [EditorIntentWorkspaceAlias] = [
+        EditorIntentWorkspaceAlias(
             recipeId: EditorJITRecipeCatalog.previewFocus.id,
             aliases: ["focus on the video", "focus video", "preview focus", "give me more room to preview", "watch the video"]
         ),
-        UIIntentWorkspaceAlias(
+        EditorIntentWorkspaceAlias(
             recipeId: EditorJITRecipeCatalog.timelineFocus.id,
             aliases: ["timeline focus", "give me more room to edit clips", "more room to edit clips", "focus on editing clips"]
         ),
-        UIIntentWorkspaceAlias(
+        EditorIntentWorkspaceAlias(
             recipeId: EditorJITRecipeCatalog.lessCluttered.id,
             aliases: ["clean workspace", "cleaner workspace", "less cluttered", "minimal workspace", "reduce clutter"]
         ),
-        UIIntentWorkspaceAlias(
+        EditorIntentWorkspaceAlias(
             recipeId: EditorJITRecipeCatalog.clipEditing.id,
             aliases: ["clip editing", "edit clips", "focus on clips", "work on clips"]
         )
     ]
 
-    static var capabilities: [UIIntentCapability] {
+    static var capabilities: [EditorIntentCapability] {
         var capabilities = EditorComponentRegistry.entries.map { entry in
-            UIIntentCapability(
+            EditorIntentCapability(
                 target: .component(entry.id),
                 supportedOperations: [.show, .hide, .expand, .compress, .restore, .focus],
                 supportedSizes: entry.supportedSizes
             )
         }
         capabilities.append(
-            UIIntentCapability(
+            EditorIntentCapability(
                 target: .chromeControls,
                 supportedOperations: [.show, .hide, .expand, .compress, .restore],
                 supportedSizes: [.compressed, .standard, .expanded]
@@ -128,7 +128,7 @@ enum UIIntentLexicon {
         return capabilities
     }
 
-    static func componentMatches(in prompt: NormalizedEditorUIPrompt) -> [UIIntentLexiconMatch<EditorComponentID>] {
+    static func componentMatches(in prompt: NormalizedEditorIntentPrompt) -> [EditorIntentLexiconMatch<EditorComponentID>] {
         componentAliases.flatMap { component in
             matches(
                 terms: component.aliases.union(component.spatialAliases).union(component.workflowTerms),
@@ -138,23 +138,23 @@ enum UIIntentLexicon {
         }
     }
 
-    static func operationMatches(in prompt: NormalizedEditorUIPrompt) -> [UIIntentLexiconMatch<UIIntentOperationAlias>] {
+    static func operationMatches(in prompt: NormalizedEditorIntentPrompt) -> [EditorIntentLexiconMatch<EditorIntentOperationAlias>] {
         operationAliases.flatMap { operation in
             matches(terms: operation.aliases, prompt: prompt, value: operation)
         }
     }
 
-    static func workspaceMatches(in prompt: NormalizedEditorUIPrompt) -> [UIIntentLexiconMatch<UIIntentWorkspaceAlias>] {
+    static func workspaceMatches(in prompt: NormalizedEditorIntentPrompt) -> [EditorIntentLexiconMatch<EditorIntentWorkspaceAlias>] {
         workspaceAliases.flatMap { workspace in
             matches(terms: workspace.aliases, prompt: prompt, value: workspace)
         }
     }
 
-    static func aliases(for componentId: EditorComponentID) -> UIIntentComponentAlias? {
+    static func aliases(for componentId: EditorComponentID) -> EditorIntentComponentAlias? {
         componentAliases.first { $0.componentId == componentId }
     }
 
-    static func capability(for target: UIIntentTarget) -> UIIntentCapability? {
+    static func capability(for target: EditorIntentTarget) -> EditorIntentCapability? {
         capabilities.first { $0.target == target }
     }
 
@@ -166,16 +166,16 @@ enum UIIntentLexicon {
 
     private static func matches<Value: Equatable>(
         terms: Set<String>,
-        prompt: NormalizedEditorUIPrompt,
+        prompt: NormalizedEditorIntentPrompt,
         value: Value
-    ) -> [UIIntentLexiconMatch<Value>] {
+    ) -> [EditorIntentLexiconMatch<Value>] {
         terms.compactMap { term in
             let isPhrase = term.contains(" ")
             let matched = isPhrase
                 ? prompt.normalizedText.contains(term)
                 : prompt.tokens.contains(term)
             guard matched else { return nil }
-            return UIIntentLexiconMatch(
+            return EditorIntentLexiconMatch(
                 value: value,
                 matchedTerm: term,
                 isPhraseMatch: isPhrase

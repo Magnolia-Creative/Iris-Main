@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct UIIntentDemoView: View {
-    @StateObject private var viewModel = UIIntentDemoViewModel()
+struct EditorIntentCompilerDiagnosticsView: View {
+    @StateObject private var viewModel = EditorIntentCompilerDiagnosticsViewModel()
 
     @State private var currentTimeUs: Int64 = 1_500_000
     @State private var timelinePixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
@@ -51,7 +51,9 @@ struct UIIntentDemoView: View {
     }
 }
 
-private extension UIIntentDemoView {
+typealias UIIntentDemoView = EditorIntentCompilerDiagnosticsView
+
+private extension EditorIntentCompilerDiagnosticsView {
     var header: some View {
         VStack(alignment: .leading, spacing: .spacing(.sp2)) {
             Text("Natural-Language UI Compiler")
@@ -186,7 +188,6 @@ private extension UIIntentDemoView {
                     activeNavItemId: $activeNavItemId,
                     promptPhase: $promptPhase,
                     promptDraft: $promptDraft,
-                    expandedClipToolId: $expandedClipToolId,
                     clipColorFilter: $clipColorFilter,
                     clipVolume: $clipVolume
                 )
@@ -243,6 +244,6 @@ private extension UIIntentDemoView {
 
 #Preview {
     NavigationStack {
-        UIIntentDemoView()
+        EditorIntentCompilerDiagnosticsView()
     }
 }

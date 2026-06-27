@@ -1,20 +1,20 @@
 import Foundation
 
-struct UIIntentSchemaBuildResult: Equatable {
+struct EditorIntentSchemaBuildResult: Equatable {
     let renderState: EditorJITRenderState
     let warnings: [String]
 }
 
-struct UIIntentSchemaBuilder {
+struct EditorIntentSchemaBuilder {
     func build(
-        from candidate: EditorUIIntentCandidate,
-        context: EditorUICompilerContext,
-        prompt: NormalizedEditorUIPrompt
-    ) -> UIIntentSchemaBuildResult? {
+        from candidate: EditorIntentCandidate,
+        context: EditorIntentCompilerContext,
+        prompt: NormalizedEditorIntentPrompt
+    ) -> EditorIntentSchemaBuildResult? {
         switch candidate.target {
         case .workspaceRecipe(let recipeId):
             guard let recipe = EditorJITRecipeCatalog.recipe(id: recipeId) else { return nil }
-            return UIIntentSchemaBuildResult(renderState: recipe.makeRawState(), warnings: [])
+            return EditorIntentSchemaBuildResult(renderState: recipe.makeRawState(), warnings: [])
         case .component:
             return buildComponentState(from: candidate, context: context, prompt: prompt)
         case .chromeControls:
@@ -23,12 +23,12 @@ struct UIIntentSchemaBuilder {
     }
 }
 
-private extension UIIntentSchemaBuilder {
+private extension EditorIntentSchemaBuilder {
     func buildComponentState(
-        from candidate: EditorUIIntentCandidate,
-        context: EditorUICompilerContext,
-        prompt: NormalizedEditorUIPrompt
-    ) -> UIIntentSchemaBuildResult? {
+        from candidate: EditorIntentCandidate,
+        context: EditorIntentCompilerContext,
+        prompt: NormalizedEditorIntentPrompt
+    ) -> EditorIntentSchemaBuildResult? {
         guard case .component(let componentId) = candidate.target else { return nil }
 
         var playback = context.currentRenderState.playback
@@ -60,7 +60,7 @@ private extension UIIntentSchemaBuilder {
             return nil
         }
 
-        return UIIntentSchemaBuildResult(
+        return EditorIntentSchemaBuildResult(
             renderState: renderState(
                 prompt: prompt,
                 candidate: candidate,
@@ -74,15 +74,15 @@ private extension UIIntentSchemaBuilder {
     }
 
     func buildChromeControlsState(
-        from candidate: EditorUIIntentCandidate,
-        context: EditorUICompilerContext,
-        prompt: NormalizedEditorUIPrompt
-    ) -> UIIntentSchemaBuildResult {
+        from candidate: EditorIntentCandidate,
+        context: EditorIntentCompilerContext,
+        prompt: NormalizedEditorIntentPrompt
+    ) -> EditorIntentSchemaBuildResult {
         let chromePlan = makeChromePlan(
             for: candidate.operation,
             requestedSize: candidate.requestedSize
         )
-        return UIIntentSchemaBuildResult(
+        return EditorIntentSchemaBuildResult(
             renderState: renderState(
                 prompt: prompt,
                 candidate: candidate,
@@ -97,7 +97,7 @@ private extension UIIntentSchemaBuilder {
 
     func componentState(
         componentId: EditorComponentID,
-        operation: UIIntentOperation,
+        operation: EditorIntentOperation,
         requestedSize: EditorComponentSize?
     ) -> EditorJITComponentState {
         switch operation {
@@ -115,7 +115,7 @@ private extension UIIntentSchemaBuilder {
     }
 
     func makeChromePlan(
-        for operation: UIIntentOperation,
+        for operation: EditorIntentOperation,
         requestedSize: EditorComponentSize?
     ) -> EditorBottomChromePlan {
         switch operation {
@@ -162,15 +162,15 @@ private extension UIIntentSchemaBuilder {
     }
 
     func renderState(
-        prompt: NormalizedEditorUIPrompt,
-        candidate: EditorUIIntentCandidate,
+        prompt: NormalizedEditorIntentPrompt,
+        candidate: EditorIntentCandidate,
         playback: EditorJITComponentState,
         timeline: EditorJITComponentState,
         chromePlan: EditorBottomChromePlan,
         warnings: [String]
     ) -> EditorJITRenderState {
         EditorJITRenderState(
-            id: "ui-intent-\(candidate.id.sanitizedUIIntentId)",
+            id: "editor-intent-\(candidate.id.sanitizedEditorIntentId)",
             title: title(for: candidate),
             promptExample: prompt.originalText,
             resolutionCategory: category(for: candidate.source),
@@ -182,7 +182,7 @@ private extension UIIntentSchemaBuilder {
         )
     }
 
-    func title(for candidate: EditorUIIntentCandidate) -> String {
+    func title(for candidate: EditorIntentCandidate) -> String {
         switch candidate.operation {
         case .show: return "Show \(candidate.target.displayName)"
         case .hide: return "Hide \(candidate.target.displayName)"
@@ -194,7 +194,7 @@ private extension UIIntentSchemaBuilder {
         }
     }
 
-    func category(for source: UIIntentCandidateSource) -> EditorJITResolutionCategory {
+    func category(for source: EditorIntentCandidateSource) -> EditorJITResolutionCategory {
         switch source {
         case .direct: return .direct
         case .contextual: return .contextual
@@ -204,7 +204,7 @@ private extension UIIntentSchemaBuilder {
 }
 
 private extension String {
-    var sanitizedUIIntentId: String {
+    var sanitizedEditorIntentId: String {
         replacingOccurrences(of: "[^a-zA-Z0-9-]+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }

@@ -1,8 +1,8 @@
 import Foundation
 import NaturalLanguage
 
-enum UIPromptNormalizer {
-    static func normalize(_ prompt: String) -> NormalizedEditorUIPrompt {
+enum EditorIntentPromptNormalizer {
+    static func normalize(_ prompt: String) -> NormalizedEditorIntentPrompt {
         let original = prompt
         var working = prompt
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -14,12 +14,12 @@ enum UIPromptNormalizer {
 
         let replacementResult = applyCanonicalPhraseReplacements(to: working)
         let normalized = replacementResult.text
-        let tokens = EditorUIPromptTokenizer.tokens(in: normalized)
+        let tokens = EditorIntentPromptTokenizer.tokens(in: normalized)
         let numericTokens = tokens.filter { token in
             token.range(of: #"^\d+(?:\.\d+)?$"#, options: .regularExpression) != nil
         }
 
-        return NormalizedEditorUIPrompt(
+        return NormalizedEditorIntentPrompt(
             originalText: original,
             normalizedText: normalized,
             tokens: tokens,
@@ -66,7 +66,7 @@ enum UIPromptNormalizer {
 
     private static func applyCanonicalPhraseReplacements(
         to text: String
-    ) -> (text: String, replacements: [UIIntentPhraseReplacement]) {
+    ) -> (text: String, replacements: [EditorIntentPhraseReplacement]) {
         let replacements: [(String, String)] = [
             ("more room", "expanded"),
             ("more space", "expanded"),
@@ -84,11 +84,11 @@ enum UIPromptNormalizer {
         ]
 
         var result = text
-        var applied: [UIIntentPhraseReplacement] = []
+        var applied: [EditorIntentPhraseReplacement] = []
         for (source, canonical) in replacements {
             guard result.contains(source) else { continue }
             result = result.replacingOccurrences(of: source, with: canonical)
-            applied.append(UIIntentPhraseReplacement(source: source, canonical: canonical))
+            applied.append(EditorIntentPhraseReplacement(source: source, canonical: canonical))
         }
 
         return (collapsedWhitespace(in: result), applied)
@@ -102,7 +102,7 @@ enum UIPromptNormalizer {
     }
 }
 
-enum EditorUIPromptTokenizer {
+enum EditorIntentPromptTokenizer {
     static func tokens(in text: String) -> [String] {
         let tokenizer = NLTokenizer(unit: .word)
         tokenizer.string = text

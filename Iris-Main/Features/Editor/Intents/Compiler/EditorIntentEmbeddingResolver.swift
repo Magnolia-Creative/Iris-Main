@@ -5,54 +5,54 @@ protocol EditorUITextEmbeddingProvider {
     func embedding(for text: String) async throws -> [Float]
 }
 
-enum UIEmbeddingResolverWarning: String, Codable, Equatable {
+enum EditorIntentEmbeddingResolverWarning: String, Codable, Equatable {
     case providerUnavailable
     case noExamplesAvailable
 }
 
-struct UIEmbeddingExample: Equatable {
+struct EditorIntentEmbeddingExample: Equatable {
     let id: String
     let text: String
-    let source: UIIntentCandidateSource
-    let operation: UIIntentOperation
-    let target: UIIntentTarget
+    let source: EditorIntentCandidateSource
+    let operation: EditorIntentOperation
+    let target: EditorIntentTarget
     let requestedSize: EditorComponentSize?
     let assumptions: [String]
 }
 
-struct UIEmbeddingResolution {
-    let candidates: [EditorUIIntentCandidate]
-    let warnings: [UIEmbeddingResolverWarning]
+struct EditorIntentEmbeddingResolution {
+    let candidates: [EditorIntentCandidate]
+    let warnings: [EditorIntentEmbeddingResolverWarning]
 }
 
-actor UIEmbeddingResolver {
+actor EditorIntentEmbeddingResolver {
     private let provider: any EditorUITextEmbeddingProvider
-    private let examples: [UIEmbeddingExample]
+    private let examples: [EditorIntentEmbeddingExample]
     private let minimumScore: Double
     private var cachedExampleVectors: [String: [Float]] = [:]
 
     init(
         provider: (any EditorUITextEmbeddingProvider)? = nil,
-        examples: [UIEmbeddingExample]? = nil,
+        examples: [EditorIntentEmbeddingExample]? = nil,
         minimumScore: Double = 0.52
     ) {
-        self.provider = provider ?? NLContextualUIEmbeddingProvider()
-        self.examples = examples ?? UIEmbeddingResolver.defaultExamples
+        self.provider = provider ?? NLContextualEditorIntentEmbeddingProvider()
+        self.examples = examples ?? EditorIntentEmbeddingResolver.defaultExamples
         self.minimumScore = minimumScore
     }
 
-    func candidates(for prompt: NormalizedEditorUIPrompt) async -> UIEmbeddingResolution {
+    func candidates(for prompt: NormalizedEditorIntentPrompt) async -> EditorIntentEmbeddingResolution {
         guard !examples.isEmpty else {
-            return UIEmbeddingResolution(candidates: [], warnings: [.noExamplesAvailable])
+            return EditorIntentEmbeddingResolution(candidates: [], warnings: [.noExamplesAvailable])
         }
 
         do {
             let promptVector = try await provider.embedding(for: prompt.normalizedText)
             guard !promptVector.isEmpty else {
-                return UIEmbeddingResolution(candidates: [], warnings: [.providerUnavailable])
+                return EditorIntentEmbeddingResolution(candidates: [], warnings: [.providerUnavailable])
             }
 
-            var candidates: [EditorUIIntentCandidate] = []
+            var candidates: [EditorIntentCandidate] = []
             for example in examples {
                 let exampleVector = try await vector(for: example)
                 let score = IntentVectorMath.cosineSimilarity(promptVector, exampleVector)
@@ -60,16 +60,16 @@ actor UIEmbeddingResolver {
                 candidates.append(candidate(from: example, score: score))
             }
 
-            return UIEmbeddingResolution(
+            return EditorIntentEmbeddingResolution(
                 candidates: candidates.sorted { ($0.embeddingScore ?? 0) > ($1.embeddingScore ?? 0) },
                 warnings: []
             )
         } catch {
-            return UIEmbeddingResolution(candidates: [], warnings: [.providerUnavailable])
+            return EditorIntentEmbeddingResolution(candidates: [], warnings: [.providerUnavailable])
         }
     }
 
-    private func vector(for example: UIEmbeddingExample) async throws -> [Float] {
+    private func vector(for example: EditorIntentEmbeddingExample) async throws -> [Float] {
         if let cached = cachedExampleVectors[example.id] {
             return cached
         }
@@ -78,8 +78,8 @@ actor UIEmbeddingResolver {
         return vector
     }
 
-    private func candidate(from example: UIEmbeddingExample, score: Double) -> EditorUIIntentCandidate {
-        EditorUIIntentCandidate(
+    private func candidate(from example: EditorIntentEmbeddingExample, score: Double) -> EditorIntentCandidate {
+        EditorIntentCandidate(
             id: "embedding.\(example.id)",
             source: example.source,
             operation: example.operation,
@@ -97,9 +97,9 @@ actor UIEmbeddingResolver {
     }
 }
 
-extension UIEmbeddingResolver {
-    static let defaultExamples: [UIEmbeddingExample] = [
-        UIEmbeddingExample(
+extension EditorIntentEmbeddingResolver {
+    static let defaultExamples: [EditorIntentEmbeddingExample] = [
+        EditorIntentEmbeddingExample(
             id: "timeline-focus-edit-clips",
             text: "give me more room to edit clips",
             source: .embedding,
@@ -108,7 +108,7 @@ extension UIEmbeddingResolver {
             requestedSize: nil,
             assumptions: ["Mapped clip-editing workspace language to the timeline focus recipe."]
         ),
-        UIEmbeddingExample(
+        EditorIntentEmbeddingExample(
             id: "timeline-focus-tracks",
             text: "make the tracks easier to edit",
             source: .embedding,
@@ -117,7 +117,7 @@ extension UIEmbeddingResolver {
             requestedSize: .expanded,
             assumptions: ["Mapped track-editing language to the timeline component."]
         ),
-        UIEmbeddingExample(
+        EditorIntentEmbeddingExample(
             id: "preview-focus-video",
             text: "focus on the video preview",
             source: .embedding,
@@ -126,7 +126,7 @@ extension UIEmbeddingResolver {
             requestedSize: nil,
             assumptions: ["Mapped video focus language to the preview focus recipe."]
         ),
-        UIEmbeddingExample(
+        EditorIntentEmbeddingExample(
             id: "clean-workspace",
             text: "use a cleaner workspace with fewer controls",
             source: .embedding,
@@ -135,7 +135,7 @@ extension UIEmbeddingResolver {
             requestedSize: nil,
             assumptions: ["Mapped reduced-clutter language to the less cluttered recipe."]
         ),
-        UIEmbeddingExample(
+        EditorIntentEmbeddingExample(
             id: "controls-hide",
             text: "hide the inspector and parameter controls",
             source: .embedding,
@@ -144,7 +144,7 @@ extension UIEmbeddingResolver {
             requestedSize: nil,
             assumptions: ["Mapped controls language to bottom chrome controls."]
         ),
-        UIEmbeddingExample(
+        EditorIntentEmbeddingExample(
             id: "controls-show",
             text: "show the inspector controls",
             source: .embedding,
@@ -156,7 +156,7 @@ extension UIEmbeddingResolver {
     ]
 }
 
-final class NLContextualUIEmbeddingProvider: EditorUITextEmbeddingProvider {
+final class NLContextualEditorIntentEmbeddingProvider: EditorUITextEmbeddingProvider {
     private let language: NLLanguage
     private let model: NLContextualEmbedding?
     private var loadTask: Task<Void, Error>?

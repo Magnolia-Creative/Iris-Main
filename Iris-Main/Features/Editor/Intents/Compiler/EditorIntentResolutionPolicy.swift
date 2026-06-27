@@ -1,6 +1,6 @@
 import Foundation
 
-struct UIResolutionPolicy: Equatable {
+struct EditorIntentResolutionPolicy: Equatable {
     var decisiveDirectScore: Double = 0.88
     var localResolutionThreshold: Double = 0.72
     var embeddingAcceptThreshold: Double = 0.62
@@ -10,5 +10,5 @@ struct UIResolutionPolicy: Equatable {
     var explicitStateBoost: Double = 0.08
     var contextBoost: Double = 0.08
 
-    static let `default` = UIResolutionPolicy()
+    static let `default` = EditorIntentResolutionPolicy()
 }

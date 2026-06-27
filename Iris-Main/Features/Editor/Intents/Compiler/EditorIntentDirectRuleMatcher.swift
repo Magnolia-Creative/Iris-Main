@@ -1,26 +1,26 @@
 import Foundation
 
-struct UIDirectRule: Equatable {
+struct EditorIntentDirectRule: Equatable {
     let id: String
     let pattern: String
-    let target: UIIntentTarget
-    let operation: UIIntentOperation
+    let target: EditorIntentTarget
+    let operation: EditorIntentOperation
     let requestedSize: EditorComponentSize?
     let matchedTerms: [String]
     let baseScore: Double
 }
 
-struct UIDirectRuleMatcher {
-    private let rules: [UIDirectRule]
+struct EditorIntentDirectRuleMatcher {
+    private let rules: [EditorIntentDirectRule]
 
-    init(rules: [UIDirectRule] = Self.defaultRules) {
+    init(rules: [EditorIntentDirectRule] = Self.defaultRules) {
         self.rules = rules
     }
 
     func candidates(
-        for prompt: NormalizedEditorUIPrompt,
-        context: EditorUICompilerContext
-    ) -> [EditorUIIntentCandidate] {
+        for prompt: NormalizedEditorIntentPrompt,
+        context: EditorIntentCompilerContext
+    ) -> [EditorIntentCandidate] {
         var candidates = explicitRuleCandidates(for: prompt)
         candidates.append(contentsOf: workspacePhraseCandidates(for: prompt))
         candidates.append(contentsOf: lexiconCombinationCandidates(for: prompt))
@@ -29,9 +29,9 @@ struct UIDirectRuleMatcher {
     }
 }
 
-extension UIDirectRuleMatcher {
-    static let defaultRules: [UIDirectRule] = [
-        UIDirectRule(
+extension EditorIntentDirectRuleMatcher {
+    static let defaultRules: [EditorIntentDirectRule] = [
+        EditorIntentDirectRule(
             id: "timeline.expand",
             pattern: #"\b(?:timeline|tracks|clips|bottom(?: area| section)?)\b.*\b(?:expanded|expand|focus)\b|\b(?:expanded|expand|focus)\b.*\b(?:timeline|tracks|clips|bottom(?: area| section)?)\b"#,
             target: .component("timeline.full"),
@@ -40,7 +40,7 @@ extension UIDirectRuleMatcher {
             matchedTerms: ["timeline", "expanded"],
             baseScore: 0.92
         ),
-        UIDirectRule(
+        EditorIntentDirectRule(
             id: "timeline.compress",
             pattern: #"\b(?:timeline|tracks|clips|bottom(?: area| section)?)\b.*\b(?:compressed|compress|collapse|shrink)\b|\b(?:compressed|compress|collapse|shrink)\b.*\b(?:timeline|tracks|clips|bottom(?: area| section)?)\b"#,
             target: .component("timeline.full"),
@@ -49,7 +49,7 @@ extension UIDirectRuleMatcher {
             matchedTerms: ["timeline", "compressed"],
             baseScore: 0.92
         ),
-        UIDirectRule(
+        EditorIntentDirectRule(
             id: "preview.expand",
             pattern: #"\b(?:preview|viewer|player|video|screen|playback)\b.*\b(?:expanded|expand|focus)\b|\b(?:expanded|expand|focus)\b.*\b(?:preview|viewer|player|video|screen|playback)\b"#,
             target: .component("playback.section"),
@@ -58,7 +58,7 @@ extension UIDirectRuleMatcher {
             matchedTerms: ["preview", "expanded"],
             baseScore: 0.92
         ),
-        UIDirectRule(
+        EditorIntentDirectRule(
             id: "preview.show",
             pattern: #"\b(?:show|open|visible)\b.*\b(?:preview|viewer|player|video|screen|playback)\b"#,
             target: .component("playback.section"),
@@ -67,7 +67,7 @@ extension UIDirectRuleMatcher {
             matchedTerms: ["show", "preview"],
             baseScore: 0.9
         ),
-        UIDirectRule(
+        EditorIntentDirectRule(
             id: "controls.hide",
             pattern: #"\b(?:hide|close|remove|dismiss|off)\b.*\b(?:controls|parameter controls|inspector|chrome)\b"#,
             target: .chromeControls,
@@ -76,7 +76,7 @@ extension UIDirectRuleMatcher {
             matchedTerms: ["hide", "controls"],
             baseScore: 0.9
         ),
-        UIDirectRule(
+        EditorIntentDirectRule(
             id: "controls.show",
             pattern: #"\b(?:show|open|visible)\b.*\b(?:controls|parameter controls|inspector|chrome)\b"#,
             target: .chromeControls,
@@ -85,7 +85,7 @@ extension UIDirectRuleMatcher {
             matchedTerms: ["show", "controls"],
             baseScore: 0.9
         ),
-        UIDirectRule(
+        EditorIntentDirectRule(
             id: "tools.show",
             pattern: #"\b(?:show|open|visible)\b.*\b(?:tools|edit tools|toolbar|tool bar)\b"#,
             target: .component("toolbar.collection"),
@@ -97,11 +97,11 @@ extension UIDirectRuleMatcher {
     ]
 }
 
-private extension UIDirectRuleMatcher {
-    func explicitRuleCandidates(for prompt: NormalizedEditorUIPrompt) -> [EditorUIIntentCandidate] {
+private extension EditorIntentDirectRuleMatcher {
+    func explicitRuleCandidates(for prompt: NormalizedEditorIntentPrompt) -> [EditorIntentCandidate] {
         rules.compactMap { rule in
             guard prompt.normalizedText.matches(pattern: rule.pattern) else { return nil }
-            return EditorUIIntentCandidate(
+            return EditorIntentCandidate(
                 id: rule.id,
                 source: .direct,
                 operation: rule.operation,
@@ -119,9 +119,9 @@ private extension UIDirectRuleMatcher {
         }
     }
 
-    func workspacePhraseCandidates(for prompt: NormalizedEditorUIPrompt) -> [EditorUIIntentCandidate] {
-        UIIntentLexicon.workspaceMatches(in: prompt).map { match in
-            EditorUIIntentCandidate(
+    func workspacePhraseCandidates(for prompt: NormalizedEditorIntentPrompt) -> [EditorIntentCandidate] {
+        EditorIntentLexicon.workspaceMatches(in: prompt).map { match in
+            EditorIntentCandidate(
                 id: "workspace.\(match.value.recipeId)",
                 source: .workspacePhrase,
                 operation: .applyWorkspace,
@@ -139,14 +139,14 @@ private extension UIDirectRuleMatcher {
         }
     }
 
-    func lexiconCombinationCandidates(for prompt: NormalizedEditorUIPrompt) -> [EditorUIIntentCandidate] {
-        let componentMatches = UIIntentLexicon.componentMatches(in: prompt)
-        let operationMatches = UIIntentLexicon.operationMatches(in: prompt)
+    func lexiconCombinationCandidates(for prompt: NormalizedEditorIntentPrompt) -> [EditorIntentCandidate] {
+        let componentMatches = EditorIntentLexicon.componentMatches(in: prompt)
+        let operationMatches = EditorIntentLexicon.operationMatches(in: prompt)
         guard !componentMatches.isEmpty, !operationMatches.isEmpty else { return [] }
 
         return componentMatches.flatMap { component in
             operationMatches.map { operation in
-                EditorUIIntentCandidate(
+                EditorIntentCandidate(
                     id: "lexicon.\(component.value.rawValue).\(operation.value.operation.rawValue)",
                     source: .direct,
                     operation: operation.value.operation,
@@ -166,14 +166,14 @@ private extension UIDirectRuleMatcher {
     }
 
     func contextualCandidates(
-        for prompt: NormalizedEditorUIPrompt,
-        context: EditorUICompilerContext
-    ) -> [EditorUIIntentCandidate] {
+        for prompt: NormalizedEditorIntentPrompt,
+        context: EditorIntentCompilerContext
+    ) -> [EditorIntentCandidate] {
         guard prompt.tokens.contains("this") else { return [] }
         guard let componentId = context.lastInteractedComponent else { return [] }
 
-        return UIIntentLexicon.operationMatches(in: prompt).map { operation in
-            EditorUIIntentCandidate(
+        return EditorIntentLexicon.operationMatches(in: prompt).map { operation in
+            EditorIntentCandidate(
                 id: "context.\(componentId.rawValue).\(operation.value.operation.rawValue)",
                 source: .contextual,
                 operation: operation.value.operation,
@@ -191,9 +191,9 @@ private extension UIDirectRuleMatcher {
         }
     }
 
-    func deduplicated(_ candidates: [EditorUIIntentCandidate]) -> [EditorUIIntentCandidate] {
+    func deduplicated(_ candidates: [EditorIntentCandidate]) -> [EditorIntentCandidate] {
         var seen = Set<String>()
-        var result: [EditorUIIntentCandidate] = []
+        var result: [EditorIntentCandidate] = []
         for candidate in candidates {
             let key = [
                 candidate.source.rawValue,

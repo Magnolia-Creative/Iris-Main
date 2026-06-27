@@ -1,17 +1,17 @@
 import Foundation
 
-struct UIIntentValidationOutput: Equatable {
+struct EditorIntentValidationOutput: Equatable {
     let renderState: EditorJITRenderState
     let validationResult: EditorJITValidationResult
     let isNoOp: Bool
 }
 
-struct UIIntentValidator {
+struct EditorIntentCompilerValidator {
     func validate(
-        buildResult: UIIntentSchemaBuildResult,
-        candidate: EditorUIIntentCandidate,
-        context: EditorUICompilerContext
-    ) -> UIIntentValidationOutput {
+        buildResult: EditorIntentSchemaBuildResult,
+        candidate: EditorIntentCandidate,
+        context: EditorIntentCompilerContext
+    ) -> EditorIntentValidationOutput {
         let supportErrors = supportErrors(for: candidate)
         let (validatedState, renderValidation) = EditorJITRenderValidator.validate(buildResult.renderState)
         let isNoOp = validatedState == context.currentRenderState
@@ -39,15 +39,15 @@ struct UIIntentValidator {
             isValid: result.isValid
         )
 
-        return UIIntentValidationOutput(
+        return EditorIntentValidationOutput(
             renderState: state,
             validationResult: result,
             isNoOp: isNoOp
         )
     }
 
-    private func supportErrors(for candidate: EditorUIIntentCandidate) -> [String] {
-        guard let capability = UIIntentLexicon.capability(for: candidate.target) else {
+    private func supportErrors(for candidate: EditorIntentCandidate) -> [String] {
+        guard let capability = EditorIntentLexicon.capability(for: candidate.target) else {
             return ["Unsupported UI target '\(candidate.target.displayName)'."]
         }
 
