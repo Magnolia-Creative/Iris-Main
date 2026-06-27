@@ -3,6 +3,12 @@ import SwiftUI
 struct EditorJITRenderView: View {
     let state: EditorJITRenderState
     let transitionPlans: [EditorJITTransitionPlan]
+    var timelineContext: EditorTimelineContext?
+    var timelineActions: EditorTimelineActions = .noop
+    var playbackContext: EditorPlaybackContext?
+    var playbackActions: EditorPlaybackActions = .noop
+    var renderEngine: VideoLabRenderEngine?
+    var dockContentOverride: AnyView?
 
     @Binding var currentTimeUs: Int64
     @Binding var timelinePixelsPerSecond: CGFloat
@@ -164,22 +170,27 @@ struct EditorJITRenderView: View {
         ]
     }
 
+    @ViewBuilder
     private var dockContent: some View {
-        IntelligenceComponent(
-            navigationItems: IntelligenceComponent.defaultShowcaseItems,
-            activeNavigationItemId: $activeNavItemId,
-            promptPhase: $promptPhase,
-            promptDraft: $promptDraft,
-            liveTranscript: "",
-            voiceLevel: 0,
-            onIntelligenceTap: {},
-            onVoiceHoldStart: {},
-            onVoiceHoldEnd: {},
-            onSubmitText: {},
-            onCancelText: {},
-            onCancelProcessing: {}
-        )
-        .frame(width: IntelligenceComponent.containerWidth())
+        if let dockContentOverride {
+            dockContentOverride
+        } else {
+            IntelligenceComponent(
+                navigationItems: IntelligenceComponent.defaultShowcaseItems,
+                activeNavigationItemId: $activeNavItemId,
+                promptPhase: $promptPhase,
+                promptDraft: $promptDraft,
+                liveTranscript: "",
+                voiceLevel: 0,
+                onIntelligenceTap: {},
+                onVoiceHoldStart: {},
+                onVoiceHoldEnd: {},
+                onSubmitText: {},
+                onCancelText: {},
+                onCancelProcessing: {}
+            )
+            .frame(width: IntelligenceComponent.containerWidth())
+        }
     }
 
     private func handleSegmentSelection(_ segmentId: String) {
