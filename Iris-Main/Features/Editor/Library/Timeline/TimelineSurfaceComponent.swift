@@ -447,7 +447,7 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             tracks: context.tracks,
             clipsByTrackId: context.clipsByTrackId,
             mediaById: context.mediaById,
-            layout: timelineLayout,
+            layout: Self.timelineLayout(for: context.layoutSize),
             pixelsPerSecond: context.pixelsPerSecond,
             timelineDurationUs: context.timelineDurationUs,
             scrollableDurationUs: context.scrollableDurationUs,
@@ -473,12 +473,12 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             onCaptionCueSelected: actions.onCaptionCueSelected,
             onClipSelected: actions.onClipSelected
         )
-        .frame(height: timelineLayout.sectionHeight(for: context.tracks))
-        .animation(nil, value: timelineLayout.sectionHeight(for: context.tracks))
+        .frame(height: Self.timelineLayout(for: context.layoutSize).sectionHeight(for: context.tracks))
+        .animation(nil, value: Self.timelineLayout(for: context.layoutSize).sectionHeight(for: context.tracks))
     }
 
-    private var timelineLayout: TimelineLayout {
-        switch context.layoutSize {
+    static func timelineLayout(for size: EditorComponentSize) -> TimelineLayout {
+        switch size {
         case .compressed:
             return .compressed
         case .standard, .expanded:
