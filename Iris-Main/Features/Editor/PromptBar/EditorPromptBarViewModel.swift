@@ -239,6 +239,12 @@ final class EditorPromptBarViewModel: ObservableObject {
             let intentWorkspaceActivated = await onIntentCompiled?(trimmedPrompt, result) ?? false
             let prefersIntentWorkspace = !result.experimentalEffectOperations.isEmpty
 
+            if intentWorkspaceActivated && result.actions.isEmpty {
+                Self.logger.info("[PromptBar] Intent workspace handled prompt without timeline actions")
+                phase = .idle
+                return
+            }
+
             if !result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Applying actions count=\(result.actions.count, privacy: .public)")
                 if prefersIntentWorkspace && intentWorkspaceActivated {

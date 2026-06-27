@@ -10,7 +10,7 @@ struct EditorContainerView: View {
     @StateObject private var captionsFlow = CaptionsFlowController()
     @StateObject private var editorPromptBarViewModel: EditorPromptBarViewModel
     @StateObject private var renderBridge = TimelineRenderBridge()
-    @StateObject private var jitRenderState = EditorJITLiveRenderState()
+    @StateObject private var jitRenderState: EditorJITLiveRenderState
     @ObservedObject private var agentSessionViewModel: AgentViewModel
     @State private var playbackController: PlaybackController?
     @State private var activeSpace: EditorSpace = .edit
@@ -31,7 +31,9 @@ struct EditorContainerView: View {
         self.initialImportSeed = initialImportSeed
         self.onReturnHome = onReturnHome
         let timelineController = TimelineController(timelineId: timelineId)
+        let liveJITRenderState = EditorJITLiveRenderState()
         self._controller = StateObject(wrappedValue: timelineController)
+        self._jitRenderState = StateObject(wrappedValue: liveJITRenderState)
         self._editorPromptBarViewModel = StateObject(
             wrappedValue: EditorPromptBarViewModel(
                 contextProvider: {
@@ -49,9 +51,12 @@ struct EditorContainerView: View {
                 attemptStartPromptActionReview: { actions, prompt in
                     timelineController.startPromptActionReview(actions: actions, prompt: prompt)
                 },
-                onIntentCompiled: { _, _ in
-                    // Temporary no-op while the old Workspace planner is removed.
-                    false
+                onIntentCompiled: { prompt, _ in
+                    await liveJITRenderState.compileAndApply(
+                        prompt: prompt,
+                        activeSpace: .edit,
+                        hasSelectedClip: timelineController.state.selectedClipId != nil
+                    )
                 }
             )
         )
@@ -705,11 +710,16 @@ final class EditorJITLiveRenderState: ObservableObject {
     @Published private(set) var renderState: EditorJITRenderState
     @Published private(set) var previousRenderState: EditorJITRenderState?
     @Published private(set) var transitionPlans: [EditorJITTransitionPlan] = []
+    private let compiler: EditorIntentCompiler
 
-    init(renderState: EditorJITRenderState? = nil) {
+    init(
+        renderState: EditorJITRenderState? = nil,
+        compiler: EditorIntentCompiler = EditorIntentCompiler()
+    ) {
         let renderState = renderState ?? EditorJITLiveRenderState.defaultRenderState
         let (validated, _) = EditorJITRenderValidator.validate(renderState)
         self.renderState = validated
+        self.compiler = compiler
     }
 
     func apply(_ nextState: EditorJITRenderState) -> Bool {
@@ -721,5 +731,28 @@ final class EditorJITLiveRenderState: ObservableObject {
         transitionPlans = EditorJITRenderTransitionCoordinator.plan(from: previous, to: validated)
         renderState = validated
         return true
+    }
+
+    func compileAndApply(
+        prompt: String,
+        activeSpace: EditorSpace,
+        hasSelectedClip: Bool
+    ) async -> Bool {
+        let context = EditorIntentCompilerContext(
+            activeSpace: activeSpace,
+            currentRenderState: renderState,
+            lastInteractedComponent: nil,
+            activeParameterGroupId: renderState.chromePlan.activeParameterGroupId,
+            hasSelectedClip: hasSelectedClip,
+            controlsAvailable: hasSelectedClip || renderState.chromePlan.showsDock
+        )
+
+        let result = await compiler.compile(prompt: prompt, context: context)
+        switch result {
+        case .resolved(let nextState, _, _):
+            return apply(nextState)
+        case .clarificationRequired, .deferredToRemote, .unsupported:
+            return false
+        }
     }
 }
