@@ -49,15 +49,100 @@ struct EditorJITRenderView: View {
     }
 
     private var timelineOrganizerModel: TimelineOrganizerModel {
-        EditorComponentShowcaseSamples.makeTimelineOrganizerModel(
+        TimelineOrganizerModel(context: effectiveTimelineContext)
+    }
+
+    private var effectiveTimelineContext: EditorTimelineContext {
+        if let timelineContext {
+            return contextWithLayoutSize(timelineContext, size: state.timeline.size)
+        }
+
+        return EditorComponentShowcaseSamples.makeTimelineContext(
             size: state.timeline.size,
-            currentTimeUs: currentTimeUs,
-            pixelsPerSecond: timelinePixelsPerSecond
+            currentTime: $currentTimeUs,
+            selectedClipId: selectedSegmentBinding,
+            selectedCaptionCueId: selectedSegmentBinding,
+            isAddMenuOpen: $isAddMenuOpen
         )
     }
 
+    private func contextWithLayoutSize(
+        _ context: EditorTimelineContext,
+        size: EditorComponentSize
+    ) -> EditorTimelineContext {
+        EditorTimelineContext(
+            tracks: context.tracks,
+            clipsByTrackId: context.clipsByTrackId,
+            mediaById: context.mediaById,
+            captionGroups: context.captionGroups,
+            captionCues: context.captionCues,
+            layoutSize: size,
+            pixelsPerSecond: context.pixelsPerSecond,
+            timelineDurationUs: context.timelineDurationUs,
+            scrollableDurationUs: context.scrollableDurationUs,
+            playbackState: context.playbackState,
+            reviewFocusedClipIds: context.reviewFocusedClipIds,
+            isReviewInteractionDisabled: context.isReviewInteractionDisabled,
+            captionHighlightRangeUs: context.captionHighlightRangeUs,
+            playheadTint: context.playheadTint,
+            showAddButton: context.showAddButton,
+            currentTimeAtCenter: context.$currentTimeAtCenter,
+            scrollTargetTimeUs: context.$scrollTargetTimeUs,
+            selectedClipId: context.$selectedClipId,
+            selectedCaptionCueId: context.$selectedCaptionCueId,
+            isAddMenuOpen: context.$isAddMenuOpen
+        )
+    }
+
+    private var effectiveTimelineActions: EditorTimelineActions {
+        guard timelineContext == nil else { return timelineActions }
+        var actions = EditorTimelineActions.noop
+        actions.onAddSelection = { _, _ in isAddMenuOpen = false }
+        return actions
+    }
+
+    private var effectivePlaybackContext: EditorPlaybackContext {
+        if var playbackContext {
+            playbackContext.viewerSize = state.playback.size
+            return playbackContext
+        }
+
+        return EditorComponentShowcaseSamples.makePlaybackContext(
+            size: state.playback.size,
+            isPlaying: isPlaying,
+            showAspectSettings: $showAspectSettings
+        )
+    }
+
+    private var effectivePlaybackActions: EditorPlaybackActions {
+        guard playbackContext == nil else { return playbackActions }
+        return EditorPlaybackActions(
+            onPlay: { isPlaying = true },
+            onPause: { isPlaying = false },
+            onJumpToStart: { currentTimeUs = 0 },
+            onJumpToEnd: { currentTimeUs = 7_000_000 },
+            onUndo: {},
+            onRedo: {},
+            onToggleAspectSettings: { showAspectSettings.toggle() }
+        )
+    }
+
+    private var selectedSegmentBinding: Binding<String?> {
+        Binding(
+            get: { selectedSegmentId },
+            set: { selectedSegmentId = $0 }
+        )
+    }
+
+    private var activeSelectedSegmentId: String? {
+        if let timelineContext {
+            return timelineContext.selectedClipId ?? timelineContext.selectedCaptionCueId
+        }
+        return selectedSegmentId
+    }
+
     private var showsClipTools: Bool {
-        guard let selectedSegmentId else { return false }
+        guard let selectedSegmentId = activeSelectedSegmentId else { return false }
         return EditorJITTimelineSelection.isClipSelection(
             selectedSegmentId,
             in: timelineOrganizerModel.tracks
@@ -67,20 +152,9 @@ struct EditorJITRenderView: View {
     @ViewBuilder
     private var playbackRegion: some View {
         PlaybackSectionComponent(
-            context: EditorComponentShowcaseSamples.makePlaybackContext(
-                size: state.playback.size,
-                isPlaying: isPlaying,
-                showAspectSettings: $showAspectSettings
-            ),
-            actions: EditorPlaybackActions(
-                onPlay: { isPlaying = true },
-                onPause: { isPlaying = false },
-                onJumpToStart: { currentTimeUs = 0 },
-                onJumpToEnd: { currentTimeUs = 7_000_000 },
-                onUndo: {},
-                onRedo: {},
-                onToggleAspectSettings: { showAspectSettings.toggle() }
-            )
+            context: effectivePlaybackContext,
+            actions: effectivePlaybackActions,
+            renderEngine: renderEngine
         )
         .padding(.top, .spacing(.sp2))
     }
@@ -96,31 +170,28 @@ struct EditorJITRenderView: View {
     }
 
     private var fullTimeline: some View {
-        TimelineOrganizerComponent(
-            model: timelineOrganizerModel,
-            pixelsPerSecond: $timelinePixelsPerSecond,
-            selectedSegmentId: $selectedSegmentId,
-            onSelectSegment: handleSegmentSelection,
-            onAddSelection: { _, _ in isAddMenuOpen = false },
-            isAddMenuOpen: $isAddMenuOpen
+        TimelineSurfaceComponent(
+            context: effectiveTimelineContext,
+            actions: effectiveTimelineActions
         )
         .padding(.horizontal, .spacing(.sp3))
     }
 
+    @ViewBuilder
     private var trackOnlyTimeline: some View {
-        let trackModel = EditorComponentShowcaseSamples.sampleTimelineTrackModels(
-            size: TimelineTrackDisplaySize(state.timeline.size)
-        ).first!
-
-        return ScrollView(.horizontal, showsIndicators: false) {
-            TimelineTrackComponent(
-                model: trackModel,
-                pixelsPerSecond: timelinePixelsPerSecond,
-                selectedSegmentId: $selectedSegmentId,
-                onSelectSegment: handleSegmentSelection
-            )
+        if let trackModel = timelineOrganizerModel.tracks.first {
+            ScrollView(.horizontal, showsIndicators: false) {
+                TimelineTrackComponent(
+                    model: trackModel,
+                    pixelsPerSecond: timelineOrganizerModel.pixelsPerSecond,
+                    selectedSegmentId: selectedSegmentBinding,
+                    onSelectSegment: handleSegmentSelection
+                )
+            }
+            .padding(.horizontal, .spacing(.sp3))
+        } else {
+            Color.clear
         }
-        .padding(.horizontal, .spacing(.sp3))
     }
 
     private var chromeRegion: some View {
@@ -196,13 +267,35 @@ struct EditorJITRenderView: View {
     private func handleSegmentSelection(_ segmentId: String) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedSegmentId = segmentId
+            applyLiveSelection(segmentId)
         }
     }
 
     private func clearSelection() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             selectedSegmentId = nil
+            clearLiveSelection()
         }
+    }
+
+    private func applyLiveSelection(_ segmentId: String) {
+        guard var context = timelineContext else { return }
+        context.selectedClipId = nil
+        context.selectedCaptionCueId = nil
+        switch EditorJITTimelineSelection.trackKind(for: segmentId, in: timelineOrganizerModel.tracks) {
+        case .caption:
+            context.selectedCaptionCueId = segmentId
+        case .video, .audio:
+            context.selectedClipId = segmentId
+        case nil:
+            break
+        }
+    }
+
+    private func clearLiveSelection() {
+        guard var context = timelineContext else { return }
+        context.selectedClipId = nil
+        context.selectedCaptionCueId = nil
     }
 
     private func handleChromeAction(_ action: EditorChromeActionItem) {
