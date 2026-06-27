@@ -85,6 +85,7 @@ struct EditorJITRenderView: View {
             playbackState: context.playbackState,
             reviewFocusedClipIds: context.reviewFocusedClipIds,
             isReviewInteractionDisabled: context.isReviewInteractionDisabled,
+            promptActionPreview: context.promptActionPreview,
             captionHighlightRangeUs: context.captionHighlightRangeUs,
             playheadTint: context.playheadTint,
             showAddButton: context.showAddButton,

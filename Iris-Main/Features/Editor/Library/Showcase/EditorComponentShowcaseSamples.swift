@@ -107,6 +107,7 @@ enum EditorComponentShowcaseSamples {
             playbackState: .idle,
             reviewFocusedClipIds: [],
             isReviewInteractionDisabled: false,
+            promptActionPreview: nil,
             captionHighlightRangeUs: nil,
             playheadTint: Color.ds.text,
             showAddButton: true,

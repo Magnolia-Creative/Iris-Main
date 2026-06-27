@@ -441,72 +441,48 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
 
     let context: EditorTimelineContext
     let actions: EditorTimelineActions
-    @State private var livePixelsPerSecond: CGFloat?
-
-    private var pixelsPerSecond: Binding<CGFloat> {
-        Binding(
-            get: { livePixelsPerSecond ?? context.pixelsPerSecond },
-            set: { livePixelsPerSecond = $0 }
-        )
-    }
 
     var body: some View {
-        TimelineOrganizerComponent(
-            model: TimelineOrganizerModel(context: context),
-            pixelsPerSecond: pixelsPerSecond,
-            selectedSegmentId: selectedSegmentId,
-            onSelectSegment: handleSegmentSelection,
+        TimelineSectionView(
+            tracks: context.tracks,
+            clipsByTrackId: context.clipsByTrackId,
+            mediaById: context.mediaById,
+            layout: timelineLayout,
+            pixelsPerSecond: context.pixelsPerSecond,
+            timelineDurationUs: context.timelineDurationUs,
+            scrollableDurationUs: context.scrollableDurationUs,
+            currentTimeAtCenter: context.$currentTimeAtCenter,
+            scrollTargetTimeUs: context.$scrollTargetTimeUs,
+            selectedClipId: context.$selectedClipId,
+            playbackState: context.playbackState,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
-            isAddMenuOpen: context.$isAddMenuOpen
+            isAddMenuOpen: context.$isAddMenuOpen,
+            onMoveClip: actions.onMoveClip,
+            onTrimClip: actions.onTrimClip,
+            onDropImportedSegmentAtTime: actions.onDropImportedSegmentAtTime,
+            showAddButton: context.showAddButton,
+            reviewFocusedClipIds: context.reviewFocusedClipIds,
+            isReviewInteractionDisabled: context.isReviewInteractionDisabled,
+            promptActionPreview: context.promptActionPreview,
+            onPreviewScrub: actions.onPreviewScrub,
+            captionHighlightRangeUs: context.captionHighlightRangeUs,
+            playheadTint: context.playheadTint,
+            captionGroups: context.captionGroups,
+            captionCues: context.captionCues,
+            selectedCaptionCueId: context.$selectedCaptionCueId,
+            onCaptionCueSelected: actions.onCaptionCueSelected,
+            onClipSelected: actions.onClipSelected
         )
-        .onChange(of: context.pixelsPerSecond) { _, newValue in
-            livePixelsPerSecond = newValue
-        }
+        .frame(height: timelineLayout.sectionHeight(for: context.tracks))
+        .animation(nil, value: timelineLayout.sectionHeight(for: context.tracks))
     }
 
-    private var selectedSegmentId: Binding<String?> {
-        Binding(
-            get: { context.selectedClipId ?? context.selectedCaptionCueId },
-            set: { newValue in
-                guard let newValue else {
-                    context.selectedClipId = nil
-                    context.selectedCaptionCueId = nil
-                    return
-                }
-                applySelection(segmentId: newValue)
-            }
-        )
-    }
-
-    private func handleSegmentSelection(_ segmentId: String) {
-        applySelection(segmentId: segmentId)
-
-        for track in TimelineOrganizerModel(context: context).tracks {
-            guard track.segments.contains(where: { $0.id == segmentId }) else { continue }
-            switch track.kind {
-            case .caption:
-                actions.onCaptionCueSelected?(segmentId)
-            case .video, .audio:
-                actions.onClipSelected?()
-            }
-            return
-        }
-    }
-
-    private func applySelection(segmentId: String) {
-        let tracks = TimelineOrganizerModel(context: context).tracks
-        context.selectedClipId = nil
-        context.selectedCaptionCueId = nil
-
-        for track in tracks {
-            guard track.segments.contains(where: { $0.id == segmentId }) else { continue }
-            switch track.kind {
-            case .caption:
-                context.selectedCaptionCueId = segmentId
-            case .video, .audio:
-                context.selectedClipId = segmentId
-            }
-            return
+    private var timelineLayout: TimelineLayout {
+        switch context.layoutSize {
+        case .compressed:
+            return .compressed
+        case .standard, .expanded:
+            return .expanded
         }
     }
 }
