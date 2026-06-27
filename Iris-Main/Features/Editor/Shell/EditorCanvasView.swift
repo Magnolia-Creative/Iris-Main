@@ -64,29 +64,8 @@ struct EditorCanvasView: View {
         self.promptActionPreview = promptActionPreview
     }
 
-    private var showsPlaybackControls: Bool {
-        activeSpace == .edit || activeSpace == .export
-    }
-
     private var expandsVertically: Bool {
         activeSpace == .edit || activeSpace == .export
-    }
-
-    private var effectivePreviewHeight: CGFloat {
-        switch activeSpace {
-        case .importMedia:
-            return 140
-        case .edit, .export:
-            return 220
-        }
-    }
-
-    private var previewBottomSpacing: CGFloat {
-        showsPlaybackControls ? .spacing(.sp6) : .spacing(.sp2)
-    }
-
-    private func timelineTopInset(for presentation: JITTimelinePresentation) -> CGFloat {
-        effectivePreviewHeight + previewBottomSpacing + (showsPlaybackControls ? 32 : 0)
     }
 
     private func effectiveTimelineLayout(for presentation: JITTimelinePresentation) -> TimelineLayout {
@@ -104,10 +83,6 @@ struct EditorCanvasView: View {
         activeSpace == .edit && !isReviewInteractionDisabled
     }
 
-    private var rulerVerticalOffset: CGFloat {
-        0
-    }
-
     var body: some View {
         let state = controller.state
         let playback = resolvedPlaybackController()
@@ -118,7 +93,7 @@ struct EditorCanvasView: View {
         .onChange(of: activeSpace) { _, newSpace in
             EditorDebugTrace.log(
                 "EditorCanvasView",
-                "canvas updated activeSpace=\(newSpace.rawValue) previewHeight=\(Int(effectivePreviewHeight))"
+                "canvas updated activeSpace=\(newSpace.rawValue)"
             )
         }
     }
@@ -183,30 +158,6 @@ struct EditorCanvasView: View {
     }
 
     @ViewBuilder
-    private func legacyCanvasBody(state: TimelineState, playback: PlaybackController) -> some View {
-        let presentation = JITTimelinePresentation.full
-        let layout = effectiveTimelineLayout(for: presentation)
-        ZStack(alignment: .topLeading) {
-            VStack(spacing: 0) {
-                timelineTopSection(playback: playback)
-
-                Color.clear
-                    .frame(height: layout.sectionHeight(for: displayTracks(state: state, presentation: presentation)))
-                    .transaction { transaction in
-                        transaction.animation = nil
-                    }
-            }
-
-            if presentation != .hidden {
-                timelineViewContainer(state: state, presentation: presentation)
-                    .padding(.top, timelineTopInset(for: presentation))
-            }
-
-            aspectSettingsOverlayIfNeeded
-        }
-    }
-
-    @ViewBuilder
     private var aspectSettingsOverlayIfNeeded: some View {
         if showPlaybackAspectSettings {
             aspectSettingsOverlay
@@ -220,37 +171,6 @@ struct EditorCanvasView: View {
                             .combined(with: .opacity)
                     )
                 )
-        }
-    }
-
-    private func timelineViewContainer(state: TimelineState, presentation: JITTimelinePresentation) -> some View {
-        timelineView(state: state, presentation: presentation)
-            .padding(.bottom, .spacing(.sp2))
-            .animation(nil, value: activeSpace)
-            .transaction { transaction in
-                transaction.animation = nil
-            }
-    }
-
-    private func timelineTopSection(playback: PlaybackController) -> some View {
-        VStack(spacing: 0) {
-            PreviewSection(
-                controller: playback,
-                renderBridge: renderBridge,
-                previewAspect: controller.state.effectiveOutputAspect?.aspectCGFloat
-            )
-                .frame(height: effectivePreviewHeight)
-                .padding(.horizontal, .sp3)
-                .padding(.bottom, previewBottomSpacing)
-
-            if showsPlaybackControls {
-                PlaybackControls(
-                    playback: playback,
-                    timeline: controller,
-                    showAspectSettings: $showPlaybackAspectSettings
-                )
-                    .padding(.horizontal, .sp4)
-            }
         }
     }
 
@@ -401,69 +321,6 @@ struct EditorCanvasView: View {
                 }
             }
         )
-    }
-
-    private func timelineView(state: TimelineState, presentation: JITTimelinePresentation) -> some View {
-        let layout = effectiveTimelineLayout(for: presentation)
-        let canAddToTimeline = layout == .expanded && allowsTimelineAdditions
-        let displayTracks = displayTracks(state: state, presentation: presentation)
-        let clipsByTrackId = clipsByTrackId(state: state, presentation: presentation)
-        let addSelection: (TrackKind, ImportSource) -> Void
-        if allowsTimelineAdditions {
-            addSelection = onAddSelection ?? controller.handleAddSelection(kind:source:)
-        } else {
-            addSelection = { _, _ in }
-        }
-
-        let highlight = captionsFlow.highlightRangeUs(playheadUs: state.currentTimeAtCenter)
-        let playheadTint = captionsFlow.playheadUsesAccentTint ? Color.ds.accentFg : Color.ds.text
-
-        return TimelineSectionView(
-            tracks: displayTracks,
-            clipsByTrackId: clipsByTrackId,
-            mediaById: state.mediaById,
-            layout: layout,
-            pixelsPerSecond: state.pixelsPerSecond,
-            timelineDurationUs: state.calculatedTimelineDurationUs,
-            scrollableDurationUs: state.scrollableDurationUs,
-            currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),
-            scrollTargetTimeUs: controller.binding(\.scrollTargetTimeUs),
-            selectedClipId: controller.binding(\.selectedClipId),
-            playbackState: state.playbackState,
-            onAddSelection: canAddToTimeline ? addSelection : nil,
-            isAddMenuOpen: $isTimelineAddMenuOpen,
-            onMoveClip: controller.moveClip(clipId:toStartTimeUs:orderedClipIds:),
-            onTrimClip: controller.trimClip(clipId:sourceRange:timelineRange:commit:),
-            onDropImportedSegmentAtTime: activeSpace == .importMedia ? { item, timeUs in
-                controller.insertClipSegment(
-                    mediaId: item.mediaId,
-                    sourceRange: item.sourceRange,
-                    at: timeUs
-                )
-            } : nil,
-            showAddButton: canAddToTimeline,
-            rulerVerticalOffset: rulerVerticalOffset,
-            reviewFocusedClipIds: reviewFocusedClipIds,
-            isReviewInteractionDisabled: isReviewInteractionDisabled,
-            promptActionPreview: promptActionPreview,
-            onPreviewScrub: { timeUs, velocity in
-                renderBridge.handleScroll(timeUs: timeUs, velocity: velocity)
-            },
-            captionHighlightRangeUs: highlight,
-            playheadTint: playheadTint,
-            captionGroups: state.captionGroups,
-            captionCues: state.captionCues,
-            selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
-            onCaptionCueSelected: { cueId in
-                controller.clearSelection()
-                captionsFlow.openStyleEditor(forCueId: cueId)
-            },
-            onClipSelected: {
-                captionsFlow.cancelStyleEditing()
-            }
-        )
-        .frame(height: layout.sectionHeight(for: displayTracks))
-        .animation(nil, value: layout.sectionHeight(for: displayTracks))
     }
 
     private func focusedClipIds(state: TimelineState) -> Set<String> {
