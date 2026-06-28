@@ -417,21 +417,21 @@ struct EditorContainerView: View {
             )
         }
         .photosPicker(
-            isPresented: controller.binding(\.showingMediaPicker),
+            isPresented: controller.importPresentationBinding(\.showingMediaPicker),
             selection: $selectedPhotos,
             maxSelectionCount: 20,
-            matching: photosFilter(for: controller.state.pendingImport?.kind)
+            matching: photosFilter(for: controller.importPresentation.pendingImport?.kind)
         )
         .fileImporter(
-            isPresented: controller.binding(\.showingFilePicker),
-            allowedContentTypes: controller.state.filePickerTypes(),
+            isPresented: controller.importPresentationBinding(\.showingFilePicker),
+            allowedContentTypes: controller.importPresentation.filePickerTypes(),
             allowsMultipleSelection: true
         ) { result in
             handleFileImport(result)
         }
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
-            let kind = controller.state.pendingImport?.kind ?? .video
+            let kind = controller.importPresentation.pendingImport?.kind ?? .video
             controller.importPickerItems(items, kind: kind)
             selectedPhotos = []
         }

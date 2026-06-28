@@ -9,13 +9,17 @@ struct TimelineImportCoordinator {
         let previousOutputSize: CGSize
     }
 
-    func beginAddSelection(kind: TrackKind, source: ImportSource, in state: inout TimelineState) -> Bool {
+    func beginAddSelection(
+        kind: TrackKind,
+        source: ImportSource,
+        in presentationState: inout TimelineImportPresentationState
+    ) -> Bool {
         switch source {
         case .photos:
-            state.beginImport(kind: kind, source: source)
+            presentationState.beginImport(kind: kind, source: source)
             return true
         case .files:
-            state.beginImport(kind: kind, source: source)
+            presentationState.beginImport(kind: kind, source: source)
             return false
         case .textBox, .caption:
             return false

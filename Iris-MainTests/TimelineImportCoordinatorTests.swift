@@ -4,16 +4,16 @@ import XCTest
 @MainActor
 final class TimelineImportCoordinatorTests: XCTestCase {
     func testBeginAddSelectionUpdatesPendingImportAndRequestsPhotosAuthorizationOnlyForPhotos() {
-        var state = TimelineState(timelineId: "timeline-1")
+        var presentationState = TimelineImportPresentationState()
         let coordinator = TimelineImportCoordinator()
 
-        XCTAssertTrue(coordinator.beginAddSelection(kind: .video, source: .photos, in: &state))
-        XCTAssertEqual(state.pendingImport?.kind, .video)
-        XCTAssertEqual(state.pendingImport?.source, .photos)
+        XCTAssertTrue(coordinator.beginAddSelection(kind: .video, source: .photos, in: &presentationState))
+        XCTAssertEqual(presentationState.pendingImport?.kind, .video)
+        XCTAssertEqual(presentationState.pendingImport?.source, .photos)
 
-        XCTAssertFalse(coordinator.beginAddSelection(kind: .audio, source: .files, in: &state))
-        XCTAssertEqual(state.pendingImport?.kind, .audio)
-        XCTAssertEqual(state.pendingImport?.source, .files)
+        XCTAssertFalse(coordinator.beginAddSelection(kind: .audio, source: .files, in: &presentationState))
+        XCTAssertEqual(presentationState.pendingImport?.kind, .audio)
+        XCTAssertEqual(presentationState.pendingImport?.source, .files)
     }
 
     func testInsertClipSegmentAddsClipAndReturnsBeforeAfterMutation() {

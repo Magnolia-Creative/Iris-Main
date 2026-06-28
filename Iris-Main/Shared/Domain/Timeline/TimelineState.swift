@@ -1,6 +1,5 @@
+import CoreGraphics
 import Foundation
-import Photos
-import SwiftUI
 
 /// One undo/redo step: a forward action batch and the inverse batch returned by `TimelineState.apply`.
 struct TimelineActionHistoryGroup: Equatable {
@@ -34,10 +33,6 @@ struct TimelineState {
 
     var pixelsPerSecond: CGFloat
     var currentTimeAtCenter: Int64
-    var pendingImport: ImportRequest?
-    var showingMediaPicker: Bool
-    var showingFilePicker: Bool
-    var photoAuthStatus: PHAuthorizationStatus
     var scrollTargetTimeUs: Int64?
     var selectedClipId: String?
     var playbackState: TimelinePlaybackState
@@ -76,10 +71,6 @@ struct TimelineState {
         self.derivedOutputPixelSize = nil
         self.pixelsPerSecond = 100
         self.currentTimeAtCenter = 0
-        self.pendingImport = nil
-        self.showingMediaPicker = false
-        self.showingFilePicker = false
-        self.photoAuthStatus = .notDetermined
         self.scrollTargetTimeUs = nil
         self.selectedClipId = nil
         self.playbackState = .idle
@@ -179,7 +170,6 @@ struct TimelineState {
             mediaById[media.mediaId] = media
         }
         addClips(from: matching, kind: kind, startingAt: currentTimeAtCenter)
-        pendingImport = nil
     }
 
     mutating func jumpToStart() {

@@ -24,6 +24,25 @@ extension TimelineState {
         return displayTracks
     }
 
+    mutating func clearSelection() {
+        guard selectedClipId != nil else { return }
+        selectedClipId = nil
+    }
+
+    mutating func setPlaybackState(_ playbackState: TimelinePlaybackState) {
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
+            self.playbackState = playbackState
+        }
+    }
+
+}
+
+struct TimelineImportPresentationState {
+    var pendingImport: ImportRequest?
+    var showingMediaPicker = false
+    var showingFilePicker = false
+    var photoAuthStatus: PHAuthorizationStatus = .notDetermined
+
     mutating func beginImport(kind: TrackKind, source: ImportSource) {
         pendingImport = ImportRequest(kind: kind, source: source)
         switch source {
@@ -45,17 +64,6 @@ extension TimelineState {
 
     mutating func clearPendingImport() {
         pendingImport = nil
-    }
-
-    mutating func clearSelection() {
-        guard selectedClipId != nil else { return }
-        selectedClipId = nil
-    }
-
-    mutating func setPlaybackState(_ playbackState: TimelinePlaybackState) {
-        withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
-            self.playbackState = playbackState
-        }
     }
 
     func filePickerTypes() -> [UTType] {

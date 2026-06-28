@@ -12,6 +12,7 @@ final class TimelineController: ObservableObject {
     )
 
     @Published private(set) var state: TimelineState
+    @Published private(set) var importPresentation = TimelineImportPresentationState()
     /// Prompt-bar intent actions awaiting per-step approve/reject (split, trim, remove ranges).
     private let reviewCoordinator = TimelineReviewCoordinator()
     private let db: DatabaseManager
@@ -66,6 +67,15 @@ final class TimelineController: ObservableObject {
         Binding(
             get: { self.state[keyPath: keyPath] },
             set: { self.state[keyPath: keyPath] = $0 }
+        )
+    }
+
+    func importPresentationBinding<Value>(
+        _ keyPath: WritableKeyPath<TimelineImportPresentationState, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { self.importPresentation[keyPath: keyPath] },
+            set: { self.importPresentation[keyPath: keyPath] = $0 }
         )
     }
 
@@ -517,12 +527,16 @@ final class TimelineController: ObservableObject {
     }
 
     func handleAddSelection(kind: TrackKind, source: ImportSource) {
-        let shouldRequestPhotoAccess = importCoordinator.beginAddSelection(kind: kind, source: source, in: &state)
+        let shouldRequestPhotoAccess = importCoordinator.beginAddSelection(
+            kind: kind,
+            source: source,
+            in: &importPresentation
+        )
         if shouldRequestPhotoAccess {
             Task {
                 let status = await importService.requestPhotoLibraryAccess()
                 await MainActor.run {
-                    state.handlePhotoAuthorization(status: status)
+                    importPresentation.handlePhotoAuthorization(status: status)
                 }
             }
         }
@@ -789,10 +803,10 @@ final class TimelineController: ObservableObject {
     }
 
     func importAssets(_ assets: [PHAsset]) async {
-        guard let request = state.pendingImport else { return }
+        guard let request = importPresentation.pendingImport else { return }
         guard let library = state.mediaLibrary else { return }
         guard !assets.isEmpty else {
-            await MainActor.run { state.clearPendingImport() }
+            await MainActor.run { importPresentation.clearPendingImport() }
             return
         }
 
@@ -806,6 +820,7 @@ final class TimelineController: ObservableObject {
                     kind: request.kind,
                     in: &state
                 )
+                importPresentation.clearPendingImport()
                 persistClipChanges(before: mutation.beforeClips, after: mutation.afterClips)
                 syncSemanticIndexForImportedMedia()
                 logImportStateTransition(
@@ -817,15 +832,15 @@ final class TimelineController: ObservableObject {
             }
             generateThumbnailStrips(for: imported)
         } catch {
-            await MainActor.run { state.clearPendingImport() }
+            await MainActor.run { importPresentation.clearPendingImport() }
         }
     }
 
     func importFiles(_ urls: [URL]) async {
-        guard let request = state.pendingImport else { return }
+        guard let request = importPresentation.pendingImport else { return }
         guard let library = state.mediaLibrary else { return }
         guard !urls.isEmpty else {
-            await MainActor.run { state.clearPendingImport() }
+            await MainActor.run { importPresentation.clearPendingImport() }
             return
         }
 
@@ -839,6 +854,7 @@ final class TimelineController: ObservableObject {
                     kind: request.kind,
                     in: &state
                 )
+                importPresentation.clearPendingImport()
                 persistClipChanges(before: mutation.beforeClips, after: mutation.afterClips)
                 syncSemanticIndexForImportedMedia()
                 logImportStateTransition(
@@ -850,7 +866,7 @@ final class TimelineController: ObservableObject {
             }
             generateThumbnailStrips(for: imported)
         } catch {
-            await MainActor.run { state.clearPendingImport() }
+            await MainActor.run { importPresentation.clearPendingImport() }
         }
     }
 
