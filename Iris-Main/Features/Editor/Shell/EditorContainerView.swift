@@ -17,7 +17,6 @@ struct EditorContainerView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var editorImportRequest: EditorImportRequest?
     @State private var showPlaybackAspectSettings = false
-    @State private var editorTimelineMode: EditorTimelineMode = .jit
     @Namespace private var bottomChromeNamespace
     @Environment(\.dismiss) private var dismiss
     private let hasAgentSession: Bool
@@ -272,7 +271,6 @@ struct EditorContainerView: View {
                     playbackController: playbackController,
                     renderBridge: renderBridge,
                     activeSpace: activeSpace,
-                    timelineMode: editorTimelineMode,
                     captionsFlow: captionsFlow,
                     renderState: jitRenderState.renderState,
                     transitionPlans: jitRenderState.transitionPlans,
@@ -546,29 +544,11 @@ struct EditorContainerView: View {
                 .buttonStyle(.plain)
 
                 Spacer()
-
-#if DEBUG
-                editorTimelineModePicker
-#endif
             }
         }
         .padding(.horizontal, .spacing(.sp5))
         .padding(.vertical, .spacing(.sp2))
     }
-
-#if DEBUG
-    /// Temporary analysis scaffolding for comparing JIT timeline fidelity against the legacy editor.
-    private var editorTimelineModePicker: some View {
-        Picker("Timeline Mode", selection: $editorTimelineMode) {
-            ForEach(EditorTimelineMode.allCases) { mode in
-                Text(mode.rawValue).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .frame(width: 140)
-        .controlSize(.mini)
-    }
-#endif
 
     private var cutReviewHeaderBar: some View {
         return ZStack {
