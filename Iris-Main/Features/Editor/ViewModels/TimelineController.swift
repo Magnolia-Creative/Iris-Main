@@ -18,6 +18,7 @@ final class TimelineController: ObservableObject {
     private let persistence: TimelinePersistence
     private let persistenceCoordinator: TimelinePersistenceCoordinator
     private let editingService = TimelineEditingService()
+    private let importCoordinator = TimelineImportCoordinator()
     private let importService: MediaImportService
     private var hasAppliedInitialImportSeed = false
     private var importedMediaBySeedLocalKey: [String: Media] = [:]
@@ -516,19 +517,14 @@ final class TimelineController: ObservableObject {
     }
 
     func handleAddSelection(kind: TrackKind, source: ImportSource) {
-        switch source {
-        case .photos:
-            state.beginImport(kind: kind, source: source)
+        let shouldRequestPhotoAccess = importCoordinator.beginAddSelection(kind: kind, source: source, in: &state)
+        if shouldRequestPhotoAccess {
             Task {
                 let status = await importService.requestPhotoLibraryAccess()
                 await MainActor.run {
                     state.handlePhotoAuthorization(status: status)
                 }
             }
-        case .files:
-            state.beginImport(kind: kind, source: source)
-        case .textBox, .caption:
-            break
         }
     }
 
@@ -671,14 +667,21 @@ final class TimelineController: ObservableObject {
     }
 
     func ingestMedia(_ media: [Media], kind: TrackKind) {
-        let before = state.clips
-        let beforeOutputSize = state.effectiveOutputPixelSize
-        Self.logger.info(
-            "[TimelineImport] ingest start timeline=\(self.state.timelineId, privacy: .public) kind=\(kind.rawValue, privacy: .public) mediaCount=\(media.count, privacy: .public) beforeClipCount=\(before.count, privacy: .public) beforeOutput=\(Self.outputSizeSummary(beforeOutputSize), privacy: .public)"
+        let mutation = importCoordinator.ingestMedia(
+            imported: media,
+            matching: media,
+            kind: kind,
+            in: &state
         )
-        state.ingestImportedMedia(imported: media, matching: media, kind: kind)
-        persistClipChanges(before: before, after: state.clips)
-        logImportStateTransition(before: before, after: state.clips, previousOutputSize: beforeOutputSize)
+        Self.logger.info(
+            "[TimelineImport] ingest start timeline=\(self.state.timelineId, privacy: .public) kind=\(kind.rawValue, privacy: .public) mediaCount=\(media.count, privacy: .public) beforeClipCount=\(mutation.beforeClips.count, privacy: .public) beforeOutput=\(Self.outputSizeSummary(mutation.previousOutputSize), privacy: .public)"
+        )
+        persistClipChanges(before: mutation.beforeClips, after: mutation.afterClips)
+        logImportStateTransition(
+            before: mutation.beforeClips,
+            after: mutation.afterClips,
+            previousOutputSize: mutation.previousOutputSize
+        )
         objectWillChange.send()
     }
 
@@ -725,14 +728,18 @@ final class TimelineController: ObservableObject {
     }
 
     func insertClipSegment(mediaId: String, sourceRange: TimeRange, at timeUs: Int64, kind: TrackKind = .video) {
-        guard let media = state.mediaById[mediaId] else { return }
-        let before = state.clips
         EditorDebugTrace.log(
             "TimelineController",
-            "about to add semantic clip mediaId=\(mediaId) kind=\(kind.rawValue) source=[\(formatDebugTime(sourceRange.start)), \(formatDebugTime(sourceRange.end))] held-at=\(formatDebugTime(timeUs)) existing-clip-count=\(before.count)"
+            "about to add semantic clip mediaId=\(mediaId) kind=\(kind.rawValue) source=[\(formatDebugTime(sourceRange.start)), \(formatDebugTime(sourceRange.end))] held-at=\(formatDebugTime(timeUs)) existing-clip-count=\(state.clips.count)"
         )
-        state.addClipSegment(of: kind, at: timeUs, media: media, sourceRange: sourceRange)
-        let previousClipIds = Set(before.map(\.clipId))
+        guard let mutation = importCoordinator.insertClipSegment(
+            mediaId: mediaId,
+            sourceRange: sourceRange,
+            at: timeUs,
+            kind: kind,
+            in: &state
+        ) else { return }
+        let previousClipIds = Set(mutation.beforeClips.map(\.clipId))
         if let insertedClip = state.clips.first(where: { clip in
             !previousClipIds.contains(clip.clipId)
         }) {
@@ -746,7 +753,7 @@ final class TimelineController: ObservableObject {
                 "semantic clip add complete fallback-last-clip clipId=\(insertedClip.clipId) timeline=[\(formatDebugTime(insertedClip.timelineRange.start)), \(formatDebugTime(insertedClip.timelineRange.end))]"
             )
         }
-        persistClipChanges(before: before, after: state.clips)
+        persistClipChanges(before: mutation.beforeClips, after: mutation.afterClips)
     }
 
     func importPickerItems(_ items: [PhotosPickerItem], kind: TrackKind) {
@@ -793,12 +800,19 @@ final class TimelineController: ObservableObject {
             let imported = try await importService.importAssets(assets, to: library.id)
             let matching = imported.filter { state.mediaKinds(for: request.kind).contains($0.kind) }
             await MainActor.run {
-                let before = state.clips
-                let beforeOutputSize = state.effectiveOutputPixelSize
-                state.ingestImportedMedia(imported: imported, matching: matching, kind: request.kind)
-                persistClipChanges(before: before, after: state.clips)
+                let mutation = importCoordinator.ingestMedia(
+                    imported: imported,
+                    matching: matching,
+                    kind: request.kind,
+                    in: &state
+                )
+                persistClipChanges(before: mutation.beforeClips, after: mutation.afterClips)
                 syncSemanticIndexForImportedMedia()
-                logImportStateTransition(before: before, after: state.clips, previousOutputSize: beforeOutputSize)
+                logImportStateTransition(
+                    before: mutation.beforeClips,
+                    after: mutation.afterClips,
+                    previousOutputSize: mutation.previousOutputSize
+                )
                 objectWillChange.send()
             }
             generateThumbnailStrips(for: imported)
@@ -819,12 +833,19 @@ final class TimelineController: ObservableObject {
         do {
             let imported = try await importService.importFileURLsQuick(urls, to: library.id, preferredKind: preferredKind)
             await MainActor.run {
-                let before = state.clips
-                let beforeOutputSize = state.effectiveOutputPixelSize
-                state.ingestImportedMedia(imported: imported, matching: imported, kind: request.kind)
-                persistClipChanges(before: before, after: state.clips)
+                let mutation = importCoordinator.ingestMedia(
+                    imported: imported,
+                    matching: imported,
+                    kind: request.kind,
+                    in: &state
+                )
+                persistClipChanges(before: mutation.beforeClips, after: mutation.afterClips)
                 syncSemanticIndexForImportedMedia()
-                logImportStateTransition(before: before, after: state.clips, previousOutputSize: beforeOutputSize)
+                logImportStateTransition(
+                    before: mutation.beforeClips,
+                    after: mutation.afterClips,
+                    previousOutputSize: mutation.previousOutputSize
+                )
                 objectWillChange.send()
             }
             generateThumbnailStrips(for: imported)
