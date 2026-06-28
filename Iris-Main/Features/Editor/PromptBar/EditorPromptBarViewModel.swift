@@ -18,7 +18,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     /// Returns `true` when sequence-edit preview/review owns the action batch (do not apply immediately).
     typealias PromptActionReviewStarter = @MainActor (_ actions: [Action], _ prompt: String) -> Bool
     /// Returns whether a JIT intent workspace is active after planning.
-    typealias IntentCompiledHandler = @MainActor (_ prompt: String, _ result: IntentCompileResult) async -> Bool
+    typealias IntentCompiledHandler = @MainActor (_ prompt: String, _ response: RemoteIntentAgentResponse) async -> Bool
     /// When transcript DB id is not ready yet for transcript-heavy prompts, await before starting the intent run. Returns true if a wait loop ran.
     typealias TranscriptReadinessWaiter = @MainActor (String) async throws -> Bool
 
@@ -108,7 +108,10 @@ final class EditorPromptBarViewModel: ObservableObject {
         }
     }
 
-    func endVoicePrompt() async {
+    func endVoicePrompt(
+        editorContext: RemoteIntentEditorContext? = nil,
+        currentWorkspaceId: String? = nil
+    ) async {
         micIsPressed = false
         guard phase == .recording else { return }
         Self.logger.info("[PromptBar] Voice prompt end requested")
@@ -127,7 +130,12 @@ final class EditorPromptBarViewModel: ObservableObject {
         Self.logger.info(
             "[PromptBar] Voice transcript ready chars=\(transcript.count, privacy: .public) finalizedChars=\(self.transcription.finalizedTranscript.count, privacy: .public) partialChars=\(self.transcription.partialTranscript.count, privacy: .public)"
         )
-        await submit(prompt: transcript, emptyMessage: "I did not catch any speech.")
+        await submit(
+            prompt: transcript,
+            emptyMessage: "I did not catch any speech.",
+            editorContext: editorContext,
+            currentWorkspaceId: currentWorkspaceId
+        )
     }
 
     func openTextPrompt() {
@@ -153,10 +161,18 @@ final class EditorPromptBarViewModel: ObservableObject {
         submitTask?.cancel()
     }
 
-    func submitTextPrompt() async {
+    func submitTextPrompt(
+        editorContext: RemoteIntentEditorContext? = nil,
+        currentWorkspaceId: String? = nil
+    ) async {
         let prompt = promptDraft
         promptDraft = ""
-        await submit(prompt: prompt, emptyMessage: "Enter a prompt to compile.")
+        await submit(
+            prompt: prompt,
+            emptyMessage: "Enter a prompt to compile.",
+            editorContext: editorContext,
+            currentWorkspaceId: currentWorkspaceId
+        )
     }
 
     func tearDown() {
@@ -182,7 +198,12 @@ final class EditorPromptBarViewModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func submit(prompt: String, emptyMessage: String) async {
+    private func submit(
+        prompt: String,
+        emptyMessage: String,
+        editorContext: RemoteIntentEditorContext?,
+        currentWorkspaceId: String?
+    ) async {
         submitTask?.cancel()
 
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -197,14 +218,22 @@ final class EditorPromptBarViewModel: ObservableObject {
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.runSubmitting(trimmedPrompt: trimmedPrompt)
+            await self.runSubmitting(
+                trimmedPrompt: trimmedPrompt,
+                editorContext: editorContext,
+                currentWorkspaceId: currentWorkspaceId
+            )
         }
         submitTask = task
         await task.value
         submitTask = nil
     }
 
-    private func runSubmitting(trimmedPrompt: String) async {
+    private func runSubmitting(
+        trimmedPrompt: String,
+        editorContext: RemoteIntentEditorContext?,
+        currentWorkspaceId: String?
+    ) async {
         do {
             if let needsIntentTranscriptDatabaseWait,
                let waitForTranscriptReadinessIfNeeded,
@@ -218,26 +247,29 @@ final class EditorPromptBarViewModel: ObservableObject {
             Self.logger.info(
                 "[PromptBar] Context timeline=\(context.timelineId, privacy: .public) project=\(context.projectId ?? "nil", privacy: .public) session=\(context.sessionId ?? "nil", privacy: .public) selectedClip=\(context.selectedClipId ?? "nil", privacy: .public) selectedTrack=\(context.selectedTrackId ?? "nil", privacy: .public) clips=\(context.clipsById.count, privacy: .public) tracks=\(context.orderedClipIdsByTrackId.count, privacy: .public) transcripts=\(context.transcriptContextsByClipId.count, privacy: .public)"
             )
-            let result = try await remoteCompiler.compilePrompt(
+            let response = try await remoteCompiler.compilePromptResponse(
                 prompt: trimmedPrompt,
-                context: context
+                context: context,
+                editorContext: editorContext,
+                currentWorkspaceId: currentWorkspaceId
             ) { [weak self] status in
                 Self.logger.info("[PromptBar] Status update: \(status, privacy: .public)")
                 self?.phase = .submitting(status)
             }
+            let result = response.edit
 
             try Task.checkCancellation()
 
             Self.logger.info(
-                "[PromptBar] Result received actions=\(result.actions.count, privacy: .public) effects=\(result.experimentalEffectOperations.count, privacy: .public) warnings=\(result.warnings.map(\.rawValue).joined(separator: ","), privacy: .public) needsClarification=\(result.needsClarification, privacy: .public)"
+                "[PromptBar] Result received workspace=\(response.ui.workspaceId, privacy: .public) actions=\(result.actions.count, privacy: .public) effects=\(result.experimentalEffectOperations.count, privacy: .public) warnings=\(result.warnings.map(\.rawValue).joined(separator: ","), privacy: .public) needsClarification=\(result.needsClarification, privacy: .public)"
             )
             if result.needsClarification {
                 showClarification(result.unresolvedText ?? "I need a little more detail before I can apply that edit.")
                 return
             }
 
-            let intentWorkspaceActivated = await onIntentCompiled?(trimmedPrompt, result) ?? false
-            let prefersIntentWorkspace = !result.experimentalEffectOperations.isEmpty
+            let intentWorkspaceActivated = await onIntentCompiled?(trimmedPrompt, response) ?? false
+            let prefersIntentWorkspace = !response.ui.isDefaultWorkspace || !result.experimentalEffectOperations.isEmpty
 
             if intentWorkspaceActivated && result.actions.isEmpty {
                 Self.logger.info("[PromptBar] Intent workspace handled prompt without timeline actions")
