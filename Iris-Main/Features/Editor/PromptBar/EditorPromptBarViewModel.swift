@@ -19,6 +19,15 @@ final class EditorPromptBarViewModel: ObservableObject {
     typealias PromptActionReviewStarter = @MainActor (_ actions: [Action], _ prompt: String) -> Bool
     /// Returns whether a JIT intent workspace is active after planning.
     typealias IntentCompiledHandler = @MainActor (_ prompt: String, _ response: RemoteIntentAgentResponse) async -> Bool
+    /// Returns `true` when the prompt was fully handled by local editor intent resolution.
+    typealias LocalIntentHandler = @MainActor (_ prompt: String) async -> Bool
+    typealias RemoteCompileHandler = @MainActor (
+        _ prompt: String,
+        _ context: IntentCompilerContext,
+        _ editorContext: RemoteIntentEditorContext?,
+        _ currentWorkspaceId: String?,
+        _ statusHandler: RemoteIntentCompilerClient.StatusHandler?
+    ) async throws -> RemoteIntentAgentResponse
     /// When transcript DB id is not ready yet for transcript-heavy prompts, await before starting the intent run. Returns true if a wait loop ran.
     typealias TranscriptReadinessWaiter = @MainActor (String) async throws -> Bool
 
@@ -33,7 +42,7 @@ final class EditorPromptBarViewModel: ObservableObject {
     @Published private(set) var liveTranscript: String = ""
 
     private let transcription: RealtimeTranscriptionViewModel
-    private let remoteCompiler: RemoteIntentCompilerClient
+    private let compileRemotely: RemoteCompileHandler
     private let contextProvider: ContextProvider
     private let needsIntentTranscriptDatabaseWait: (@MainActor (String) -> Bool)?
     private let waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter?
@@ -58,10 +67,20 @@ final class EditorPromptBarViewModel: ObservableObject {
         waitForTranscriptReadinessIfNeeded: TranscriptReadinessWaiter? = nil,
         applyActions: @escaping ActionApplier,
         attemptStartPromptActionReview: PromptActionReviewStarter? = nil,
-        onIntentCompiled: IntentCompiledHandler? = nil
+        onIntentCompiled: IntentCompiledHandler? = nil,
+        remoteCompile: RemoteCompileHandler? = nil
     ) {
         self.transcription = transcription ?? RealtimeTranscriptionViewModel()
-        self.remoteCompiler = remoteCompiler ?? RemoteIntentCompilerClient()
+        let remoteCompiler = remoteCompiler ?? RemoteIntentCompilerClient()
+        self.compileRemotely = remoteCompile ?? { prompt, context, editorContext, currentWorkspaceId, statusHandler in
+            try await remoteCompiler.compilePromptResponse(
+                prompt: prompt,
+                context: context,
+                editorContext: editorContext,
+                currentWorkspaceId: currentWorkspaceId,
+                statusHandler: statusHandler
+            )
+        }
         self.contextProvider = contextProvider
         self.needsIntentTranscriptDatabaseWait = needsIntentTranscriptDatabaseWait
         self.waitForTranscriptReadinessIfNeeded = waitForTranscriptReadinessIfNeeded
@@ -110,7 +129,8 @@ final class EditorPromptBarViewModel: ObservableObject {
 
     func endVoicePrompt(
         editorContext: RemoteIntentEditorContext? = nil,
-        currentWorkspaceId: String? = nil
+        currentWorkspaceId: String? = nil,
+        localIntentHandler: LocalIntentHandler? = nil
     ) async {
         micIsPressed = false
         guard phase == .recording else { return }
@@ -134,7 +154,8 @@ final class EditorPromptBarViewModel: ObservableObject {
             prompt: transcript,
             emptyMessage: "I did not catch any speech.",
             editorContext: editorContext,
-            currentWorkspaceId: currentWorkspaceId
+            currentWorkspaceId: currentWorkspaceId,
+            localIntentHandler: localIntentHandler
         )
     }
 
@@ -163,7 +184,8 @@ final class EditorPromptBarViewModel: ObservableObject {
 
     func submitTextPrompt(
         editorContext: RemoteIntentEditorContext? = nil,
-        currentWorkspaceId: String? = nil
+        currentWorkspaceId: String? = nil,
+        localIntentHandler: LocalIntentHandler? = nil
     ) async {
         let prompt = promptDraft
         promptDraft = ""
@@ -171,7 +193,8 @@ final class EditorPromptBarViewModel: ObservableObject {
             prompt: prompt,
             emptyMessage: "Enter a prompt to compile.",
             editorContext: editorContext,
-            currentWorkspaceId: currentWorkspaceId
+            currentWorkspaceId: currentWorkspaceId,
+            localIntentHandler: localIntentHandler
         )
     }
 
@@ -202,7 +225,8 @@ final class EditorPromptBarViewModel: ObservableObject {
         prompt: String,
         emptyMessage: String,
         editorContext: RemoteIntentEditorContext?,
-        currentWorkspaceId: String?
+        currentWorkspaceId: String?,
+        localIntentHandler: LocalIntentHandler?
     ) async {
         submitTask?.cancel()
 
@@ -213,7 +237,7 @@ final class EditorPromptBarViewModel: ObservableObject {
             return
         }
 
-        phase = .submitting("Starting backend intent run.")
+        phase = .submitting(localIntentHandler == nil ? "Starting backend intent run." : "Checking local editor intent.")
         Self.logger.info("[PromptBar] Submit start promptChars=\(trimmedPrompt.count, privacy: .public)")
 
         let task = Task { @MainActor [weak self] in
@@ -221,7 +245,8 @@ final class EditorPromptBarViewModel: ObservableObject {
             await self.runSubmitting(
                 trimmedPrompt: trimmedPrompt,
                 editorContext: editorContext,
-                currentWorkspaceId: currentWorkspaceId
+                currentWorkspaceId: currentWorkspaceId,
+                localIntentHandler: localIntentHandler
             )
         }
         submitTask = task
@@ -232,9 +257,26 @@ final class EditorPromptBarViewModel: ObservableObject {
     private func runSubmitting(
         trimmedPrompt: String,
         editorContext: RemoteIntentEditorContext?,
-        currentWorkspaceId: String?
+        currentWorkspaceId: String?,
+        localIntentHandler: LocalIntentHandler?
     ) async {
         do {
+            if let localIntentHandler {
+                Self.logger.info("[PromptBar] Trying local editor intent compiler first")
+                phase = .submitting("Checking local editor intent.")
+                let handledLocally = await localIntentHandler(trimmedPrompt)
+                try Task.checkCancellation()
+
+                if handledLocally {
+                    Self.logger.info("[PromptBar] Local editor intent handled prompt")
+                    phase = .idle
+                    return
+                }
+
+                Self.logger.info("[PromptBar] Local editor intent did not resolve; falling back to backend")
+                phase = .submitting("Starting backend intent run.")
+            }
+
             if let needsIntentTranscriptDatabaseWait,
                let waitForTranscriptReadinessIfNeeded,
                needsIntentTranscriptDatabaseWait(trimmedPrompt) {
@@ -247,11 +289,11 @@ final class EditorPromptBarViewModel: ObservableObject {
             Self.logger.info(
                 "[PromptBar] Context timeline=\(context.timelineId, privacy: .public) project=\(context.projectId ?? "nil", privacy: .public) session=\(context.sessionId ?? "nil", privacy: .public) selectedClip=\(context.selectedClipId ?? "nil", privacy: .public) selectedTrack=\(context.selectedTrackId ?? "nil", privacy: .public) clips=\(context.clipsById.count, privacy: .public) tracks=\(context.orderedClipIdsByTrackId.count, privacy: .public) transcripts=\(context.transcriptContextsByClipId.count, privacy: .public)"
             )
-            let response = try await remoteCompiler.compilePromptResponse(
-                prompt: trimmedPrompt,
-                context: context,
-                editorContext: editorContext,
-                currentWorkspaceId: currentWorkspaceId
+            let response = try await compileRemotely(
+                trimmedPrompt,
+                context,
+                editorContext,
+                currentWorkspaceId
             ) { [weak self] status in
                 Self.logger.info("[PromptBar] Status update: \(status, privacy: .public)")
                 self?.phase = .submitting(status)

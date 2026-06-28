@@ -221,7 +221,8 @@ struct EditorContainerView: View {
                 Task {
                     await editorPromptBarViewModel.endVoicePrompt(
                         editorContext: remoteIntentEditorContext,
-                        currentWorkspaceId: jitRenderState.currentWorkspaceId
+                        currentWorkspaceId: jitRenderState.currentWorkspaceId,
+                        localIntentHandler: handleLocalEditorIntent
                     )
                 }
             },
@@ -229,7 +230,8 @@ struct EditorContainerView: View {
                 Task {
                     await editorPromptBarViewModel.submitTextPrompt(
                         editorContext: remoteIntentEditorContext,
-                        currentWorkspaceId: jitRenderState.currentWorkspaceId
+                        currentWorkspaceId: jitRenderState.currentWorkspaceId,
+                        localIntentHandler: handleLocalEditorIntent
                     )
                 }
             },
@@ -246,6 +248,15 @@ struct EditorContainerView: View {
     private var remoteIntentEditorContext: RemoteIntentEditorContext {
         RemoteIntentEditorContext(
             activeSpace: activeSpace.rawValue,
+            hasSelectedClip: controller.state.selectedClipId != nil
+        )
+    }
+
+    @MainActor
+    private func handleLocalEditorIntent(_ prompt: String) async -> Bool {
+        await jitRenderState.compileAndApply(
+            prompt: prompt,
+            activeSpace: activeSpace,
             hasSelectedClip: controller.state.selectedClipId != nil
         )
     }
