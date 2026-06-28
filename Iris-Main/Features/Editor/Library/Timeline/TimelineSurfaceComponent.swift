@@ -27,10 +27,13 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     @State private var lastScrollTime: Date = Date()
     @State private var lastScrollUpdate: Date = Date()
     @State private var isJumpingToTarget = false
+    @State private var isUserScrolling = false
+    @State private var isAutoScrolling = false
     @State private var jumpResetWorkItem: DispatchWorkItem?
     @State private var sharedScrollOffset: CGFloat = 0
     @State private var isScrollingFast = false
     @State private var scrollIdleWorkItem: DispatchWorkItem?
+    @State private var scrollActivityWorkItem: DispatchWorkItem?
     private let usesExternalPixelsPerSecond: Bool
 
     init(
@@ -171,6 +174,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     }
                     .background(Color.ds.bg)
                     .scrollDisabled(isAddMenuOpen)
+                    .simultaneousGesture(userScrollGesture)
                     .simultaneousGesture(zoomGesture)
                     .onScrollGeometryChange(for: CGFloat.self) { geo in
                         geo.contentOffset.x
@@ -186,11 +190,11 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                         scrollToPlayhead(with: proxy, animated: true)
                     }
                     .onChange(of: currentTimeUs) { _, _ in
-                        guard playbackState == .playing else { return }
+                        guard playbackState == .playing, !isUserScrolling else { return }
                         scrollToPlayhead(with: proxy)
                     }
                     .onChange(of: playbackState) { _, newState in
-                        guard newState == .playing else { return }
+                        guard newState == .playing, !isUserScrolling else { return }
                         scrollToPlayhead(with: proxy)
                     }
                     .onChange(of: resolvedPixelsPerSecond) { _, _ in
@@ -254,7 +258,16 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         .onDisappear {
             jumpResetWorkItem?.cancel()
             scrollIdleWorkItem?.cancel()
+            scrollActivityWorkItem?.cancel()
         }
+    }
+
+    private var userScrollGesture: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { _ in
+                guard !isJumpingToTarget else { return }
+                markUserScrolling()
+            }
     }
 
     private var zoomGesture: some Gesture {
@@ -379,14 +392,18 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     }
 
     private var isProgrammaticScrolling: Bool {
-        isJumpingToTarget || playbackState == .playing
+        isAutoScrolling || isJumpingToTarget || (playbackState == .playing && !isUserScrolling)
     }
 
     private func beginJumpToTarget() {
         isJumpingToTarget = true
+        isAutoScrolling = true
+        isUserScrolling = false
+        scrollActivityWorkItem?.cancel()
         jumpResetWorkItem?.cancel()
         let workItem = DispatchWorkItem {
             isJumpingToTarget = false
+            isAutoScrolling = false
         }
         jumpResetWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
@@ -405,6 +422,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         }
         scrollIdleWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+    }
+
+    private func markUserScrolling() {
+        isUserScrolling = true
+        isAutoScrolling = false
+        scrollActivityWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            isUserScrolling = false
+        }
+        scrollActivityWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: workItem)
     }
 }
 
