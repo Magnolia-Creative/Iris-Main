@@ -14,12 +14,15 @@ enum AppConfiguration {
     #else
     static let backendBaseURL = URL(string: "https://api.irisvideo.app")!
     #endif
-    static let ingestEndpoint = backendBaseURL.appending(path: "sessions/upload")
-    static let captionsEndpoint = backendBaseURL.appending(path: "captions")
-    static let transcriptSentencesEndpoint = backendBaseURL.appending(path: "transcriptions/sentences")
-    static let agentSessionEndpoint = backendBaseURL.appending(path: "projects/agent-sessions")
     static let projectsCreateEndpoint = backendBaseURL.appending(path: "projects")
-    static let intentRunsEndpoint = backendBaseURL.appending(path: "intent-runs")
+    static let transcriptSentencesEndpoint = backendBaseURL
+        .appending(path: "agent")
+        .appending(path: "transcriptions")
+        .appending(path: "sentences")
+    static let agentRunsEndpoint = backendBaseURL
+        .appending(path: "agent")
+        .appending(path: "runs")
+    static let intentRunsEndpoint = agentRunsEndpoint
     static let uploadFieldName = "videos"
     static let uploadLocalKeyFieldName = "local_key"
     static let visualFramesFieldName = "visual_frames"
@@ -70,55 +73,60 @@ enum AppConfiguration {
         return exists && isDirectory.boolValue
     }
 
-    static func projectClipProcessingEndpoint(projectID: String) -> URL {
+    static func projectSourcesEndpoint(projectID: String) -> URL {
         backendBaseURL
             .appending(path: "projects")
             .appending(path: projectID)
-            .appending(path: "clips")
-            .appending(path: "process")
+            .appending(path: "sources")
+    }
+
+    static func projectSourceTranscriptEndpoint(projectID: String, localKey: String) -> URL {
+        backendBaseURL
+            .appending(path: "projects")
+            .appending(path: projectID)
+            .appending(path: "sources")
+            .appending(path: localKey)
+            .appending(path: "transcript")
+    }
+
+    static func projectSourceSearchEndpoint(projectID: String) -> URL {
+        projectSourcesEndpoint(projectID: projectID).appending(path: "search")
+    }
+
+    static func agentRunStatusEndpoint(runID: String) -> URL {
+        agentRunsEndpoint.appending(path: runID)
+    }
+
+    static func projectClipProcessingEndpoint(projectID: String) -> URL {
+        projectSourcesEndpoint(projectID: projectID)
     }
 
     static func sessionStatusEndpoint(sessionID: String) -> URL {
-        backendBaseURL
-            .appending(path: "sessions")
-            .appending(path: sessionID)
+        agentRunStatusEndpoint(runID: sessionID)
     }
 
     static func projectClipStatusEndpoint(projectID: String) -> URL {
-        backendBaseURL
-            .appending(path: "projects")
-            .appending(path: projectID)
-            .appending(path: "clips")
-            .appending(path: "status")
+        projectSourcesEndpoint(projectID: projectID)
     }
 
-    static func projectAgentSessionsEndpoint(projectID: String) -> URL {
-        backendBaseURL
-            .appending(path: "projects")
-            .appending(path: projectID)
-            .appending(path: "agent-sessions")
+    static func projectAgentSessionsEndpoint(projectID _: String) -> URL {
+        agentRunsEndpoint
     }
 
     static func projectClipCancelEndpoint(projectID: String, localKey: String) -> URL {
         backendBaseURL
             .appending(path: "projects")
             .appending(path: projectID)
-            .appending(path: "clips")
+            .appending(path: "sources")
             .appending(path: localKey)
     }
 
     static func projectSemanticSearchEndpoint(projectID: String) -> URL {
-        backendBaseURL
-            .appending(path: "projects")
-            .appending(path: projectID)
-            .appending(path: "semantic-search")
+        projectSourceSearchEndpoint(projectID: projectID)
     }
 
     static func projectTranscriptSearchEndpoint(projectID: String) -> URL {
-        backendBaseURL
-            .appending(path: "projects")
-            .appending(path: projectID)
-            .appending(path: "transcript-search")
+        projectSourceSearchEndpoint(projectID: projectID)
     }
 
     static func agentWebSocketEndpoint(sessionID: String, basedOn baseURL: URL = backendBaseURL) -> URL? {
@@ -127,7 +135,7 @@ enum AppConfiguration {
         }
 
         components.scheme = components.scheme == "https" ? "wss" : "ws"
-        components.path = "/ws/sessions/\(sessionID)"
+        components.path = "/agent/runs/\(sessionID)/stream"
         components.query = nil
         components.fragment = nil
         return components.url
@@ -143,7 +151,7 @@ enum AppConfiguration {
         }
 
         components.scheme = components.scheme == "https" ? "wss" : "ws"
-        components.path = "/ws/transcribe"
+        components.path = "/agent/voice/transcribe"
         components.queryItems = [URLQueryItem(name: "model", value: model)]
         components.fragment = nil
         return components.url
@@ -155,7 +163,7 @@ enum AppConfiguration {
         }
 
         components.scheme = components.scheme == "https" ? "wss" : "ws"
-        components.path = "/ws/intent-runs/\(runID)"
+        components.path = "/agent/runs/\(runID)/stream"
         components.query = nil
         components.fragment = nil
         return components.url
@@ -170,7 +178,7 @@ enum AppConfiguration {
         }
 
         components.scheme = components.scheme == "https" ? "wss" : "ws"
-        components.path = "/ws/intent/voice"
+        components.path = "/agent/voice/intent"
         components.queryItems = [URLQueryItem(name: "model", value: model)]
         components.fragment = nil
         return components.url
