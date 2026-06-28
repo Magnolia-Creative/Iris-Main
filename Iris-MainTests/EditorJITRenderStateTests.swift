@@ -80,4 +80,15 @@ final class EditorJITRenderStateTests: XCTestCase {
 
         XCTAssertTrue(plans.contains { $0.componentId.rawValue == "timeline.full" && $0.style == .resize })
     }
+
+    func testLiveRenderStateAppliesValidatedStateAndTracksTransition() {
+        let liveState = EditorJITLiveRenderState()
+        let previousTimelineSize = liveState.renderState.timeline.size
+        let next = EditorJITRecipeCatalog.timelineFocus.makeRawState()
+
+        XCTAssertTrue(liveState.apply(next))
+        XCTAssertEqual(liveState.previousRenderState?.timeline.size, previousTimelineSize)
+        XCTAssertEqual(liveState.renderState.timeline.size, .expanded)
+        XCTAssertTrue(liveState.transitionPlans.contains { $0.componentId.rawValue == "timeline.full" && $0.style == .resize })
+    }
 }
