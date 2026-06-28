@@ -7,8 +7,10 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
 
     let model: TimelineOrganizerModel
     @Binding var currentTimeUs: Int64
+    @Binding var scrollTargetTimeUs: Int64?
     @Binding var pixelsPerSecond: CGFloat
     @Binding var selectedSegmentId: String?
+    var playbackState: TimelinePlaybackState
     var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
     var onPreviewScrub: ((Int64, Double) -> Void)?
@@ -19,13 +21,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     @State private var lastScrollOffsetX: CGFloat = 0
     @State private var lastScrollTime: Date = Date()
     @State private var lastScrollUpdate: Date = Date()
+    @State private var isJumpingToTarget = false
+    @State private var jumpResetWorkItem: DispatchWorkItem?
     private let usesExternalPixelsPerSecond: Bool
 
     init(
         model: TimelineOrganizerModel,
         currentTimeUs: Binding<Int64>? = nil,
+        scrollTargetTimeUs: Binding<Int64?> = .constant(nil),
         pixelsPerSecond: Binding<CGFloat>? = nil,
         selectedSegmentId: Binding<String?> = .constant(nil),
+        playbackState: TimelinePlaybackState = .idle,
         onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         onPreviewScrub: ((Int64, Double) -> Void)? = nil,
@@ -33,7 +39,9 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     ) {
         self.model = model
         self._currentTimeUs = currentTimeUs ?? .constant(model.currentTimeUs)
+        self._scrollTargetTimeUs = scrollTargetTimeUs
         self._selectedSegmentId = selectedSegmentId
+        self.playbackState = playbackState
         self.onSelectSegment = onSelectSegment
         self.onPreviewScrub = onPreviewScrub
         if let pixelsPerSecond {
@@ -120,7 +128,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                 .padding(.leading, playheadCenterX)
                             }
                             TimelineOrganizerScrollMarker(
-                                targetTimeUs: currentTimeUs,
+                                targetTimeUs: activeScrollTargetTimeUs,
                                 pixelsPerSecond: resolvedPixelsPerSecond,
                                 centerX: playheadCenterX
                             )
@@ -138,7 +146,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     .onAppear {
                         scrollToPlayhead(with: proxy)
                     }
+                    .onChange(of: scrollTargetTimeUs) { _, targetTimeUs in
+                        guard targetTimeUs != nil else { return }
+                        beginJumpToTarget()
+                        scrollToPlayhead(with: proxy, animated: true)
+                    }
                     .onChange(of: currentTimeUs) { _, _ in
+                        guard playbackState == .playing else { return }
+                        scrollToPlayhead(with: proxy)
+                    }
+                    .onChange(of: playbackState) { _, newState in
+                        guard newState == .playing else { return }
                         scrollToPlayhead(with: proxy)
                     }
                     .onChange(of: resolvedPixelsPerSecond) { _, _ in
@@ -181,6 +199,9 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
             .frame(height: organizerHeight)
         }
         .frame(height: max(layout.sectionHeight(for: model.tracks), layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)))
+        .onDisappear {
+            jumpResetWorkItem?.cancel()
+        }
     }
 
     private var zoomGesture: some Gesture {
@@ -217,13 +238,29 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         )
     }
 
-    private func scrollToPlayhead(with proxy: ScrollViewProxy) {
+    private func scrollToPlayhead(with proxy: ScrollViewProxy, animated: Bool = false) {
         DispatchQueue.main.async {
-            proxy.scrollTo(TimelineOrganizerScrollMarker.markerId, anchor: .center)
+            if animated {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    proxy.scrollTo(TimelineOrganizerScrollMarker.markerId, anchor: .center)
+                }
+            } else {
+                proxy.scrollTo(TimelineOrganizerScrollMarker.markerId, anchor: .center)
+            }
         }
     }
 
     private func updateCurrentTimeFromScrollOffset(_ offsetX: CGFloat) {
+        if isProgrammaticScrolling {
+            lastScrollOffsetX = offsetX
+            lastScrollTime = Date()
+            return
+        }
+
+        if scrollTargetTimeUs != nil {
+            scrollTargetTimeUs = nil
+        }
+
         let now = Date()
         let deltaX = offsetX - lastScrollOffsetX
         let deltaT = now.timeIntervalSince(lastScrollTime)
@@ -244,6 +281,28 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
             lastScrollOffsetX = offsetX
             lastScrollTime = now
         }
+    }
+
+    private var activeScrollTargetTimeUs: Int64 {
+        clampScrollTime(scrollTargetTimeUs ?? currentTimeUs)
+    }
+
+    private var isProgrammaticScrolling: Bool {
+        isJumpingToTarget || playbackState == .playing
+    }
+
+    private func beginJumpToTarget() {
+        isJumpingToTarget = true
+        jumpResetWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            isJumpingToTarget = false
+        }
+        jumpResetWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: workItem)
+    }
+
+    private func clampScrollTime(_ timeUs: Int64) -> Int64 {
+        min(max(0, timeUs), model.scrollableDurationUs)
     }
 }
 
@@ -491,8 +550,10 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
         TimelineOrganizerComponent(
             model: TimelineOrganizerModel(context: context),
             currentTimeUs: context.$currentTimeAtCenter,
+            scrollTargetTimeUs: context.$scrollTargetTimeUs,
             pixelsPerSecond: pixelsPerSecond,
             selectedSegmentId: selectedSegmentId,
+            playbackState: context.playbackState,
             onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
             onPreviewScrub: actions.onPreviewScrub,
