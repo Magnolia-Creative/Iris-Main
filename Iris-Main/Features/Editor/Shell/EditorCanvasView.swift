@@ -16,6 +16,7 @@ struct EditorCanvasView: View {
     @ObservedObject var captionsFlow: CaptionsFlowController
     let renderState: EditorJITRenderState
     let transitionPlans: [EditorJITTransitionPlan]
+    let timelineMode: EditorTimelineMode
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     var bottomChromeContent: AnyView? = nil
     @State private var isTimelineAddMenuOpen = false
@@ -42,6 +43,7 @@ struct EditorCanvasView: View {
         captionsFlow: CaptionsFlowController,
         renderState: EditorJITRenderState,
         transitionPlans: [EditorJITTransitionPlan] = [],
+        timelineMode: EditorTimelineMode = .jit,
         showPlaybackAspectSettings: Binding<Bool> = .constant(false),
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         bottomChromeContent: AnyView? = nil,
@@ -56,6 +58,7 @@ struct EditorCanvasView: View {
         self.captionsFlow = captionsFlow
         self.renderState = renderState
         self.transitionPlans = transitionPlans
+        self.timelineMode = timelineMode
         self._showPlaybackAspectSettings = showPlaybackAspectSettings
         self.onAddSelection = onAddSelection
         self.bottomChromeContent = bottomChromeContent
