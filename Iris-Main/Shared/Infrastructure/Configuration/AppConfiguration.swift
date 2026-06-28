@@ -22,7 +22,6 @@ enum AppConfiguration {
     static let agentRunsEndpoint = backendBaseURL
         .appending(path: "agent")
         .appending(path: "runs")
-    static let intentRunsEndpoint = agentRunsEndpoint
     static let uploadFieldName = "videos"
     static let uploadLocalKeyFieldName = "local_key"
     static let visualFramesFieldName = "visual_frames"
@@ -129,18 +128,6 @@ enum AppConfiguration {
         components.scheme = components.scheme == "https" ? "wss" : "ws"
         components.path = "/agent/voice/transcribe"
         components.queryItems = [URLQueryItem(name: "model", value: model)]
-        components.fragment = nil
-        return components.url
-    }
-
-    static func intentRunWebSocketEndpoint(runID: String, basedOn baseURL: URL = backendBaseURL) -> URL? {
-        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-
-        components.scheme = components.scheme == "https" ? "wss" : "ws"
-        components.path = "/agent/runs/\(runID)/stream"
-        components.query = nil
         components.fragment = nil
         return components.url
     }
