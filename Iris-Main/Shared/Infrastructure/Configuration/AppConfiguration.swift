@@ -1,6 +1,14 @@
 import Foundation
 
 enum AppConfiguration {
+    static var localAuthBypassEnabled: Bool {
+        #if DEBUG
+        return envBool("LOCAL_AUTH_BYPASS")
+        #else
+        return false
+        #endif
+    }
+
     #if DEBUG
     /// Clerk publishable key (test instance: ethical-adder-19).
     static let clerkPublishableKey = "pk_test_ZXRoaWNhbC1hZGRlci0xOS5jbGVyay5hY2NvdW50cy5kZXYk"
@@ -70,6 +78,14 @@ enum AppConfiguration {
         var isDirectory: ObjCBool = false
         let exists = fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
         return exists && isDirectory.boolValue
+    }
+
+    private static func envBool(_ name: String) -> Bool {
+        guard let raw = ProcessInfo.processInfo.environment[name] else {
+            return false
+        }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["1", "true", "yes", "on"].contains(normalized)
     }
 
     static func projectSourcesEndpoint(projectID: String) -> URL {
