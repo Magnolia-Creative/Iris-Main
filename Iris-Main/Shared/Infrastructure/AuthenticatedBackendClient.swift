@@ -24,6 +24,14 @@ struct AuthenticatedBackendClient: Sendable {
 
     func authenticatedRequest(_ request: URLRequest) async throws -> URLRequest {
         var request = request
+        guard !AppConfiguration.localAuthBypassEnabled else {
+            request.setValue(nil, forHTTPHeaderField: "Authorization")
+            Self.logger.warning(
+                "[auth] LOCAL_AUTH_BYPASS enabled; sending backend request without Clerk bearer token method=\(request.httpMethod ?? "GET", privacy: .public) url=\(request.url?.redactedAuthLogURL ?? "nil", privacy: .public)"
+            )
+            return request
+        }
+
         let token = try await sessionToken()
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         Self.logger.info(
@@ -33,6 +41,13 @@ struct AuthenticatedBackendClient: Sendable {
     }
 
     func authenticatedWebSocketURL(_ url: URL) async throws -> URL {
+        guard !AppConfiguration.localAuthBypassEnabled else {
+            Self.logger.warning(
+                "[auth] LOCAL_AUTH_BYPASS enabled; opening backend WebSocket without Clerk token url=\(url.redactedAuthLogURL, privacy: .public)"
+            )
+            return url.removingAuthTokenQueryItem()
+        }
+
         let token = try await sessionToken()
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw AuthenticatedBackendClientError.invalidWebSocketURL
@@ -90,6 +105,15 @@ private extension URL {
             item.name == "token" ? URLQueryItem(name: item.name, value: "<redacted>") : item
         }
         return components.string ?? absoluteString
+    }
+
+    func removingAuthTokenQueryItem() -> URL {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return self
+        }
+        let filteredItems = components.queryItems?.filter { $0.name != "token" } ?? []
+        components.queryItems = filteredItems.isEmpty ? nil : filteredItems
+        return components.url ?? self
     }
 }
 
