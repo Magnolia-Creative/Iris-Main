@@ -88,14 +88,14 @@ struct EditorCanvasView: View {
         let playback = resolvedPlaybackController()
 
         jitCanvasBody(state: state, playback: playback)
-        .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showPlaybackAspectSettings)
-        .onChange(of: activeSpace) { _, newSpace in
-            EditorDebugTrace.log(
-                "EditorCanvasView",
-                "canvas updated activeSpace=\(newSpace.rawValue)"
-            )
-        }
+            .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showPlaybackAspectSettings)
+            .onChange(of: activeSpace) { _, newSpace in
+                EditorDebugTrace.log(
+                    "EditorCanvasView",
+                    "canvas updated activeSpace=\(newSpace.rawValue)"
+                )
+            }
     }
 
     private func resolvedPlaybackController() -> PlaybackController {
@@ -216,6 +216,7 @@ struct EditorCanvasView: View {
             playbackState: state.playbackState,
             reviewFocusedClipIds: reviewFocusedClipIds,
             isReviewInteractionDisabled: isReviewInteractionDisabled,
+            promptActionPreview: promptActionPreview,
             captionHighlightRangeUs: highlight,
             playheadTint: playheadTint,
             showAddButton: canAddToTimeline,

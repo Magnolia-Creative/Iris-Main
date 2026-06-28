@@ -13,6 +13,7 @@ struct EditorTimelineContext {
     var playbackState: TimelinePlaybackState
     var reviewFocusedClipIds: Set<String>
     var isReviewInteractionDisabled: Bool
+    var promptActionPreview: TimelinePromptActionPreview?
     var captionHighlightRangeUs: ClosedRange<Int64>?
     var playheadTint: Color
     var showAddButton: Bool

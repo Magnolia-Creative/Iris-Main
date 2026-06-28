@@ -4,6 +4,7 @@ struct TimelineComponentLayout: Equatable {
     let rulerHeight: CGFloat
     let readoutWidth: CGFloat
     let rulerFadeWidth: CGFloat
+    let iconSize: CGFloat
     let organizerTrackTopOffset: CGFloat
     let trackSpacing: CGFloat
     let videoTrackHeight: CGFloat
@@ -25,8 +26,9 @@ struct TimelineComponentLayout: Equatable {
         case .compressed:
             return TimelineComponentLayout(
                 rulerHeight: 28,
-                readoutWidth: 118,
-                rulerFadeWidth: .spacing(.sp5),
+                readoutWidth: 132,
+                rulerFadeWidth: .spacing(.sp6),
+                iconSize: 20,
                 organizerTrackTopOffset: .spacing(.sp3),
                 trackSpacing: .spacing(.sp1),
                 videoTrackHeight: .spacing(.sp5),
@@ -37,8 +39,9 @@ struct TimelineComponentLayout: Equatable {
         case .standard:
             return TimelineComponentLayout(
                 rulerHeight: 30,
-                readoutWidth: 118,
-                rulerFadeWidth: .spacing(.sp5),
+                readoutWidth: 132,
+                rulerFadeWidth: .spacing(.sp6),
+                iconSize: 22,
                 organizerTrackTopOffset: .spacing(.sp4),
                 trackSpacing: .spacing(.sp2),
                 videoTrackHeight: .spacing(.sp8),
@@ -49,8 +52,9 @@ struct TimelineComponentLayout: Equatable {
         case .expanded:
             return TimelineComponentLayout(
                 rulerHeight: 32,
-                readoutWidth: 118,
-                rulerFadeWidth: .spacing(.sp5),
+                readoutWidth: 132,
+                rulerFadeWidth: .spacing(.sp6),
+                iconSize: 24,
                 organizerTrackTopOffset: .spacing(.sp5),
                 trackSpacing: .spacing(.sp2),
                 videoTrackHeight: .spacing(.sp10),
@@ -139,6 +143,7 @@ struct TimelineSegmentModel: Identifiable, Equatable {
     var captionText: String?
     var mediaKind: MediaKind?
     var assetRefId: String?
+    var mediaDurationSeconds: Double?
     var thumbnailStripPath: String?
     var waveformPath: String?
 
@@ -154,6 +159,7 @@ struct TimelineSegmentModel: Identifiable, Equatable {
         captionText: String? = nil,
         mediaKind: MediaKind? = nil,
         assetRefId: String? = nil,
+        mediaDurationSeconds: Double? = nil,
         thumbnailStripPath: String? = nil,
         waveformPath: String? = nil
     ) {
@@ -164,6 +170,7 @@ struct TimelineSegmentModel: Identifiable, Equatable {
         self.captionText = captionText
         self.mediaKind = mediaKind
         self.assetRefId = assetRefId
+        self.mediaDurationSeconds = mediaDurationSeconds
         self.thumbnailStripPath = thumbnailStripPath
         self.waveformPath = waveformPath
     }
@@ -210,17 +217,20 @@ struct TimelineRulerModel: Equatable {
 struct TimelineOrganizerModel: Equatable {
     var tracks: [TimelineTrackModel]
     var durationUs: Int64
+    var scrollableDurationUs: Int64
     var currentTimeUs: Int64
     var pixelsPerSecond: CGFloat
 
     init(
         tracks: [TimelineTrackModel] = [],
         durationUs: Int64 = 0,
+        scrollableDurationUs: Int64? = nil,
         currentTimeUs: Int64 = 0,
         pixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
     ) {
         self.tracks = tracks
         self.durationUs = durationUs
+        self.scrollableDurationUs = scrollableDurationUs ?? durationUs
         self.currentTimeUs = currentTimeUs
         self.pixelsPerSecond = pixelsPerSecond
     }
@@ -235,6 +245,7 @@ extension TimelineSegmentModel {
             title: fallbackTitle,
             mediaKind: media?.kind,
             assetRefId: media?.assetRefId,
+            mediaDurationSeconds: media?.spec.duration,
             thumbnailStripPath: media?.spec.thumbnailStripPath,
             waveformPath: media?.spec.waveformPath
         )
@@ -303,6 +314,7 @@ extension TimelineOrganizerModel {
         self.init(
             tracks: trackModels,
             durationUs: context.timelineDurationUs,
+            scrollableDurationUs: context.scrollableDurationUs,
             currentTimeUs: context.currentTimeAtCenter,
             pixelsPerSecond: context.pixelsPerSecond
         )

@@ -32,6 +32,26 @@ post_install do |installer|
     end
   end
 
+  # VideoLab 0.0.1: public framework headers must use framework-style imports.
+  operation_constants = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Render/Operations/OperationConstants.h')
+  patch_file(
+    operation_constants,
+    [
+      ['#import "BlendModeConstants.h"', '#import <VideoLab/BlendModeConstants.h>'],
+    ]
+  )
+
+  video_lab_umbrella = File.join(installer.sandbox.root, 'Target Support Files/VideoLab/VideoLab-umbrella.h')
+  patch_file(
+    video_lab_umbrella,
+    [
+      ['#import "BlendModeConstants.h"', '#import <VideoLab/BlendModeConstants.h>'],
+      ['#import "OperationConstants.h"', '#import <VideoLab/OperationConstants.h>'],
+      ['#import "OperationShaderTypes.h"', '#import <VideoLab/OperationShaderTypes.h>'],
+      ['#import I f<VideoLab/OperationShaderTypes.h>', '#import <VideoLab/OperationShaderTypes.h>'],
+    ]
+  )
+
   # VideoLab 0.0.1: MTAudioProcessingTapCreate out-parameter type changed in recent SDKs.
   audio_render = File.join(installer.sandbox.root, 'VideoLab/VideoLab/Audio/AudioRenderLayer.swift')
   patch_file(
