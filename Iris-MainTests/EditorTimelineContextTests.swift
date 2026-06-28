@@ -130,6 +130,49 @@ final class EditorTimelineContextTests: XCTestCase {
         XCTAssertEqual(model.pixelsPerSecond, 144)
     }
 
+    func testTimelineContextBindingsBridgeJITSurfaceState() {
+        var currentTimeUs: Int64 = 1_000_000
+        var scrollTargetTimeUs: Int64?
+        var selectedClipId: String?
+        var selectedCaptionCueId: String?
+        var isAddMenuOpen = false
+
+        var context = makeContext(
+            currentTimeAtCenter: Binding(
+                get: { currentTimeUs },
+                set: { currentTimeUs = $0 }
+            ),
+            scrollTargetTimeUs: Binding(
+                get: { scrollTargetTimeUs },
+                set: { scrollTargetTimeUs = $0 }
+            ),
+            selectedClipId: Binding(
+                get: { selectedClipId },
+                set: { selectedClipId = $0 }
+            ),
+            selectedCaptionCueId: Binding(
+                get: { selectedCaptionCueId },
+                set: { selectedCaptionCueId = $0 }
+            ),
+            isAddMenuOpen: Binding(
+                get: { isAddMenuOpen },
+                set: { isAddMenuOpen = $0 }
+            )
+        )
+
+        context.currentTimeAtCenter = 2_500_000
+        context.scrollTargetTimeUs = 3_000_000
+        context.selectedClipId = "clip-a"
+        context.selectedCaptionCueId = "cue-a"
+        context.isAddMenuOpen = true
+
+        XCTAssertEqual(currentTimeUs, 2_500_000)
+        XCTAssertEqual(scrollTargetTimeUs, 3_000_000)
+        XCTAssertEqual(selectedClipId, "clip-a")
+        XCTAssertEqual(selectedCaptionCueId, "cue-a")
+        XCTAssertTrue(isAddMenuOpen)
+    }
+
     private func makeContext(
         tracks: [Track] = [Track(trackId: "track-v", timelineId: "timeline-1", kind: .video)],
         clipsByTrackId: [String: [Clip]] = [:],
@@ -140,13 +183,18 @@ final class EditorTimelineContextTests: XCTestCase {
         pixelsPerSecond: CGFloat = 100,
         timelineDurationUs: Int64 = 4_000_000,
         scrollableDurationUs: Int64 = 4_000_000,
-        currentTimeUs: Int64 = 0
+        currentTimeUs: Int64 = 0,
+        currentTimeAtCenter: Binding<Int64>? = nil,
+        scrollTargetTimeUs: Binding<Int64?>? = nil,
+        selectedClipId: Binding<String?>? = nil,
+        selectedCaptionCueId: Binding<String?>? = nil,
+        isAddMenuOpen: Binding<Bool>? = nil
     ) -> EditorTimelineContext {
         var currentTimeUs = currentTimeUs
-        var scrollTargetTimeUs: Int64?
-        var selectedClipId: String?
-        var selectedCaptionCueId: String?
-        var isAddMenuOpen = false
+        var localScrollTargetTimeUs: Int64?
+        var localSelectedClipId: String?
+        var localSelectedCaptionCueId: String?
+        var localIsAddMenuOpen = false
 
         return EditorTimelineContext(
             tracks: tracks,
@@ -164,11 +212,11 @@ final class EditorTimelineContextTests: XCTestCase {
             captionHighlightRangeUs: nil,
             playheadTint: Color.ds.text,
             showAddButton: true,
-            currentTimeAtCenter: Binding(get: { currentTimeUs }, set: { currentTimeUs = $0 }),
-            scrollTargetTimeUs: Binding(get: { scrollTargetTimeUs }, set: { scrollTargetTimeUs = $0 }),
-            selectedClipId: Binding(get: { selectedClipId }, set: { selectedClipId = $0 }),
-            selectedCaptionCueId: Binding(get: { selectedCaptionCueId }, set: { selectedCaptionCueId = $0 }),
-            isAddMenuOpen: Binding(get: { isAddMenuOpen }, set: { isAddMenuOpen = $0 })
+            currentTimeAtCenter: currentTimeAtCenter ?? Binding(get: { currentTimeUs }, set: { currentTimeUs = $0 }),
+            scrollTargetTimeUs: scrollTargetTimeUs ?? Binding(get: { localScrollTargetTimeUs }, set: { localScrollTargetTimeUs = $0 }),
+            selectedClipId: selectedClipId ?? Binding(get: { localSelectedClipId }, set: { localSelectedClipId = $0 }),
+            selectedCaptionCueId: selectedCaptionCueId ?? Binding(get: { localSelectedCaptionCueId }, set: { localSelectedCaptionCueId = $0 }),
+            isAddMenuOpen: isAddMenuOpen ?? Binding(get: { localIsAddMenuOpen }, set: { localIsAddMenuOpen = $0 })
         )
     }
 }
