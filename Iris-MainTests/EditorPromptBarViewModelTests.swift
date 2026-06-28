@@ -46,6 +46,15 @@ struct EditorPromptBarViewModelTests {
         #expect(remotePrompts == ["Cut out dead space"])
         #expect(viewModel.phase == EditorPromptBarPhase.idle)
     }
+
+    @Test func promptBarPhaseMapsToIntelligencePromptPhase() {
+        #expect(EditorPromptBarPhase.idle.intelligencePhase == .idle)
+        #expect(EditorPromptBarPhase.recording.intelligencePhase == .recording)
+        #expect(EditorPromptBarPhase.typing.intelligencePhase == .typing)
+        #expect(EditorPromptBarPhase.submitting("Applying edit").intelligencePhase == .submitting("Applying edit"))
+        #expect(EditorPromptBarPhase.clarification("Which clip?").intelligencePhase == .clarification("Which clip?"))
+        #expect(EditorPromptBarPhase.error("Try again").intelligencePhase == .error("Try again"))
+    }
 }
 
 private extension EditorPromptBarViewModelTests {
