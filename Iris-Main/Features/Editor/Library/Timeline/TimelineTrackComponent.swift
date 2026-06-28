@@ -9,30 +9,52 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     let model: TimelineTrackModel
     let pixelsPerSecond: CGFloat
     var minimumContentWidth: CGFloat?
+    var viewportWidth: CGFloat = 0
+    var scrollOffset: CGFloat = 0
     @Binding var selectedSegmentId: String?
     var reviewFocusedSegmentIds: Set<String>
     var isReviewInteractionDisabled: Bool
     var promptFocusSegmentIds: Set<String>
+    var isUserScrolling: Bool
     var onSelectSegment: ((String) -> Void)?
+    var onMoveSegment: ((String, Int64, [String]) -> Void)?
+    var onTrimSegment: ((String, TimeRange, TimeRange, Bool) -> Void)?
+    var onAutoScroll: ((CGFloat) -> Void)?
+
+    @State private var dragState: TimelineSegmentDragState?
+    @State private var trimState: TimelineSegmentTrimState?
+    @State private var previewOrder: [String]?
 
     init(
         model: TimelineTrackModel,
         pixelsPerSecond: CGFloat,
         minimumContentWidth: CGFloat? = nil,
+        viewportWidth: CGFloat = 0,
+        scrollOffset: CGFloat = 0,
         selectedSegmentId: Binding<String?> = .constant(nil),
         reviewFocusedSegmentIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
         promptFocusSegmentIds: Set<String> = [],
-        onSelectSegment: ((String) -> Void)? = nil
+        isUserScrolling: Bool = false,
+        onSelectSegment: ((String) -> Void)? = nil,
+        onMoveSegment: ((String, Int64, [String]) -> Void)? = nil,
+        onTrimSegment: ((String, TimeRange, TimeRange, Bool) -> Void)? = nil,
+        onAutoScroll: ((CGFloat) -> Void)? = nil
     ) {
         self.model = model
         self.pixelsPerSecond = pixelsPerSecond
         self.minimumContentWidth = minimumContentWidth
+        self.viewportWidth = viewportWidth
+        self.scrollOffset = scrollOffset
         self._selectedSegmentId = selectedSegmentId
         self.reviewFocusedSegmentIds = reviewFocusedSegmentIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
         self.promptFocusSegmentIds = promptFocusSegmentIds
+        self.isUserScrolling = isUserScrolling
         self.onSelectSegment = onSelectSegment
+        self.onMoveSegment = onMoveSegment
+        self.onTrimSegment = onTrimSegment
+        self.onAutoScroll = onAutoScroll
     }
 
     private var layout: TimelineComponentLayout {
@@ -48,20 +70,18 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
         return max(minimumContentWidth ?? 1, CGFloat(maxEnd) / 1_000_000 * pixelsPerSecond)
     }
 
-    private var laidOutSegments: [LaidOutTimelineSegment] {
-        var cursorX: CGFloat = 0
-        return model.segments
-            .sorted { $0.rangeUs.start < $1.rangeUs.start }
-            .map { segment in
-                let x = segmentX(segment)
-                let width = segmentWidth(segment)
-                let gap = max(0, x - cursorX)
-                cursorX = max(cursorX, x + width)
-                return LaidOutTimelineSegment(segment: segment, leadingGap: gap, width: width)
-            }
+    private var orderedSegments: [TimelineSegmentModel] {
+        model.segments.sorted { $0.rangeUs.start < $1.rangeUs.start }
     }
 
     var body: some View {
+        let baseSegments = orderedSegments
+        let baseOrderIds = baseSegments.map(\.id)
+        let orderIds = previewOrder ?? baseOrderIds
+        let segmentById = Dictionary(uniqueKeysWithValues: model.segments.map { ($0.id, $0) })
+        let previewSegments = orderIds.compactMap { segmentById[$0] }
+        let packedStartsById = packedStarts(for: previewSegments)
+
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: .spacing(.sp1))
                 .fill(Color.ds.surface.opacity(0.28))
@@ -70,28 +90,68 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
                     RoundedRectangle(cornerRadius: .spacing(.sp1))
                         .stroke(Color.ds.border.opacity(0.55), lineWidth: 1)
                 )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedSegmentId = nil
+                }
 
-            HStack(spacing: 0) {
-                ForEach(laidOutSegments) { laidOut in
-                    Color.clear
-                        .frame(width: laidOut.leadingGap)
-                        .allowsHitTesting(false)
+            ForEach(baseSegments) { segment in
+                let isActiveDrag = dragState?.segmentId == segment.id
+                let displayStartUs = displayStartTimeUs(
+                    for: segment,
+                    isActiveDrag: isActiveDrag,
+                    packedStartsById: packedStartsById
+                )
+                let width = segmentWidth(segment)
+                let dragOffsetX = dragOffset(for: segment)
 
-                    segmentView(laidOut.segment)
-                        .frame(width: laidOut.width, height: trackHeight)
-                        .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
-                        .onTapGesture {
-                            guard !isReviewInteractionDisabled else { return }
-                            selectedSegmentId = laidOut.segment.id
-                            onSelectSegment?(laidOut.segment.id)
+                segmentView(segment)
+                    .frame(width: width, height: trackHeight)
+                    .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
+                    .overlay(alignment: .leading) {
+                        if isSelectedClipSegment(segment) {
+                            TimelineSegmentTrimHandleView()
+                                .highPriorityGesture(trimGesture(for: segment, edge: .leading))
                         }
                     }
-                Spacer(minLength: 0)
+                    .overlay(alignment: .trailing) {
+                        if isSelectedClipSegment(segment) {
+                            TimelineSegmentTrimHandleView()
+                                .highPriorityGesture(trimGesture(for: segment, edge: .trailing))
+                        }
+                    }
+                    .offset(x: timeToPixels(displayStartUs) + dragOffsetX)
+                    .animation(
+                        isActiveDrag ? nil : .spring(response: 0.3, dampingFraction: 0.85),
+                        value: orderIds
+                    )
+                    .zIndex(isActiveDrag || trimState?.segmentId == segment.id ? 2 : 0)
+                    .highPriorityGesture(
+                        TapGesture().onEnded {
+                            guard !isUserScrolling, !isReviewInteractionDisabled else { return }
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                selectedSegmentId = segment.id
+                                onSelectSegment?(segment.id)
+                            }
+                        }
+                    )
+                    .gesture(
+                        dragGesture(
+                            for: segment,
+                            currentOrder: previewSegments,
+                            baseOrderIds: baseOrderIds
+                        ),
+                        including: canMoveSegment(segment) ? .all : .none
+                    )
             }
-            .frame(width: contentWidth, height: trackHeight, alignment: .leading)
         }
         .frame(width: contentWidth, height: trackHeight, alignment: .leading)
         .clipped()
+        .onChange(of: dragState?.segmentId) { _, newValue in
+            if newValue == nil {
+                onAutoScroll?(0)
+            }
+        }
     }
 
     @ViewBuilder
@@ -131,14 +191,310 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     private func segmentWidth(_ segment: TimelineSegmentModel) -> CGFloat {
         max(layout.minimumSegmentWidth, CGFloat(segment.durationUs) / 1_000_000 * pixelsPerSecond)
     }
+
+    private func displayStartTimeUs(
+        for segment: TimelineSegmentModel,
+        isActiveDrag: Bool,
+        packedStartsById: [String: Int64]
+    ) -> Int64 {
+        if isActiveDrag, let dragState {
+            return dragState.startTimeUs
+        }
+        if previewOrder != nil, let packedStart = packedStartsById[segment.id] {
+            return packedStart
+        }
+        return segment.rangeUs.start
+    }
+
+    private func dragOffset(for segment: TimelineSegmentModel) -> CGFloat {
+        guard let dragState, dragState.segmentId == segment.id else { return 0 }
+        return dragState.translation.width + (scrollOffset - dragState.startScrollOffset)
+    }
+
+    private func isSelectedClipSegment(_ segment: TimelineSegmentModel) -> Bool {
+        model.kind != .caption && selectedSegmentId == segment.id && onTrimSegment != nil
+    }
+
+    private func canMoveSegment(_ segment: TimelineSegmentModel) -> Bool {
+        model.kind != .caption
+            && selectedSegmentId == segment.id
+            && !isUserScrolling
+            && !isReviewInteractionDisabled
+            && onMoveSegment != nil
+    }
+
+    private func dragGesture(
+        for segment: TimelineSegmentModel,
+        currentOrder: [TimelineSegmentModel],
+        baseOrderIds: [String]
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                if dragState?.segmentId != segment.id {
+                    dragState = TimelineSegmentDragState(
+                        segmentId: segment.id,
+                        startTimeUs: segment.rangeUs.start,
+                        translation: value.translation,
+                        startScrollOffset: scrollOffset
+                    )
+                } else {
+                    dragState?.translation = value.translation
+                }
+
+                updatePreviewOrder(
+                    segmentId: segment.id,
+                    translationWidth: value.translation.width,
+                    startScrollOffset: dragState?.startScrollOffset ?? scrollOffset,
+                    currentScrollOffset: scrollOffset,
+                    currentOrder: currentOrder,
+                    baseOrderIds: baseOrderIds
+                )
+                onAutoScroll?(autoScrollDirection(for: value.location.x))
+            }
+            .onEnded { _ in
+                guard let dragState, dragState.segmentId == segment.id else { return }
+                let finalOrderIds = previewOrder ?? baseOrderIds
+                let segmentById = Dictionary(uniqueKeysWithValues: model.segments.map { ($0.id, $0) })
+                let finalSegments = finalOrderIds.compactMap { segmentById[$0] }
+                let finalStarts = packedStarts(for: finalSegments)
+                let resolvedStart = finalStarts[segment.id] ?? segment.rangeUs.start
+
+                onMoveSegment?(segment.id, resolvedStart, finalOrderIds)
+                self.dragState = nil
+                previewOrder = nil
+                onAutoScroll?(0)
+            }
+    }
+
+    private func trimGesture(for segment: TimelineSegmentModel, edge: TimelineSegmentTrimEdge) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                if selectedSegmentId != segment.id {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        selectedSegmentId = segment.id
+                    }
+                }
+                if trimState?.segmentId != segment.id || trimState?.edge != edge {
+                    trimState = TimelineSegmentTrimState(
+                        segmentId: segment.id,
+                        edge: edge,
+                        startTimelineRange: segment.rangeUs,
+                        startSourceRange: resolvedSourceRange(for: segment),
+                        translation: value.translation,
+                        startScrollOffset: scrollOffset
+                    )
+                    dragState = nil
+                } else {
+                    trimState?.translation = value.translation
+                }
+
+                guard let trimState else { return }
+                let adjustedTranslation = trimState.translation.width + (scrollOffset - trimState.startScrollOffset)
+                let resolved = resolvedTrimRanges(
+                    for: segment,
+                    edge: edge,
+                    startTimelineRange: trimState.startTimelineRange,
+                    startSourceRange: trimState.startSourceRange,
+                    translationWidth: adjustedTranslation
+                )
+                onTrimSegment?(segment.id, resolved.sourceRange, resolved.timelineRange, false)
+                onAutoScroll?(autoScrollDirection(for: value.location.x))
+            }
+            .onEnded { value in
+                guard let trimState, trimState.segmentId == segment.id, trimState.edge == edge else { return }
+                let adjustedTranslation = value.translation.width + (scrollOffset - trimState.startScrollOffset)
+                let resolved = resolvedTrimRanges(
+                    for: segment,
+                    edge: edge,
+                    startTimelineRange: trimState.startTimelineRange,
+                    startSourceRange: trimState.startSourceRange,
+                    translationWidth: adjustedTranslation
+                )
+                onTrimSegment?(segment.id, resolved.sourceRange, resolved.timelineRange, true)
+                self.trimState = nil
+                onAutoScroll?(0)
+            }
+    }
+
+    private func updatePreviewOrder(
+        segmentId: String,
+        translationWidth: CGFloat,
+        startScrollOffset: CGFloat,
+        currentScrollOffset: CGFloat,
+        currentOrder: [TimelineSegmentModel],
+        baseOrderIds: [String]
+    ) {
+        guard let dragState, dragState.segmentId == segmentId, pixelsPerSecond > 0 else { return }
+        guard let currentIndex = currentOrder.firstIndex(where: { $0.id == segmentId }) else { return }
+
+        let adjustedTranslation = translationWidth + (currentScrollOffset - startScrollOffset)
+        guard adjustedTranslation != 0 else { return }
+
+        let durationPx = timeToPixels(currentOrder[currentIndex].durationUs)
+        let proposedStartPx = timeToPixels(dragState.startTimeUs) + adjustedTranslation
+        var updatedOrder = currentOrder
+        var targetIndex = currentIndex
+        let swapThresholdPx: CGFloat = 75
+
+        if adjustedTranslation > 0 {
+            while targetIndex + 1 < updatedOrder.count {
+                let packed = packedStarts(for: updatedOrder)
+                let next = updatedOrder[targetIndex + 1]
+                let nextStartPx = timeToPixels(packed[next.id] ?? next.rangeUs.start)
+                let overlapPx = (proposedStartPx + durationPx) - nextStartPx
+                guard overlapPx >= swapThresholdPx else { break }
+                updatedOrder.swapAt(targetIndex, targetIndex + 1)
+                targetIndex += 1
+            }
+        } else {
+            while targetIndex > 0 {
+                let packed = packedStarts(for: updatedOrder)
+                let previous = updatedOrder[targetIndex - 1]
+                let previousStartPx = timeToPixels(packed[previous.id] ?? previous.rangeUs.start)
+                let previousEndPx = previousStartPx + timeToPixels(previous.durationUs)
+                let overlapPx = previousEndPx - proposedStartPx
+                guard overlapPx >= swapThresholdPx else { break }
+                updatedOrder.swapAt(targetIndex, targetIndex - 1)
+                targetIndex -= 1
+            }
+        }
+
+        let updatedIds = updatedOrder.map(\.id)
+        if updatedIds == baseOrderIds {
+            guard previewOrder != nil else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                previewOrder = nil
+            }
+            return
+        }
+
+        if updatedIds != previewOrder {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                previewOrder = updatedIds
+            }
+        }
+    }
+
+    private func packedStarts(for orderedSegments: [TimelineSegmentModel]) -> [String: Int64] {
+        var cursor: Int64 = 0
+        var starts: [String: Int64] = [:]
+        for segment in orderedSegments {
+            starts[segment.id] = cursor
+            cursor += segment.durationUs
+        }
+        return starts
+    }
+
+    private func resolvedSourceRange(for segment: TimelineSegmentModel) -> TimeRange {
+        segment.sourceRangeUs ?? TimeRange(start: 0, end: segment.durationUs)
+    }
+
+    private func resolvedTrimRanges(
+        for segment: TimelineSegmentModel,
+        edge: TimelineSegmentTrimEdge,
+        startTimelineRange: TimeRange,
+        startSourceRange: TimeRange,
+        translationWidth: CGFloat
+    ) -> (sourceRange: TimeRange, timelineRange: TimeRange) {
+        guard pixelsPerSecond > 0 else { return (startSourceRange, startTimelineRange) }
+        let isPhoto = segment.mediaKind == .photo
+        let minDurationUs = min(startTimelineRange.duration, 200_000)
+        let deltaUs = Int64((translationWidth / pixelsPerSecond) * 1_000_000)
+        let mediaDurationUs: Int64? = {
+            guard !isPhoto, let seconds = segment.mediaDurationSeconds, seconds > 0 else { return nil }
+            return Int64(seconds * 1_000_000)
+        }()
+
+        switch edge {
+        case .leading:
+            if isPhoto {
+                let proposedDuration = startTimelineRange.duration - deltaUs
+                let maxDuration = max(minDurationUs, startTimelineRange.end)
+                let clampedDuration = min(maxDuration, max(minDurationUs, proposedDuration))
+                return (
+                    TimeRange(start: 0, end: max(0, clampedDuration)),
+                    TimeRange(start: startTimelineRange.end - clampedDuration, end: startTimelineRange.end)
+                )
+            }
+
+            let proposedSourceStart = startSourceRange.start + deltaUs
+            let maxSourceStart = startSourceRange.end - minDurationUs
+            let clampedSourceStart = clamp(proposedSourceStart, 0, maxSourceStart)
+            let newDuration = startSourceRange.end - clampedSourceStart
+            let maxDuration = max(minDurationUs, startTimelineRange.end)
+            let clampedDuration = min(newDuration, maxDuration)
+            let newSourceStart = startSourceRange.end - clampedDuration
+            return (
+                TimeRange(start: max(0, newSourceStart), end: startSourceRange.end),
+                TimeRange(start: startTimelineRange.end - clampedDuration, end: startTimelineRange.end)
+            )
+
+        case .trailing:
+            let minEnd = startTimelineRange.start + minDurationUs
+            let maxEnd = mediaDurationUs.map { startTimelineRange.end + ($0 - startSourceRange.end) } ?? Int64.max
+            let proposedEnd = startTimelineRange.end + deltaUs
+            let clampedEnd = clamp(proposedEnd, minEnd, maxEnd)
+            let newTimelineRange = TimeRange(start: startTimelineRange.start, end: clampedEnd)
+
+            if isPhoto {
+                return (TimeRange(start: 0, end: max(0, newTimelineRange.duration)), newTimelineRange)
+            }
+
+            let sourceDelta = clampedEnd - startTimelineRange.end
+            return (TimeRange(start: startSourceRange.start, end: startSourceRange.end + sourceDelta), newTimelineRange)
+        }
+    }
+
+    private func autoScrollDirection(for locationX: CGFloat) -> CGFloat {
+        guard viewportWidth > 0 else { return 0 }
+        let edgeThreshold = min(.spacing(.sp10), max(0, viewportWidth / 2 - .spacing(.sp3)))
+        if locationX < edgeThreshold { return -1 }
+        if locationX > viewportWidth - edgeThreshold { return 1 }
+        return 0
+    }
+
+    private func timeToPixels(_ timeUs: Int64) -> CGFloat {
+        CGFloat(timeUs) / 1_000_000 * pixelsPerSecond
+    }
+
+    private func clamp(_ value: Int64, _ minValue: Int64, _ maxValue: Int64) -> Int64 {
+        guard maxValue >= minValue else { return minValue }
+        return min(maxValue, max(minValue, value))
+    }
 }
 
-private struct LaidOutTimelineSegment: Identifiable {
-    let segment: TimelineSegmentModel
-    let leadingGap: CGFloat
-    let width: CGFloat
+private struct TimelineSegmentDragState {
+    let segmentId: String
+    let startTimeUs: Int64
+    var translation: CGSize
+    let startScrollOffset: CGFloat
+}
 
-    var id: String { segment.id }
+private struct TimelineSegmentTrimState {
+    let segmentId: String
+    let edge: TimelineSegmentTrimEdge
+    let startTimelineRange: TimeRange
+    let startSourceRange: TimeRange
+    var translation: CGSize
+    let startScrollOffset: CGFloat
+}
+
+private enum TimelineSegmentTrimEdge {
+    case leading
+    case trailing
+}
+
+private struct TimelineSegmentTrimHandleView: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: .spacing(.sp1))
+            .fill(Color.ds.accentFg)
+            .frame(width: .spacing(.sp1))
+            .frame(maxHeight: .infinity)
+            .padding(.vertical, .spacing(.sp1))
+            .frame(width: .spacing(.sp4))
+            .background(Color.ds.accentBg.opacity(0.2))
+            .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
+    }
 }
 
 private struct TimelineVideoSegmentView: View {

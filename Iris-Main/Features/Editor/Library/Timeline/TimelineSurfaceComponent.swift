@@ -22,6 +22,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
     var onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)?
+    var onMoveSegment: ((String, Int64, [String]) -> Void)?
+    var onTrimSegment: ((String, TimeRange, TimeRange, Bool) -> Void)?
     var onPreviewScrub: ((Int64, Double) -> Void)?
     @Binding var isAddMenuOpen: Bool
 
@@ -40,6 +42,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     @State private var scrollActivityWorkItem: DispatchWorkItem?
     @State private var isImportedSegmentTargeted = false
     @State private var importedSegmentDropTimeUs: Int64?
+    @State private var autoScrollDirection: CGFloat = 0
+    @State private var autoScrollTask: Task<Void, Never>?
     private let usesExternalPixelsPerSecond: Bool
 
     init(
@@ -57,6 +61,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)? = nil,
+        onMoveSegment: ((String, Int64, [String]) -> Void)? = nil,
+        onTrimSegment: ((String, TimeRange, TimeRange, Bool) -> Void)? = nil,
         onPreviewScrub: ((Int64, Double) -> Void)? = nil,
         isAddMenuOpen: Binding<Bool> = .constant(false)
     ) {
@@ -72,6 +78,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         self.captionHighlightRangeUs = captionHighlightRangeUs
         self.onSelectSegment = onSelectSegment
         self.onDropImportedSegmentAtTime = onDropImportedSegmentAtTime
+        self.onMoveSegment = onMoveSegment
+        self.onTrimSegment = onTrimSegment
         self.onPreviewScrub = onPreviewScrub
         if let pixelsPerSecond {
             self._pixelsPerSecond = pixelsPerSecond
@@ -161,11 +169,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                             model: track,
                                             pixelsPerSecond: resolvedPixelsPerSecond,
                                             minimumContentWidth: contentWidth,
+                                            viewportWidth: geometry.size.width,
+                                            scrollOffset: sharedScrollOffset,
                                             selectedSegmentId: $selectedSegmentId,
                                             reviewFocusedSegmentIds: reviewFocusedSegmentIds,
                                             isReviewInteractionDisabled: isReviewInteractionDisabled,
                                             promptFocusSegmentIds: promptFocusSegmentIds,
-                                            onSelectSegment: onSelectSegment
+                                            isUserScrolling: isUserScrolling,
+                                            onSelectSegment: onSelectSegment,
+                                            onMoveSegment: onMoveSegment,
+                                            onTrimSegment: onTrimSegment,
+                                            onAutoScroll: updateAutoScroll
                                         )
                                     }
                                 }
@@ -300,6 +314,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
             jumpResetWorkItem?.cancel()
             scrollIdleWorkItem?.cancel()
             scrollActivityWorkItem?.cancel()
+            autoScrollTask?.cancel()
             importedSegmentDropTimeUs = nil
             isImportedSegmentTargeted = false
         }
@@ -467,6 +482,38 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         let centerX = viewportWidth / 2
         let contentX = CGFloat(timeUs) / 1_000_000 * resolvedPixelsPerSecond
         return centerX + contentX - sharedScrollOffset
+    }
+
+    private func updateAutoScroll(direction: CGFloat) {
+        guard direction != 0 else {
+            autoScrollDirection = 0
+            autoScrollTask?.cancel()
+            autoScrollTask = nil
+            isAutoScrolling = false
+            return
+        }
+
+        if autoScrollDirection == direction, autoScrollTask != nil { return }
+
+        autoScrollDirection = direction
+        isAutoScrolling = true
+        autoScrollTask?.cancel()
+        autoScrollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                let stepUs = Int64(0.2 * 1_000_000)
+                let targetTimeUs = currentTimeUs + Int64(direction) * stepUs
+                requestScrollTo(timeUs: clampScrollTime(targetTimeUs))
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+    }
+
+    @MainActor
+    private func requestScrollTo(timeUs: Int64) {
+        scrollTargetTimeUs = nil
+        DispatchQueue.main.async {
+            scrollTargetTimeUs = clampScrollTime(timeUs)
+        }
     }
 
     private func scheduleShowAddButton() {
@@ -826,6 +873,8 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
             onDropImportedSegmentAtTime: actions.onDropImportedSegmentAtTime,
+            onMoveSegment: actions.onMoveClip,
+            onTrimSegment: actions.onTrimClip,
             onPreviewScrub: actions.onPreviewScrub,
             isAddMenuOpen: context.$isAddMenuOpen
         )
