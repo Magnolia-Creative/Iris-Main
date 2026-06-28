@@ -37,6 +37,69 @@ final class TimelineEditingServiceTests: XCTestCase {
         XCTAssertTrue(state.clips.isEmpty)
     }
 
+    func testBuildsSelectedClipEditActions() {
+        var state = makeState()
+        state.selectedClipId = "clip-1"
+        state.currentTimeAtCenter = 500_000
+        let service = TimelineEditingService()
+
+        XCTAssertEqual(service.deleteSelectedClipActions(in: state)?.count, 1)
+        XCTAssertEqual(service.splitSelectedClipActions(in: state)?.count, 1)
+
+        let colorActions = service.setClipColorFilterActions(
+            clipId: "clip-1",
+            filter: ClipColorFilter(temperature: 0.4),
+            in: state
+        )
+        guard case .setClipColorFilter = colorActions?.first?.payload else {
+            XCTFail("Expected setClipColorFilter action")
+            return
+        }
+
+        let resetActions = service.setClipColorFilterActions(
+            clipId: "clip-1",
+            filter: .neutral,
+            in: state
+        )
+        guard case .resetClipColorFilter = resetActions?.first?.payload else {
+            XCTFail("Expected resetClipColorFilter action")
+            return
+        }
+    }
+
+    func testSetClipVolumeMutatesEffectsAndDeduplicatesExistingVolumeEffects() {
+        var state = makeState()
+        let service = TimelineEditingService()
+        var older = Effect.clipVolume(
+            timelineId: "timeline-1",
+            clipId: "clip-1",
+            volume: ClipVolume(gain: 0.8),
+            effectId: "older",
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        older.updatedAt = Date(timeIntervalSince1970: 1)
+        var newer = Effect.clipVolume(
+            timelineId: "timeline-1",
+            clipId: "clip-1",
+            volume: ClipVolume(gain: 0.9),
+            effectId: "newer",
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+        newer.updatedAt = Date(timeIntervalSince1970: 2)
+        state.effects = [older, newer]
+
+        let mutation = service.setClipVolume(
+            clipId: "clip-1",
+            volume: ClipVolume(gain: 1.2),
+            in: &state
+        )
+
+        XCTAssertEqual(state.effects.map(\.effectId), ["newer"])
+        XCTAssertEqual(service.clipVolume(for: "clip-1", in: state), ClipVolume(gain: 1.2))
+        XCTAssertEqual(mutation?.updated.map(\.effectId), ["newer"])
+        XCTAssertEqual(mutation?.deletedIds, ["older"])
+    }
+
     private func makeState() -> TimelineState {
         var state = TimelineState(timelineId: "timeline-1")
         state.tracks = [Track(trackId: "track-video", timelineId: "timeline-1", kind: .video)]

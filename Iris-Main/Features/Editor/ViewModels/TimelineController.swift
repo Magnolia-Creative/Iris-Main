@@ -604,114 +604,66 @@ final class TimelineController: ObservableObject {
 
     func moveClip(clipId: String, toStartTimeUs timeUs: Int64, orderedClipIds: [String]) {
         _ = timeUs
-        applyActions([
-            Action.moveClip(
-                timelineId: state.timelineId,
-                clipId: clipId,
-                orderedClipIds: orderedClipIds
-            )
-        ])
+        applyActions(editingService.moveClipActions(
+            timelineId: state.timelineId,
+            clipId: clipId,
+            orderedClipIds: orderedClipIds
+        ))
     }
 
     func trimClip(clipId: String, sourceRange: TimeRange, timelineRange: TimeRange, commit: Bool) {
         if !commit {
-            state.trimClip(clipId: clipId, sourceRange: sourceRange, timelineRange: timelineRange, commit: false)
+            editingService.previewTrimClip(
+                clipId: clipId,
+                sourceRange: sourceRange,
+                timelineRange: timelineRange,
+                in: &state
+            )
             objectWillChange.send()
             return
         }
-        applyActions([
-            Action.trimClip(
-                timelineId: state.timelineId,
-                clipId: clipId,
-                sourceRange: sourceRange
-            )
-        ])
+        applyActions(editingService.trimClipActions(
+            timelineId: state.timelineId,
+            clipId: clipId,
+            sourceRange: sourceRange
+        ))
     }
 
     func clipColorFilter(for clipId: String) -> ClipColorFilter {
-        latestClipColorFilterEffect(for: clipId)?.clipColorFilter ?? .neutral
+        editingService.clipColorFilter(for: clipId, in: state)
     }
 
     func setClipColorFilter(clipId: String, filter: ClipColorFilter) {
-        guard state.clips.contains(where: { $0.clipId == clipId }) else { return }
-
-        if filter.isNeutral {
-            resetClipColorFilter(clipId: clipId)
-            return
-        }
-
-        applyActions([
-            Action.setClipColorFilter(
-                timelineId: state.timelineId,
-                clipId: clipId,
-                filter: filter
-            )
-        ])
+        guard let actions = editingService.setClipColorFilterActions(clipId: clipId, filter: filter, in: state) else { return }
+        applyActions(actions)
     }
 
     func resetClipColorFilter(clipId: String) {
-        applyActions([
-            Action.resetClipColorFilter(timelineId: state.timelineId, clipId: clipId)
-        ])
+        applyActions(editingService.resetClipColorFilterActions(clipId: clipId, in: state))
     }
 
     func clipVolume(for clipId: String) -> ClipVolume {
-        latestClipVolumeEffect(for: clipId)?.clipVolume ?? .neutral
+        editingService.clipVolume(for: clipId, in: state)
     }
 
     func setClipVolume(clipId: String, volume: ClipVolume) {
-        guard state.clips.contains(where: { $0.clipId == clipId }) else { return }
-
-        if volume.isNeutral {
-            resetClipVolume(clipId: clipId)
-            return
-        }
-
-        let matchingEffects = clipVolumeEffects(for: clipId)
-        let existingEffect = matchingEffects.max { $0.updatedAt < $1.updatedAt }
-        let updatedEffect = Effect.clipVolume(
-            timelineId: state.timelineId,
-            clipId: clipId,
-            volume: volume,
-            effectId: existingEffect?.effectId ?? UUID().uuidString,
-            createdAt: existingEffect?.createdAt ?? Date()
-        )
-
-        let duplicateEffectIds = Set(matchingEffects.map(\.effectId)).subtracting([updatedEffect.effectId])
-        state.effects.removeAll { duplicateEffectIds.contains($0.effectId) }
-
-        if let index = state.effects.firstIndex(where: { $0.effectId == updatedEffect.effectId }) {
-            state.effects[index] = updatedEffect
-            persistEffectChanges(created: [], updated: [updatedEffect], deletedIds: Array(duplicateEffectIds))
-        } else {
-            state.effects.append(updatedEffect)
-            persistEffectChanges(created: [updatedEffect], updated: [], deletedIds: Array(duplicateEffectIds))
-        }
+        guard let mutation = editingService.setClipVolume(clipId: clipId, volume: volume, in: &state) else { return }
+        persistEffectChanges(created: mutation.created, updated: mutation.updated, deletedIds: mutation.deletedIds)
     }
 
     func resetClipVolume(clipId: String) {
-        let matchingEffects = clipVolumeEffects(for: clipId)
-        guard !matchingEffects.isEmpty else { return }
-
-        let deletedIds = matchingEffects.map(\.effectId)
-        state.effects.removeAll { deletedIds.contains($0.effectId) }
-        persistEffectChanges(created: [], updated: [], deletedIds: deletedIds)
+        guard let mutation = editingService.resetClipVolume(clipId: clipId, in: &state) else { return }
+        persistEffectChanges(created: mutation.created, updated: mutation.updated, deletedIds: mutation.deletedIds)
     }
 
     func deleteSelectedClip() {
-        guard let clipId = state.selectedClipId else { return }
-        applyActions([Action.removeClip(timelineId: state.timelineId, clipId: clipId)])
+        guard let actions = editingService.deleteSelectedClipActions(in: state) else { return }
+        applyActions(actions)
     }
 
     func splitSelectedClip() {
-        guard let clipId = state.selectedClipId else { return }
-        applyActions([
-            Action.splitClip(
-                timelineId: state.timelineId,
-                clipId: clipId,
-                atTimeUs: state.currentTimeAtCenter
-            )
-        ])
+        guard let actions = editingService.splitSelectedClipActions(in: state) else { return }
+        applyActions(actions)
     }
 
     func updateCurrentTime(_ timeUs: Int64) {
@@ -948,30 +900,6 @@ final class TimelineController: ObservableObject {
             updated: captionCueDiffResult.updated,
             deletedIds: captionCueDiffResult.deletedIds
         )
-    }
-
-    private func clipColorFilterEffects(for clipId: String) -> [Effect] {
-        state.effects.filter {
-            $0.targetId == clipId
-                && $0.appliesTo == .clip
-                && $0.type == ClipColorFilter.effectType
-        }
-    }
-
-    private func latestClipColorFilterEffect(for clipId: String) -> Effect? {
-        clipColorFilterEffects(for: clipId).max { $0.updatedAt < $1.updatedAt }
-    }
-
-    private func clipVolumeEffects(for clipId: String) -> [Effect] {
-        state.effects.filter {
-            $0.targetId == clipId
-                && $0.appliesTo == .clip
-                && $0.type == ClipVolume.effectType
-        }
-    }
-
-    private func latestClipVolumeEffect(for clipId: String) -> Effect? {
-        clipVolumeEffects(for: clipId).max { $0.updatedAt < $1.updatedAt }
     }
 
     private func persistNewTracks() {
