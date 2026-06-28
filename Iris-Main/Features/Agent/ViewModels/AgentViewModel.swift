@@ -18,7 +18,7 @@ final class AgentViewModel: ObservableObject {
     var sourceVideos: [SelectedVideoAsset] = []
     var ingestResponse: IngestResponse?
     var ingestEndpoint: URL?
-    /// WebSocket session id from `POST /projects/{id}/agent-sessions` when ingest has no `session_id`.
+    /// Agent run id from `POST /agent/runs` when ingest has no `session_id`.
     var agentWebSocketSessionID: String?
     var sourceClipsByRemoteID: [String: AgentSourceClip] = [:]
     var webSocketTask: URLSessionWebSocketTask?

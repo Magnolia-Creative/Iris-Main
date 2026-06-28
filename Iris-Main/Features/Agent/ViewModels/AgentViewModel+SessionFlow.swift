@@ -324,6 +324,15 @@ extension AgentViewModel {
                 model.stage = .waitingForFeedback
             }
 
+        case .stateSnapshot(let payload):
+            model.sessionID = payload.sessionID.rawValue
+            model.projectID = payload.projectID?.rawValue ?? model.projectID
+            model.errorMessage = nil
+            if let statusMessage = payload.statusMessage?.trimmedForTransport,
+               !statusMessage.isEmpty {
+                setStatusMessage(statusMessage)
+            }
+
         case .sessionClosed(let payload):
             model.sessionID = payload.sessionID.rawValue
             model.isConnected = false

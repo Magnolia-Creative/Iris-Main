@@ -10,7 +10,7 @@ struct AuthenticatedRootView: View {
 
     var body: some View {
         Group {
-            if clerk.user != nil {
+            if isSignedInOrBypassed {
                 HomeView()
                     .transition(.opacity)
             } else {
@@ -18,7 +18,11 @@ struct AuthenticatedRootView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: clerk.user != nil)
+        .animation(.easeInOut(duration: 0.35), value: isSignedInOrBypassed)
+    }
+
+    private var isSignedInOrBypassed: Bool {
+        AppConfiguration.localAuthBypassEnabled || clerk.user != nil
     }
 
     private var signedOutExperience: some View {

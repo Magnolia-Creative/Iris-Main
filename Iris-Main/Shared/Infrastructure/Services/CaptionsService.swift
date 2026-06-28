@@ -20,14 +20,14 @@ enum CaptionsServiceError: LocalizedError, Equatable {
     }
 }
 
-/// Word timing from `GET /captions` sentence payload.
+/// Word timing from project source transcript sentence payloads.
 struct RemoteCaptionWord: Decodable, Equatable, Sendable {
     let word: String
     let start: Double
     let end: Double
 }
 
-/// Sentence (segment) from `GET /captions`.
+/// Sentence (segment) from project source transcript payloads.
 struct RemoteCaptionSentence: Decodable, Equatable, Sendable {
     let text: String
     let start: Double
@@ -61,7 +61,7 @@ struct RemoteCaptionMeta: Decodable, Equatable, Sendable {
     }
 }
 
-/// Decoded `GET /captions` success body.
+/// Decoded `GET /projects/{project_id}/sources/{local_key}/transcript` success body.
 struct RemoteClipCaptions: Decodable, Equatable, Sendable {
     let projectId: Int
     let localKey: String
@@ -106,14 +106,7 @@ struct CaptionsService: Sendable {
             Self.logger.error("[CaptionsService] invalid project id raw=\(projectId, privacy: .public) localKey=\(localKey, privacy: .public)")
             throw CaptionsServiceError.requestFailed(statusCode: 400, body: "Invalid project id")
         }
-        var components = URLComponents(url: AppConfiguration.captionsEndpoint, resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "project_id", value: String(projectInt)),
-            URLQueryItem(name: "local_key", value: localKey),
-        ]
-        guard let url = components?.url else {
-            throw CaptionsServiceError.invalidResponse
-        }
+        let url = AppConfiguration.projectSourceTranscriptEndpoint(projectID: String(projectInt), localKey: localKey)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 120

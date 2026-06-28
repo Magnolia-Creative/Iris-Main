@@ -45,21 +45,28 @@ struct ProjectClipSearchService: Sendable {
         let matchText: String?
     }
 
+    private enum SearchMode: String {
+        case semantic
+        case transcript
+    }
+
     func semanticSearch(projectID: String, query: String, limit: Int) async throws -> [Match] {
-        try await postSearch(url: AppConfiguration.projectSemanticSearchEndpoint(projectID: projectID), query: query, limit: limit)
+        try await postSearch(projectID: projectID, mode: .semantic, query: query, limit: limit)
     }
 
     func transcriptSearch(projectID: String, query: String, limit: Int) async throws -> [Match] {
-        try await postSearch(url: AppConfiguration.projectTranscriptSearchEndpoint(projectID: projectID), query: query, limit: limit)
+        try await postSearch(projectID: projectID, mode: .transcript, query: query, limit: limit)
     }
 
-    private func postSearch(url: URL, query: String, limit: Int) async throws -> [Match] {
+    private func postSearch(projectID: String, mode: SearchMode, query: String, limit: Int) async throws -> [Match] {
+        let url = AppConfiguration.projectSourceSearchEndpoint(projectID: projectID)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
             "query": query,
             "limit": limit,
+            "mode": mode.rawValue,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

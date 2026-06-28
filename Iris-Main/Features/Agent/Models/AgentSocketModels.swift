@@ -34,6 +34,7 @@ enum AgentSocketEvent {
     case nodeStart(AgentNodeLifecycleEvent)
     case nodeComplete(AgentNodeLifecycleEvent)
     case statusUpdate(AgentStatusUpdateEvent)
+    case stateSnapshot(AgentStateSnapshotEvent)
     case error(AgentErrorEvent)
     case unknown(String)
 
@@ -59,6 +60,8 @@ enum AgentSocketEvent {
             return .nodeComplete(try decoder.decode(AgentNodeLifecycleEvent.self, from: data))
         case "status_update":
             return .statusUpdate(try decoder.decode(AgentStatusUpdateEvent.self, from: data))
+        case "state_snapshot":
+            return .stateSnapshot(try decoder.decode(AgentStateSnapshotEvent.self, from: data))
         case "error":
             return .error(try decoder.decode(AgentErrorEvent.self, from: data))
         default:
@@ -224,6 +227,30 @@ struct AgentStatusUpdateEvent: Decodable {
     }
 }
 
+struct AgentStateSnapshotEvent: Decodable {
+    let sessionID: FlexibleIdentifier
+    let state: [String: JSONValue]
+
+    var projectID: FlexibleIdentifier? {
+        if let raw = state["project_id"]?.stringValue {
+            return FlexibleIdentifier(rawValue: raw)
+        }
+        if let raw = state["project_id"]?.intValue {
+            return FlexibleIdentifier(rawValue: String(raw))
+        }
+        return nil
+    }
+
+    var statusMessage: String? {
+        state["status_message"]?.stringValue
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case state
+    }
+}
+
 struct AgentErrorEvent: Decodable {
     let sessionID: FlexibleIdentifier?
     let detail: String
@@ -277,6 +304,8 @@ extension AgentSocketEvent {
             return "node_complete(node=\(payload.node))"
         case .statusUpdate(let payload):
             return "status_update(session_id=\(payload.sessionID.rawValue), node=\(payload.node ?? "nil"))"
+        case .stateSnapshot(let payload):
+            return "state_snapshot(session_id=\(payload.sessionID.rawValue), keys=\(payload.state.keys.sorted().joined(separator: ",")))"
         case .error(let payload):
             return "error(session_id=\(payload.sessionID?.rawValue ?? "nil"))"
         case .unknown(let type):

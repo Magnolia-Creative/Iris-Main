@@ -36,7 +36,7 @@ enum ImportProcessingMode: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Local `/transcriptions/sentences` is used when `runsEmbeddings` is true and agent clip upload is off.
+    /// Local `/agent/transcriptions/sentences` is used when `runsEmbeddings` is true and agent clip upload is off.
     /// With on-device import embeddings disabled (`runsEmbeddings` is false), this stays false and transcripts come from server clip processing when agent prep runs.
     var usesLocalTranscriptionEndpoint: Bool {
         runsEmbeddings && !runsAgentPreprocessing

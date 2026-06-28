@@ -46,10 +46,20 @@ struct ProjectClipProcessingService {
     }
 
     func createAgentSession(projectID: String, sessionName: String?) async throws -> RemoteImportSessionResponse {
-        var request = URLRequest(url: AppConfiguration.projectAgentSessionsEndpoint(projectID: projectID))
+        guard let backendProjectID = Int(projectID) else {
+            throw ProjectClipProcessingError.missingProjectInformation
+        }
+
+        var request = URLRequest(url: AppConfiguration.agentRunsEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = ["session_name": sessionName].compactMapValues { $0 }
+        var body: [String: Any] = [
+            "kind": "automake",
+            "project_id": backendProjectID,
+        ]
+        if let sessionName {
+            body["session_name"] = sessionName
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         request = try await authClient.authenticatedRequest(request)
@@ -64,7 +74,7 @@ struct ProjectClipProcessingService {
         backendProjectID: String
     ) async throws -> IngestResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
-        let endpoint = AppConfiguration.projectClipProcessingEndpoint(projectID: backendProjectID)
+        let endpoint = AppConfiguration.projectSourcesEndpoint(projectID: backendProjectID)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -83,15 +93,7 @@ struct ProjectClipProcessingService {
     }
 
     func fetchProjectClipStatus(projectID: String) async throws -> IngestResponse {
-        let endpoint = AppConfiguration.projectClipStatusEndpoint(projectID: projectID)
-        let request = try await authClient.authenticatedRequest(URLRequest(url: endpoint))
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-        return try decoder.decode(IngestResponse.self, from: data)
-    }
-
-    func fetchSessionStatus(sessionID: String) async throws -> IngestResponse {
-        let endpoint = AppConfiguration.sessionStatusEndpoint(sessionID: sessionID)
+        let endpoint = AppConfiguration.projectSourcesEndpoint(projectID: projectID)
         let request = try await authClient.authenticatedRequest(URLRequest(url: endpoint))
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)

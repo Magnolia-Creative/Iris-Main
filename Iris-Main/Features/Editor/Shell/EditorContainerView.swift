@@ -51,11 +51,11 @@ struct EditorContainerView: View {
                 attemptStartPromptActionReview: { actions, prompt in
                     timelineController.startPromptActionReview(actions: actions, prompt: prompt)
                 },
-                onIntentCompiled: { prompt, _ in
-                    await liveJITRenderState.compileAndApply(
+                onIntentCompiled: { prompt, response in
+                    liveJITRenderState.apply(
+                        uiPlan: response.ui,
                         prompt: prompt,
-                        activeSpace: .edit,
-                        hasSelectedClip: timelineController.state.selectedClipId != nil
+                        editResult: response.edit
                     )
                 }
             )
@@ -218,10 +218,22 @@ struct EditorContainerView: View {
                 Task { await editorPromptBarViewModel.beginVoicePrompt() }
             },
             onVoiceHoldEnd: {
-                Task { await editorPromptBarViewModel.endVoicePrompt() }
+                Task {
+                    await editorPromptBarViewModel.endVoicePrompt(
+                        editorContext: remoteIntentEditorContext,
+                        currentWorkspaceId: jitRenderState.currentWorkspaceId,
+                        localIntentHandler: handleLocalEditorIntent
+                    )
+                }
             },
             onSubmitText: {
-                Task { await editorPromptBarViewModel.submitTextPrompt() }
+                Task {
+                    await editorPromptBarViewModel.submitTextPrompt(
+                        editorContext: remoteIntentEditorContext,
+                        currentWorkspaceId: jitRenderState.currentWorkspaceId,
+                        localIntentHandler: handleLocalEditorIntent
+                    )
+                }
             },
             onCancelText: {
                 editorPromptBarViewModel.cancelTextPrompt()
@@ -231,6 +243,22 @@ struct EditorContainerView: View {
             }
         )
         .frame(width: IntelligenceComponent.containerWidth())
+    }
+
+    private var remoteIntentEditorContext: RemoteIntentEditorContext {
+        RemoteIntentEditorContext(
+            activeSpace: activeSpace.rawValue,
+            hasSelectedClip: controller.state.selectedClipId != nil
+        )
+    }
+
+    @MainActor
+    private func handleLocalEditorIntent(_ prompt: String) async -> Bool {
+        await jitRenderState.compileAndApply(
+            prompt: prompt,
+            activeSpace: activeSpace,
+            hasSelectedClip: controller.state.selectedClipId != nil
+        )
     }
 
     private var intelligenceActiveNavigationItemId: Binding<String> {
@@ -718,16 +746,20 @@ final class EditorJITLiveRenderState: ObservableObject {
     @Published private(set) var renderState: EditorJITRenderState
     @Published private(set) var previousRenderState: EditorJITRenderState?
     @Published private(set) var transitionPlans: [EditorJITTransitionPlan] = []
+    @Published private(set) var currentWorkspaceId: String?
     private let compiler: EditorIntentCompiler
+    private let uiPlanAdapter: EditorJITUIPlanAdapter
 
     init(
         renderState: EditorJITRenderState? = nil,
-        compiler: EditorIntentCompiler = EditorIntentCompiler()
+        compiler: EditorIntentCompiler = EditorIntentCompiler(),
+        uiPlanAdapter: EditorJITUIPlanAdapter = EditorJITUIPlanAdapter()
     ) {
         let renderState = renderState ?? EditorJITLiveRenderState.defaultRenderState
         let (validated, _) = EditorJITRenderValidator.validate(renderState)
         self.renderState = validated
         self.compiler = compiler
+        self.uiPlanAdapter = uiPlanAdapter
     }
 
     func apply(_ nextState: EditorJITRenderState) -> Bool {
@@ -738,6 +770,22 @@ final class EditorJITLiveRenderState: ObservableObject {
         previousRenderState = previous
         transitionPlans = EditorJITRenderTransitionCoordinator.plan(from: previous, to: validated)
         renderState = validated
+        return true
+    }
+
+    func apply(
+        uiPlan: RemoteIntentUIPlan,
+        prompt: String,
+        editResult _: IntentCompileResult
+    ) -> Bool {
+        let adapted = uiPlanAdapter.adapt(
+            uiPlan: uiPlan,
+            prompt: prompt,
+            fallback: renderState
+        )
+        guard adapted.validationResult.isValid else { return false }
+        guard apply(adapted.renderState) else { return false }
+        currentWorkspaceId = uiPlan.workspaceId
         return true
     }
 
