@@ -1,6 +1,9 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
+    fileprivate static let importedSegmentType = UTType(exportedAs: "com.iris.editor.imported-timeline-segment")
+
     static let componentId: EditorComponentID = "timeline.organizer"
     static let category: EditorComponentCategory = .timeline
     static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
@@ -18,6 +21,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     var captionHighlightRangeUs: ClosedRange<Int64>?
     var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
+    var onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)?
     var onPreviewScrub: ((Int64, Double) -> Void)?
     @Binding var isAddMenuOpen: Bool
 
@@ -34,6 +38,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     @State private var isScrollingFast = false
     @State private var scrollIdleWorkItem: DispatchWorkItem?
     @State private var scrollActivityWorkItem: DispatchWorkItem?
+    @State private var isImportedSegmentTargeted = false
+    @State private var importedSegmentDropTimeUs: Int64?
     private let usesExternalPixelsPerSecond: Bool
 
     init(
@@ -50,6 +56,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         captionHighlightRangeUs: ClosedRange<Int64>? = nil,
         onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
+        onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)? = nil,
         onPreviewScrub: ((Int64, Double) -> Void)? = nil,
         isAddMenuOpen: Binding<Bool> = .constant(false)
     ) {
@@ -64,6 +71,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         self.promptFocusSegmentIds = promptFocusSegmentIds
         self.captionHighlightRangeUs = captionHighlightRangeUs
         self.onSelectSegment = onSelectSegment
+        self.onDropImportedSegmentAtTime = onDropImportedSegmentAtTime
         self.onPreviewScrub = onPreviewScrub
         if let pixelsPerSecond {
             self._pixelsPerSecond = pixelsPerSecond
@@ -252,6 +260,39 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     .allowsHitTesting(false)
                     .zIndex(10)
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: .spacing(.sp3))
+                    .stroke(
+                        isImportedSegmentTargeted ? Color.ds.accentFg : Color.clear,
+                        style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                    )
+                    .animation(.easeOut(duration: 0.18), value: isImportedSegmentTargeted)
+            }
+            .overlay(alignment: .topLeading) {
+                if isImportedSegmentTargeted, let importedSegmentDropTimeUs {
+                    TimelineImportedSegmentInsertionIndicator(color: Color.ds.accentFg, height: organizerHeight - layout.rulerHeight)
+                        .offset(
+                            x: insertionIndicatorX(
+                                for: importedSegmentDropTimeUs,
+                                viewportWidth: geometry.size.width
+                            ) - 7,
+                            y: layout.rulerHeight
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
+            .onDrop(
+                of: [Self.importedSegmentType],
+                delegate: TimelineImportedSegmentDropDelegate(
+                    isEnabled: onDropImportedSegmentAtTime != nil,
+                    isTargeted: $isImportedSegmentTargeted,
+                    dropTimeUs: $importedSegmentDropTimeUs,
+                    onDropImportedSegmentAtTime: onDropImportedSegmentAtTime,
+                    resolveDropTimeUs: { dropX in
+                        resolvedDropTimeUs(dropX: dropX, viewportWidth: geometry.size.width)
+                    }
+                )
+            )
             .frame(height: organizerHeight)
         }
         .frame(height: max(layout.sectionHeight(for: model.tracks), layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)))
@@ -259,6 +300,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
             jumpResetWorkItem?.cancel()
             scrollIdleWorkItem?.cancel()
             scrollActivityWorkItem?.cancel()
+            importedSegmentDropTimeUs = nil
+            isImportedSegmentTargeted = false
         }
     }
 
@@ -413,6 +456,19 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         min(max(0, timeUs), model.scrollableDurationUs)
     }
 
+    private func resolvedDropTimeUs(dropX: CGFloat, viewportWidth: CGFloat) -> Int64 {
+        let centerX = viewportWidth / 2
+        let contentX = max(0, dropX + sharedScrollOffset - centerX)
+        let timeUs = Int64((contentX / resolvedPixelsPerSecond) * 1_000_000)
+        return clampScrollTime(timeUs)
+    }
+
+    private func insertionIndicatorX(for timeUs: Int64, viewportWidth: CGFloat) -> CGFloat {
+        let centerX = viewportWidth / 2
+        let contentX = CGFloat(timeUs) / 1_000_000 * resolvedPixelsPerSecond
+        return centerX + contentX - sharedScrollOffset
+    }
+
     private func scheduleShowAddButton() {
         scrollIdleWorkItem?.cancel()
         let workItem = DispatchWorkItem {
@@ -454,6 +510,83 @@ private struct TimelineOrganizerScrollMarker: View {
                     Color.clear.frame(width: 1, height: 1).id(Self.markerId)
                 }
             }
+    }
+}
+
+private struct TimelineImportedSegmentInsertionIndicator: View {
+    let color: Color
+    let height: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "arrowtriangle.down.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(color)
+
+            Rectangle()
+                .fill(color)
+                .frame(width: 3, height: max(0, height - 10))
+                .shadow(color: color.opacity(0.35), radius: 3)
+        }
+        .frame(width: 14, height: height, alignment: .top)
+    }
+}
+
+private struct TimelineImportedSegmentDropDelegate: DropDelegate {
+    let isEnabled: Bool
+    @Binding var isTargeted: Bool
+    @Binding var dropTimeUs: Int64?
+    let onDropImportedSegmentAtTime: ((ImportedTimelineSegment, Int64) -> Void)?
+    let resolveDropTimeUs: (CGFloat) -> Int64
+
+    func validateDrop(info: DropInfo) -> Bool {
+        isEnabled && info.hasItemsConforming(to: [TimelineOrganizerComponent.importedSegmentType])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard isEnabled else { return }
+        isTargeted = true
+        dropTimeUs = resolveDropTimeUs(info.location.x)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard isEnabled else { return nil }
+        isTargeted = true
+        dropTimeUs = resolveDropTimeUs(info.location.x)
+        return DropProposal(operation: .copy)
+    }
+
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+        dropTimeUs = nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard
+            isEnabled,
+            let onDropImportedSegmentAtTime,
+            let provider = info.itemProviders(for: [TimelineOrganizerComponent.importedSegmentType]).first
+        else {
+            isTargeted = false
+            dropTimeUs = nil
+            return false
+        }
+
+        provider.loadDataRepresentation(forTypeIdentifier: TimelineOrganizerComponent.importedSegmentType.identifier) { data, _ in
+            guard
+                let data,
+                let item = try? JSONDecoder().decode(ImportedTimelineSegment.self, from: data)
+            else { return }
+
+            let resolvedTimeUs = resolveDropTimeUs(info.location.x)
+            DispatchQueue.main.async {
+                onDropImportedSegmentAtTime(item, resolvedTimeUs)
+            }
+        }
+
+        isTargeted = false
+        dropTimeUs = nil
+        return true
     }
 }
 
@@ -692,6 +825,7 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             captionHighlightRangeUs: context.captionHighlightRangeUs,
             onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
+            onDropImportedSegmentAtTime: actions.onDropImportedSegmentAtTime,
             onPreviewScrub: actions.onPreviewScrub,
             isAddMenuOpen: context.$isAddMenuOpen
         )
