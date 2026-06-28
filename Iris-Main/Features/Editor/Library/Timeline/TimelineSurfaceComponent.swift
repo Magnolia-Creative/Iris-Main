@@ -149,6 +149,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                         TimelineTrackComponent(
                                             model: track,
                                             pixelsPerSecond: resolvedPixelsPerSecond,
+                                            minimumContentWidth: contentWidth,
                                             selectedSegmentId: $selectedSegmentId,
                                             reviewFocusedSegmentIds: reviewFocusedSegmentIds,
                                             isReviewInteractionDisabled: isReviewInteractionDisabled,
@@ -509,19 +510,20 @@ struct TimelineRulerComponent: View, EditorLibraryComponentSpec {
             Text(TimeFormatter.formatTime(model.currentTimeUs))
                 .typography(.body)
                 .foregroundStyle(Color.ds.text)
-                .frame(width: 41)
+                .frame(width: 48, alignment: .leading)
             Text(TimeFormatter.calcCentiSeconds(model.currentTimeUs))
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.text)
                 .padding(.bottom, 0.5)
-                .frame(width: 15)
+                .frame(width: 18, alignment: .leading)
             Text(" / ")
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
+                .frame(width: 18, alignment: .center)
             Text(TimeFormatter.formatTime(model.durationUs))
                 .typography(.body)
                 .foregroundStyle(Color.ds.textMuted)
-                .frame(width: 41)
+                .frame(width: 48, alignment: .leading)
         }
         .padding(.top, 2)
     }
@@ -852,19 +854,20 @@ struct TimelineFixedRulerReadoutComponent: View {
             Text(TimeFormatter.formatTime(model.currentTimeUs))
                 .typography(.body)
                 .foregroundStyle(Color.ds.text)
-                .frame(width: 41)
+                .frame(width: 48, alignment: .leading)
             Text(TimeFormatter.calcCentiSeconds(model.currentTimeUs))
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.text)
                 .padding(.bottom, 0.5)
-                .frame(width: 15)
+                .frame(width: 18, alignment: .leading)
             Text(" / ")
                 .typography(.bodySmall)
                 .foregroundStyle(Color.ds.textMuted)
+                .frame(width: 18, alignment: .center)
             Text(TimeFormatter.formatTime(model.durationUs))
                 .typography(.body)
                 .foregroundStyle(Color.ds.textMuted)
-                .frame(width: 41)
+                .frame(width: 48, alignment: .leading)
         }
         .padding(.top, 2)
         .padding(.leading, .spacing(.sp1))

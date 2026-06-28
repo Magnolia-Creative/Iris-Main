@@ -26,8 +26,8 @@ struct TimelineComponentLayout: Equatable {
         case .compressed:
             return TimelineComponentLayout(
                 rulerHeight: 28,
-                readoutWidth: 118,
-                rulerFadeWidth: .spacing(.sp5),
+                readoutWidth: 132,
+                rulerFadeWidth: .spacing(.sp6),
                 iconSize: 20,
                 organizerTrackTopOffset: .spacing(.sp3),
                 trackSpacing: .spacing(.sp1),
@@ -39,8 +39,8 @@ struct TimelineComponentLayout: Equatable {
         case .standard:
             return TimelineComponentLayout(
                 rulerHeight: 30,
-                readoutWidth: 118,
-                rulerFadeWidth: .spacing(.sp5),
+                readoutWidth: 132,
+                rulerFadeWidth: .spacing(.sp6),
                 iconSize: 22,
                 organizerTrackTopOffset: .spacing(.sp4),
                 trackSpacing: .spacing(.sp2),
@@ -52,8 +52,8 @@ struct TimelineComponentLayout: Equatable {
         case .expanded:
             return TimelineComponentLayout(
                 rulerHeight: 32,
-                readoutWidth: 118,
-                rulerFadeWidth: .spacing(.sp5),
+                readoutWidth: 132,
+                rulerFadeWidth: .spacing(.sp6),
                 iconSize: 24,
                 organizerTrackTopOffset: .spacing(.sp5),
                 trackSpacing: .spacing(.sp2),

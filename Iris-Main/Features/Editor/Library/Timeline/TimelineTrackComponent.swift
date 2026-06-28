@@ -8,6 +8,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
 
     let model: TimelineTrackModel
     let pixelsPerSecond: CGFloat
+    var minimumContentWidth: CGFloat?
     @Binding var selectedSegmentId: String?
     var reviewFocusedSegmentIds: Set<String>
     var isReviewInteractionDisabled: Bool
@@ -17,6 +18,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     init(
         model: TimelineTrackModel,
         pixelsPerSecond: CGFloat,
+        minimumContentWidth: CGFloat? = nil,
         selectedSegmentId: Binding<String?> = .constant(nil),
         reviewFocusedSegmentIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
@@ -25,6 +27,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     ) {
         self.model = model
         self.pixelsPerSecond = pixelsPerSecond
+        self.minimumContentWidth = minimumContentWidth
         self._selectedSegmentId = selectedSegmentId
         self.reviewFocusedSegmentIds = reviewFocusedSegmentIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
@@ -42,7 +45,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
 
     private var contentWidth: CGFloat {
         let maxEnd = model.segments.map(\.rangeUs.end).max() ?? 0
-        return max(1, CGFloat(maxEnd) / 1_000_000 * pixelsPerSecond)
+        return max(minimumContentWidth ?? 1, CGFloat(maxEnd) / 1_000_000 * pixelsPerSecond)
     }
 
     private var laidOutSegments: [LaidOutTimelineSegment] {
@@ -61,8 +64,12 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     var body: some View {
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: .spacing(.sp1))
-                .fill(Color.ds.surface.opacity(0.18))
+                .fill(Color.ds.surface.opacity(0.28))
                 .frame(width: max(contentWidth, 1), height: trackHeight)
+                .overlay(
+                    RoundedRectangle(cornerRadius: .spacing(.sp1))
+                        .stroke(Color.ds.border.opacity(0.55), lineWidth: 1)
+                )
 
             HStack(spacing: 0) {
                 ForEach(laidOutSegments) { laidOut in
