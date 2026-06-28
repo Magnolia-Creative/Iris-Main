@@ -48,6 +48,7 @@ post_install do |installer|
       ['#import "BlendModeConstants.h"', '#import <VideoLab/BlendModeConstants.h>'],
       ['#import "OperationConstants.h"', '#import <VideoLab/OperationConstants.h>'],
       ['#import "OperationShaderTypes.h"', '#import <VideoLab/OperationShaderTypes.h>'],
+      ['#import I f<VideoLab/OperationShaderTypes.h>', '#import <VideoLab/OperationShaderTypes.h>'],
     ]
   )
 
