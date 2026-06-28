@@ -16,7 +16,6 @@ struct EditorCanvasView: View {
     @ObservedObject var captionsFlow: CaptionsFlowController
     let renderState: EditorJITRenderState
     let transitionPlans: [EditorJITTransitionPlan]
-    let timelineMode: EditorTimelineMode
     var onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil
     var bottomChromeContent: AnyView? = nil
     @State private var isTimelineAddMenuOpen = false
@@ -43,7 +42,6 @@ struct EditorCanvasView: View {
         captionsFlow: CaptionsFlowController,
         renderState: EditorJITRenderState,
         transitionPlans: [EditorJITTransitionPlan] = [],
-        timelineMode: EditorTimelineMode = .jit,
         showPlaybackAspectSettings: Binding<Bool> = .constant(false),
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         bottomChromeContent: AnyView? = nil,
@@ -58,7 +56,6 @@ struct EditorCanvasView: View {
         self.captionsFlow = captionsFlow
         self.renderState = renderState
         self.transitionPlans = transitionPlans
-        self.timelineMode = timelineMode
         self._showPlaybackAspectSettings = showPlaybackAspectSettings
         self.onAddSelection = onAddSelection
         self.bottomChromeContent = bottomChromeContent
@@ -90,7 +87,7 @@ struct EditorCanvasView: View {
         let state = controller.state
         let playback = resolvedPlaybackController()
 
-        canvasBody(state: state, playback: playback)
+        jitCanvasBody(state: state, playback: playback)
         .frame(maxWidth: .infinity, maxHeight: expandsVertically ? .infinity : nil, alignment: .top)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showPlaybackAspectSettings)
         .onChange(of: activeSpace) { _, newSpace in
@@ -106,16 +103,6 @@ struct EditorCanvasView: View {
             statePublisher: controller.$state.eraseToAnyPublisher(),
             actions: controller
         )
-    }
-
-    @ViewBuilder
-    private func canvasBody(state: TimelineState, playback: PlaybackController) -> some View {
-        switch timelineMode {
-        case .jit:
-            jitCanvasBody(state: state, playback: playback)
-        case .legacy:
-            legacyComparatorBody(state: state, playback: playback)
-        }
     }
 
     @ViewBuilder
@@ -150,59 +137,6 @@ struct EditorCanvasView: View {
                 clipColorFilter: $clipColorFilter,
                 clipVolume: $clipVolume
             )
-
-            aspectSettingsOverlayIfNeeded
-        }
-    }
-
-    @ViewBuilder
-    private func legacyComparatorBody(state: TimelineState, playback: PlaybackController) -> some View {
-        let presentation = JITTimelinePresentation.full
-        let layout = effectiveTimelineLayout(for: presentation)
-        let timelineActions = makeTimelineActions(layout: layout, presentation: presentation)
-
-        ZStack(alignment: .topLeading) {
-            VStack(spacing: .spacing(.sp4)) {
-                PlaybackSectionView(
-                    playback: playback,
-                    timeline: controller,
-                    renderBridge: renderBridge
-                )
-                .frame(maxHeight: activeSpace == .edit ? 360 : 260)
-
-                TimelineSectionView(
-                    tracks: displayTracks(state: state, presentation: presentation),
-                    clipsByTrackId: clipsByTrackId(state: state, presentation: presentation),
-                    mediaById: state.mediaById,
-                    layout: layout,
-                    pixelsPerSecond: state.pixelsPerSecond,
-                    timelineDurationUs: state.calculatedTimelineDurationUs,
-                    scrollableDurationUs: state.scrollableDurationUs,
-                    currentTimeAtCenter: controller.binding(\.currentTimeAtCenter),
-                    scrollTargetTimeUs: controller.binding(\.scrollTargetTimeUs),
-                    selectedClipId: controller.binding(\.selectedClipId),
-                    playbackState: state.playbackState,
-                    onAddSelection: layout == .expanded ? timelineActions.onAddSelection : nil,
-                    isAddMenuOpen: $isTimelineAddMenuOpen,
-                    onMoveClip: timelineActions.onMoveClip,
-                    onTrimClip: timelineActions.onTrimClip,
-                    onDropImportedSegmentAtTime: timelineActions.onDropImportedSegmentAtTime,
-                    showAddButton: layout == .expanded && allowsTimelineAdditions,
-                    reviewFocusedClipIds: reviewFocusedClipIds,
-                    isReviewInteractionDisabled: isReviewInteractionDisabled,
-                    promptActionPreview: promptActionPreview,
-                    onPreviewScrub: timelineActions.onPreviewScrub,
-                    captionHighlightRangeUs: captionsFlow.highlightRangeUs(playheadUs: state.currentTimeAtCenter),
-                    playheadTint: captionsFlow.playheadUsesAccentTint ? Color.ds.accentFg : Color.ds.text,
-                    captionGroups: state.captionGroups,
-                    captionCues: state.captionCues,
-                    selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
-                    onCaptionCueSelected: timelineActions.onCaptionCueSelected,
-                    onClipSelected: timelineActions.onClipSelected
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding(.top, .spacing(.sp2))
 
             aspectSettingsOverlayIfNeeded
         }

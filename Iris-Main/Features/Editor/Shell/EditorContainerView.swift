@@ -2,20 +2,6 @@ import PhotosUI
 import SwiftUI
 internal import Combine
 
-enum EditorTimelineMode: String, CaseIterable, Identifiable {
-    case jit
-    case legacy
-
-    var id: String { rawValue }
-
-    var displayTitle: String {
-        switch self {
-        case .jit: return "JIT"
-        case .legacy: return "Legacy"
-        }
-    }
-}
-
 struct EditorContainerView: View {
     let timelineId: String
     let initialImportSeed: ImportedTimelineSeed?
@@ -31,7 +17,6 @@ struct EditorContainerView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var editorImportRequest: EditorImportRequest?
     @State private var showPlaybackAspectSettings = false
-    @State private var timelineMode: EditorTimelineMode = .jit
     @Namespace private var bottomChromeNamespace
     @Environment(\.dismiss) private var dismiss
     private let hasAgentSession: Bool
@@ -106,14 +91,6 @@ struct EditorContainerView: View {
 
     private var isTimelineReviewInteractionDisabled: Bool {
         isAgentCutReviewActive || isPromptActionReviewActive
-    }
-
-    private var effectiveTimelineMode: EditorTimelineMode {
-        #if DEBUG
-        timelineMode
-        #else
-        .jit
-        #endif
     }
 
     private var selectedClipColorFilter: ClipColorFilter {
@@ -297,7 +274,6 @@ struct EditorContainerView: View {
                     captionsFlow: captionsFlow,
                     renderState: jitRenderState.renderState,
                     transitionPlans: jitRenderState.transitionPlans,
-                    timelineMode: effectiveTimelineMode,
                     showPlaybackAspectSettings: $showPlaybackAspectSettings,
                     onAddSelection: handleEditorAddSelection(kind:source:),
                     bottomChromeContent: isAgentCutReviewActive ? nil : AnyView(jitBottomChromeContent),
@@ -568,17 +544,6 @@ struct EditorContainerView: View {
                 .buttonStyle(.plain)
 
                 Spacer()
-
-                #if DEBUG
-                Picker("Timeline mode", selection: $timelineMode) {
-                    ForEach(EditorTimelineMode.allCases) { mode in
-                        Text(mode.displayTitle).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 150)
-                .accessibilityLabel("Timeline mode")
-                #endif
             }
         }
         .padding(.horizontal, .spacing(.sp5))
