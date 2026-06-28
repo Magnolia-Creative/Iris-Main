@@ -28,7 +28,7 @@ struct EditorJITContextFactory {
         }
     }
 
-    func timelineLayout(for presentation: JITTimelinePresentation) -> TimelineLayout {
+    func timelineLayout(for presentation: JITTimelinePresentation) -> EditorComponentSize {
         switch presentation {
         case .focusedClipStrip, .primaryTrackOnly:
             return .compressed
@@ -59,7 +59,7 @@ struct EditorJITContextFactory {
             mediaById: state.mediaById,
             captionGroups: state.captionGroups,
             captionCues: state.captionCues,
-            layoutSize: layout.componentSize,
+            layoutSize: layout,
             pixelsPerSecond: pixelsPerSecond,
             timelineDurationUs: state.calculatedTimelineDurationUs,
             scrollableDurationUs: state.scrollableDurationUs,
@@ -82,7 +82,7 @@ struct EditorJITContextFactory {
         controller: TimelineController,
         captionsFlow: CaptionsFlowController,
         renderBridge: TimelineRenderBridge,
-        layout: TimelineLayout,
+        layout: EditorComponentSize,
         presentation _: JITTimelinePresentation
     ) -> EditorTimelineActions {
         EditorTimelineActions(
@@ -148,7 +148,7 @@ struct EditorJITContextFactory {
     }
 
     func timelineAddSelection(
-        layout: TimelineLayout,
+        layout: EditorComponentSize,
         fallback: @escaping (TrackKind, ImportSource) -> Void
     ) -> ((TrackKind, ImportSource) -> Void)? {
         guard layout == .expanded, allowsTimelineAdditions else { return nil }
@@ -191,11 +191,5 @@ struct EditorJITContextFactory {
             return [selectedClipId]
         }
         return []
-    }
-}
-
-extension TimelineLayout {
-    var componentSize: EditorComponentSize {
-        self == .expanded ? .expanded : .compressed
     }
 }
