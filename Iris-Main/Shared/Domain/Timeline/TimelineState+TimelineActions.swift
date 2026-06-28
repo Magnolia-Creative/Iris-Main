@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 extension TimelineState {
     /// Applies timeline commands in order. Returns inverse actions (apply these in order to undo the batch).
@@ -127,9 +126,7 @@ extension TimelineState {
         applyCaptionCueSplit(originalClipId: clipId, leftClip: leftClip, rightClip: rightClip, sourceMid: sourceMid)
 
         if selectedClipId == clipId {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                selectedClipId = nil
-            }
+            selectedClipId = nil
         }
 
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
@@ -219,9 +216,7 @@ extension TimelineState {
         }
 
         if selectedClipId == clipId {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                selectedClipId = nil
-            }
+            selectedClipId = nil
         }
 
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
@@ -268,9 +263,7 @@ extension TimelineState {
         clips.append(contentsOf: packedClips(from: replacementClips))
 
         if selectedClipId == clipId {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                selectedClipId = nil
-            }
+            selectedClipId = nil
         }
 
         return [Action.replaceTrackClips(timelineId: timelineId, trackId: trackId, clips: before)]
