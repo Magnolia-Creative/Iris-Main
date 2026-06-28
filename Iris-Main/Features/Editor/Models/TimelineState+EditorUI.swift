@@ -78,3 +78,7 @@ struct TimelineImportPresentationState {
         }
     }
 }
+
+struct EditorTimelinePresentationState {
+    var pixelsPerSecond: CGFloat = 100
+}

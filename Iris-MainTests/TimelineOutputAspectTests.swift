@@ -51,7 +51,7 @@ struct TimelineOutputAspectTests {
     @Test func portraitPixelSizeUsesLongSide() {
         let size = OutputAspectRatio(width: 9, height: 16).pixelSize(longSide: 1920)
 
-        #expect(size == CGSize(width: 1080, height: 1920))
+        #expect(size == OutputPixelSize(width: 1080, height: 1920))
     }
 
     @Test func renderInputOutputSizeFollowsManualAspectChanges() {

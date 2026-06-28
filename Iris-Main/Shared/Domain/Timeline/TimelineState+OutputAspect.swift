@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 extension TimelineState {
@@ -10,18 +9,18 @@ extension TimelineState {
             mediaById: mediaById
         )
         derivedOutputAspect = derivedOutputPixelSize.map {
-            OutputAspectRatio(width: Int($0.width), height: Int($0.height))
+            OutputAspectRatio(width: $0.width, height: $0.height)
         }
     }
 
-    var effectiveOutputPixelSize: CGSize {
+    var effectiveOutputPixelSize: OutputPixelSize {
         if let manualOutputAspect {
             return manualOutputAspect.pixelSize(longSide: 1920)
         }
         if let derivedOutputPixelSize {
             return derivedOutputPixelSize
         }
-        return CGSize(width: 1920, height: 1080)
+        return OutputPixelSize(width: 1920, height: 1080)
     }
 
     static func computeDerivedOutputAspect(
@@ -30,7 +29,7 @@ extension TimelineState {
         mediaById: [String: Media]
     ) -> OutputAspectRatio? {
         computeDerivedOutputPixelSize(clips: clips, tracks: tracks, mediaById: mediaById).map {
-            OutputAspectRatio(width: Int($0.width), height: Int($0.height))
+            OutputAspectRatio(width: $0.width, height: $0.height)
         }
     }
 
@@ -38,7 +37,7 @@ extension TimelineState {
         clips: [Clip],
         tracks: [Track],
         mediaById: [String: Media]
-    ) -> CGSize? {
+    ) -> OutputPixelSize? {
         let trackKindById = Dictionary(uniqueKeysWithValues: tracks.map { ($0.trackId, $0.kind) })
         let visualKinds: Set<TrackKind> = [.video, .overlay]
 
@@ -57,7 +56,7 @@ extension TimelineState {
         for clip in sorted {
             guard let media = mediaById[clip.mediaId] else { continue }
             guard let w = media.spec.width, let h = media.spec.height, w > 0, h > 0 else { continue }
-            return CGSize(width: w, height: h)
+            return OutputPixelSize(width: w, height: h)
         }
         return nil
     }

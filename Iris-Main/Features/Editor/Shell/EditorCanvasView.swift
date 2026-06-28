@@ -106,6 +106,7 @@ struct EditorCanvasView: View {
                     state: state,
                     controller: controller,
                     captionsFlow: captionsFlow,
+                    pixelsPerSecond: controller.timelinePresentation.pixelsPerSecond,
                     isAddMenuOpen: $isTimelineAddMenuOpen,
                     selectedCaptionCueId: $captionsFlow.selectedCaptionCueId,
                     presentation: presentation
@@ -134,7 +135,7 @@ struct EditorCanvasView: View {
                     controller.clearSelection()
                 },
                 currentTimeUs: controller.binding(\.currentTimeAtCenter),
-                timelinePixelsPerSecond: controller.binding(\.pixelsPerSecond),
+                timelinePixelsPerSecond: controller.timelinePresentationBinding(\.pixelsPerSecond),
                 selectedSegmentId: $jitSelectedSegmentId,
                 isAddMenuOpen: $isTimelineAddMenuOpen,
                 isPlaying: playbackPlayingBinding(playback: playback),

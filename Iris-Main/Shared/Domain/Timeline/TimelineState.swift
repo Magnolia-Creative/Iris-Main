@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// One undo/redo step: a forward action batch and the inverse batch returned by `TimelineState.apply`.
@@ -29,9 +28,8 @@ struct TimelineState {
     /// Aspect inferred from the earliest timeline visual clip with known media dimensions.
     var derivedOutputAspect: OutputAspectRatio?
     /// Exact native pixel size from the same clip that drives `derivedOutputAspect`.
-    var derivedOutputPixelSize: CGSize?
+    var derivedOutputPixelSize: OutputPixelSize?
 
-    var pixelsPerSecond: CGFloat
     var currentTimeAtCenter: Int64
     var scrollTargetTimeUs: Int64?
     var selectedClipId: String?
@@ -69,7 +67,6 @@ struct TimelineState {
         self.manualOutputAspect = nil
         self.derivedOutputAspect = nil
         self.derivedOutputPixelSize = nil
-        self.pixelsPerSecond = 100
         self.currentTimeAtCenter = 0
         self.scrollTargetTimeUs = nil
         self.selectedClipId = nil

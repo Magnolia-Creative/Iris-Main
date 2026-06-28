@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// Integer width:height pair for playback / render canvas aspect (e.g. 16×9, 9×16).
@@ -11,10 +10,9 @@ struct OutputAspectRatio: Equatable, Hashable, Codable, Sendable {
         self.height = height
     }
 
-    /// SwiftUI `aspectRatio` expects width/height.
-    var aspectCGFloat: CGFloat {
+    var aspectRatio: Double {
         guard height > 0 else { return 16.0 / 9.0 }
-        return CGFloat(width) / CGFloat(height)
+        return Double(width) / Double(height)
     }
 
     /// Normalized pair with positive gcd-reduced values.
@@ -25,25 +23,24 @@ struct OutputAspectRatio: Equatable, Hashable, Codable, Sendable {
     }
 
     /// Pixel output size with the longer side set to `longSide` (even dimensions).
-    func pixelSize(longSide: Int = 1920) -> CGSize {
+    func pixelSize(longSide: Int = 1920) -> OutputPixelSize {
         guard longSide > 0, width > 0, height > 0 else {
-            return CGSize(width: 1920, height: 1080)
+            return OutputPixelSize(width: 1920, height: 1080)
         }
-        let w = CGFloat(width)
-        let h = CGFloat(height)
-        let out: CGSize
+        let w = Double(width)
+        let h = Double(height)
+        let outWidth: Double
+        let outHeight: Double
         if w >= h {
-            let ow = CGFloat(longSide)
-            let oh = ow * h / w
-            out = CGSize(width: ow, height: oh)
+            outWidth = Double(longSide)
+            outHeight = outWidth * h / w
         } else {
-            let oh = CGFloat(longSide)
-            let ow = oh * w / h
-            out = CGSize(width: ow, height: oh)
+            outHeight = Double(longSide)
+            outWidth = outHeight * w / h
         }
-        let rw = max(2, Int(out.width.rounded(.toNearestOrAwayFromZero)))
-        let rh = max(2, Int(out.height.rounded(.toNearestOrAwayFromZero)))
-        return CGSize(width: Self.makeEven(rw), height: Self.makeEven(rh))
+        let roundedWidth = max(2, Int(outWidth.rounded(.toNearestOrAwayFromZero)))
+        let roundedHeight = max(2, Int(outHeight.rounded(.toNearestOrAwayFromZero)))
+        return OutputPixelSize(width: Self.makeEven(roundedWidth), height: Self.makeEven(roundedHeight))
     }
 
     private static func gcd(_ a: Int, _ b: Int) -> Int {
@@ -57,8 +54,18 @@ struct OutputAspectRatio: Equatable, Hashable, Codable, Sendable {
         return max(x, 1)
     }
 
-    private static func makeEven(_ v: Int) -> CGFloat {
+    private static func makeEven(_ v: Int) -> Int {
         let e = v - (v % 2)
-        return CGFloat(max(2, e))
+        return max(2, e)
+    }
+}
+
+struct OutputPixelSize: Equatable, Hashable, Codable, Sendable {
+    var width: Int
+    var height: Int
+
+    init(width: Int, height: Int) {
+        self.width = width
+        self.height = height
     }
 }

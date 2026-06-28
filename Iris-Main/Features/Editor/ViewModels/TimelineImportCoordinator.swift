@@ -1,12 +1,11 @@
 import Foundation
-import CoreGraphics
 
 @MainActor
 struct TimelineImportCoordinator {
     struct ClipMutation {
         let beforeClips: [Clip]
         let afterClips: [Clip]
-        let previousOutputSize: CGSize
+        let previousOutputSize: OutputPixelSize
     }
 
     func beginAddSelection(

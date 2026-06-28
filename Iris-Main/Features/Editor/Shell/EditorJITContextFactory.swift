@@ -43,6 +43,7 @@ struct EditorJITContextFactory {
         state: TimelineState,
         controller: TimelineController,
         captionsFlow: CaptionsFlowController,
+        pixelsPerSecond: CGFloat,
         isAddMenuOpen: Binding<Bool>,
         selectedCaptionCueId: Binding<String?>,
         presentation: JITTimelinePresentation
@@ -59,7 +60,7 @@ struct EditorJITContextFactory {
             captionGroups: state.captionGroups,
             captionCues: state.captionCues,
             layoutSize: layout.componentSize,
-            pixelsPerSecond: state.pixelsPerSecond,
+            pixelsPerSecond: pixelsPerSecond,
             timelineDurationUs: state.calculatedTimelineDurationUs,
             scrollableDurationUs: state.scrollableDurationUs,
             playbackState: state.playbackState,

@@ -13,6 +13,7 @@ final class TimelineController: ObservableObject {
 
     @Published private(set) var state: TimelineState
     @Published private(set) var importPresentation = TimelineImportPresentationState()
+    @Published private(set) var timelinePresentation = EditorTimelinePresentationState()
     /// Prompt-bar intent actions awaiting per-step approve/reject (split, trim, remove ranges).
     private let reviewCoordinator = TimelineReviewCoordinator()
     private let db: DatabaseManager
@@ -76,6 +77,15 @@ final class TimelineController: ObservableObject {
         Binding(
             get: { self.importPresentation[keyPath: keyPath] },
             set: { self.importPresentation[keyPath: keyPath] = $0 }
+        )
+    }
+
+    func timelinePresentationBinding<Value>(
+        _ keyPath: WritableKeyPath<EditorTimelinePresentationState, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { self.timelinePresentation[keyPath: keyPath] },
+            set: { self.timelinePresentation[keyPath: keyPath] = $0 }
         )
     }
 
@@ -870,7 +880,7 @@ final class TimelineController: ObservableObject {
         }
     }
 
-    private func logImportStateTransition(before: [Clip], after: [Clip], previousOutputSize: CGSize) {
+    private func logImportStateTransition(before: [Clip], after: [Clip], previousOutputSize: OutputPixelSize) {
         let emptyToNonempty = before.isEmpty && !after.isEmpty
         Self.logger.info(
             "[TimelineImport] ingest complete timeline=\(self.state.timelineId, privacy: .public) beforeClipCount=\(before.count, privacy: .public) afterClipCount=\(after.count, privacy: .public) emptyToNonempty=\(emptyToNonempty, privacy: .public) aspect=\(Self.outputAspectSummary(self.state.effectiveOutputAspect), privacy: .public) output=\(Self.outputSizeSummary(self.state.effectiveOutputPixelSize), privacy: .public) previousOutput=\(Self.outputSizeSummary(previousOutputSize), privacy: .public)"
@@ -882,8 +892,8 @@ final class TimelineController: ObservableObject {
         return "\(aspect.width):\(aspect.height)"
     }
 
-    private static func outputSizeSummary(_ size: CGSize) -> String {
-        "\(Int(size.width))x\(Int(size.height))"
+    private static func outputSizeSummary(_ size: OutputPixelSize) -> String {
+        "\(size.width)x\(size.height)"
     }
 
     // MARK: - Persistence

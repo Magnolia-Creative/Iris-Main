@@ -108,13 +108,13 @@ struct ExportPanelContent: View {
     }
 
     private var availableResolutions: [ResolutionOption] {
-        ResolutionOption.available(for: controller.state.effectiveOutputPixelSize)
+        ResolutionOption.available(for: controller.state.effectiveOutputPixelSize.cgSize)
     }
 
     private func makeExportInput() -> RenderTimelineInput {
         var input = controller.state.makeRenderTimelineInput()
         let outputAspect = controller.state.effectiveOutputAspect ?? OutputAspectRatio(width: 16, height: 9)
-        input.outputSize = outputAspect.pixelSize(longSide: selectedResolution.longSide)
+        input.outputSize = outputAspect.cgPixelSize(longSide: selectedResolution.longSide)
         return input
     }
 
