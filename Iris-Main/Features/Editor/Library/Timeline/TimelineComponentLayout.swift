@@ -4,6 +4,7 @@ struct TimelineComponentLayout: Equatable {
     let rulerHeight: CGFloat
     let readoutWidth: CGFloat
     let rulerFadeWidth: CGFloat
+    let iconSize: CGFloat
     let organizerTrackTopOffset: CGFloat
     let trackSpacing: CGFloat
     let videoTrackHeight: CGFloat
@@ -27,6 +28,7 @@ struct TimelineComponentLayout: Equatable {
                 rulerHeight: 28,
                 readoutWidth: 118,
                 rulerFadeWidth: .spacing(.sp5),
+                iconSize: 20,
                 organizerTrackTopOffset: .spacing(.sp3),
                 trackSpacing: .spacing(.sp1),
                 videoTrackHeight: .spacing(.sp5),
@@ -39,6 +41,7 @@ struct TimelineComponentLayout: Equatable {
                 rulerHeight: 30,
                 readoutWidth: 118,
                 rulerFadeWidth: .spacing(.sp5),
+                iconSize: 22,
                 organizerTrackTopOffset: .spacing(.sp4),
                 trackSpacing: .spacing(.sp2),
                 videoTrackHeight: .spacing(.sp8),
@@ -51,6 +54,7 @@ struct TimelineComponentLayout: Equatable {
                 rulerHeight: 32,
                 readoutWidth: 118,
                 rulerFadeWidth: .spacing(.sp5),
+                iconSize: 24,
                 organizerTrackTopOffset: .spacing(.sp5),
                 trackSpacing: .spacing(.sp2),
                 videoTrackHeight: .spacing(.sp10),

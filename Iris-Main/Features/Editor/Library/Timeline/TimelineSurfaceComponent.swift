@@ -11,6 +11,11 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     @Binding var pixelsPerSecond: CGFloat
     @Binding var selectedSegmentId: String?
     var playbackState: TimelinePlaybackState
+    var playheadTint: Color
+    var reviewFocusedSegmentIds: Set<String>
+    var isReviewInteractionDisabled: Bool
+    var promptFocusSegmentIds: Set<String>
+    var captionHighlightRangeUs: ClosedRange<Int64>?
     var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
     var onPreviewScrub: ((Int64, Double) -> Void)?
@@ -23,6 +28,9 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     @State private var lastScrollUpdate: Date = Date()
     @State private var isJumpingToTarget = false
     @State private var jumpResetWorkItem: DispatchWorkItem?
+    @State private var sharedScrollOffset: CGFloat = 0
+    @State private var isScrollingFast = false
+    @State private var scrollIdleWorkItem: DispatchWorkItem?
     private let usesExternalPixelsPerSecond: Bool
 
     init(
@@ -32,6 +40,11 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         pixelsPerSecond: Binding<CGFloat>? = nil,
         selectedSegmentId: Binding<String?> = .constant(nil),
         playbackState: TimelinePlaybackState = .idle,
+        playheadTint: Color = Color.ds.text,
+        reviewFocusedSegmentIds: Set<String> = [],
+        isReviewInteractionDisabled: Bool = false,
+        promptFocusSegmentIds: Set<String> = [],
+        captionHighlightRangeUs: ClosedRange<Int64>? = nil,
         onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
         onPreviewScrub: ((Int64, Double) -> Void)? = nil,
@@ -42,6 +55,11 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         self._scrollTargetTimeUs = scrollTargetTimeUs
         self._selectedSegmentId = selectedSegmentId
         self.playbackState = playbackState
+        self.playheadTint = playheadTint
+        self.reviewFocusedSegmentIds = reviewFocusedSegmentIds
+        self.isReviewInteractionDisabled = isReviewInteractionDisabled
+        self.promptFocusSegmentIds = promptFocusSegmentIds
+        self.captionHighlightRangeUs = captionHighlightRangeUs
         self.onSelectSegment = onSelectSegment
         self.onPreviewScrub = onPreviewScrub
         if let pixelsPerSecond {
@@ -109,6 +127,18 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         ZStack(alignment: .topLeading) {
+                            if let captionHighlightRangeUs {
+                                TimelineCaptionRangeHighlight(
+                                    rangeUs: captionHighlightRangeUs,
+                                    pixelsPerSecond: resolvedPixelsPerSecond,
+                                    height: layout.trackStackHeight(for: model.tracks)
+                                )
+                                .offset(
+                                    x: playheadCenterX,
+                                    y: layout.rulerHeight + layout.organizerTrackTopOffset
+                                )
+                            }
+
                             VStack(alignment: .leading, spacing: 0) {
                                 TimelineRulerTicksComponent(model: rulerModel, layout: layout)
                                     .frame(width: rulerTicksWidth, height: layout.rulerHeight, alignment: .topLeading)
@@ -120,6 +150,9 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                             model: track,
                                             pixelsPerSecond: resolvedPixelsPerSecond,
                                             selectedSegmentId: $selectedSegmentId,
+                                            reviewFocusedSegmentIds: reviewFocusedSegmentIds,
+                                            isReviewInteractionDisabled: isReviewInteractionDisabled,
+                                            promptFocusSegmentIds: promptFocusSegmentIds,
                                             onSelectSegment: onSelectSegment
                                         )
                                     }
@@ -169,6 +202,21 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     .allowsHitTesting(false)
                     .zIndex(20)
 
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(model.tracks.enumerated()), id: \.element.id) { index, track in
+                        trackIconView(for: track.kind, height: layout.trackHeight(for: track.kind))
+                            .position(
+                                x: trackIconX(for: geometry.size.width),
+                                y: iconYPosition(for: index)
+                            )
+                    }
+                }
+                .padding(.top, layout.rulerHeight + layout.organizerTrackTopOffset)
+                .frame(height: layout.trackStackHeight(for: model.tracks), alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .allowsHitTesting(false)
+                .zIndex(15)
+
                 if isAddMenuOpen {
                     Color.clear
                         .contentShape(Rectangle())
@@ -189,9 +237,12 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     .padding(.top, addButtonTopOffset)
                     .padding(.trailing, .spacing(.sp4))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .offset(x: isScrollingFast ? .spacing(.sp8) : 0)
+                    .opacity(isScrollingFast ? 0 : 1)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isScrollingFast)
                 }
 
-                PlayheadView(tint: Color.ds.text)
+                PlayheadView(tint: playheadTint)
                     .frame(width: geometry.size.width, height: organizerHeight, alignment: .top)
                     .allowsHitTesting(false)
                     .zIndex(10)
@@ -201,6 +252,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         .frame(height: max(layout.sectionHeight(for: model.tracks), layout.rulerHeight + layout.organizerTrackTopOffset + .spacing(.sp8)))
         .onDisappear {
             jumpResetWorkItem?.cancel()
+            scrollIdleWorkItem?.cancel()
         }
     }
 
@@ -238,6 +290,36 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         )
     }
 
+    private func trackIconView(for kind: TimelineTrackContentKind, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: .spacing(.sp1))
+            .fill(Color.ds.bg.opacity(0.75))
+            .frame(width: layout.iconSize, height: height)
+            .overlay(
+                RoundedRectangle(cornerRadius: .spacing(.sp1))
+                    .stroke(Color.ds.textMuted.opacity(0.75), lineWidth: 1)
+            )
+            .overlay(
+                Image(systemName: kind.systemImageName)
+                    .font(.system(size: min(14, height * 0.7), weight: .semibold))
+                    .foregroundStyle(Color.ds.textMuted.opacity(0.75))
+            )
+    }
+
+    private func trackIconX(for width: CGFloat) -> CGFloat {
+        let centerX = width / 2
+        let desiredCenter = centerX - .spacing(.sp3) - layout.iconSize / 2 - sharedScrollOffset
+        let minCenter: CGFloat = .spacing(.sp3) + layout.iconSize / 2
+        let maxCenter = centerX - .spacing(.sp3) - layout.iconSize / 2
+        return min(maxCenter, max(minCenter, desiredCenter))
+    }
+
+    private func iconYPosition(for index: Int) -> CGFloat {
+        let priorHeights = model.tracks.prefix(index).map { layout.trackHeight(for: $0.kind) }.reduce(0, +)
+        let spacingTotal = CGFloat(index) * layout.trackSpacing
+        let trackHeight = layout.trackHeight(for: model.tracks[index].kind)
+        return priorHeights + spacingTotal + trackHeight / 2
+    }
+
     private func scrollToPlayhead(with proxy: ScrollViewProxy, animated: Bool = false) {
         DispatchQueue.main.async {
             if animated {
@@ -251,6 +333,8 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     }
 
     private func updateCurrentTimeFromScrollOffset(_ offsetX: CGFloat) {
+        sharedScrollOffset = offsetX
+
         if isProgrammaticScrolling {
             lastScrollOffsetX = offsetX
             lastScrollTime = Date()
@@ -278,6 +362,12 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         }
 
         if deltaT > 0 {
+            if velocity > 450 && !isScrollingFast {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isScrollingFast = true
+                }
+            }
+            scheduleShowAddButton()
             lastScrollOffsetX = offsetX
             lastScrollTime = now
         }
@@ -303,6 +393,17 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
 
     private func clampScrollTime(_ timeUs: Int64) -> Int64 {
         min(max(0, timeUs), model.scrollableDurationUs)
+    }
+
+    private func scheduleShowAddButton() {
+        scrollIdleWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isScrollingFast = false
+            }
+        }
+        scrollIdleWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
     }
 }
 
@@ -554,6 +655,11 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             pixelsPerSecond: pixelsPerSecond,
             selectedSegmentId: selectedSegmentId,
             playbackState: context.playbackState,
+            playheadTint: context.playheadTint,
+            reviewFocusedSegmentIds: context.reviewFocusedClipIds,
+            isReviewInteractionDisabled: context.isReviewInteractionDisabled,
+            promptFocusSegmentIds: promptActionFocusSegmentIds,
+            captionHighlightRangeUs: context.captionHighlightRangeUs,
             onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
             onPreviewScrub: actions.onPreviewScrub,
@@ -562,6 +668,10 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
         .onChange(of: context.pixelsPerSecond) { _, newValue in
             livePixelsPerSecond = newValue
         }
+    }
+
+    private var promptActionFocusSegmentIds: Set<String> {
+        Set(context.reviewFocusedClipIds)
     }
 
     private var selectedSegmentId: Binding<String?> {

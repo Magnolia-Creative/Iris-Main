@@ -9,17 +9,26 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     let model: TimelineTrackModel
     let pixelsPerSecond: CGFloat
     @Binding var selectedSegmentId: String?
+    var reviewFocusedSegmentIds: Set<String>
+    var isReviewInteractionDisabled: Bool
+    var promptFocusSegmentIds: Set<String>
     var onSelectSegment: ((String) -> Void)?
 
     init(
         model: TimelineTrackModel,
         pixelsPerSecond: CGFloat,
         selectedSegmentId: Binding<String?> = .constant(nil),
+        reviewFocusedSegmentIds: Set<String> = [],
+        isReviewInteractionDisabled: Bool = false,
+        promptFocusSegmentIds: Set<String> = [],
         onSelectSegment: ((String) -> Void)? = nil
     ) {
         self.model = model
         self.pixelsPerSecond = pixelsPerSecond
         self._selectedSegmentId = selectedSegmentId
+        self.reviewFocusedSegmentIds = reviewFocusedSegmentIds
+        self.isReviewInteractionDisabled = isReviewInteractionDisabled
+        self.promptFocusSegmentIds = promptFocusSegmentIds
         self.onSelectSegment = onSelectSegment
     }
 
@@ -65,6 +74,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
                         .frame(width: laidOut.width, height: trackHeight)
                         .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
                         .onTapGesture {
+                            guard !isReviewInteractionDisabled else { return }
                             selectedSegmentId = laidOut.segment.id
                             onSelectSegment?(laidOut.segment.id)
                         }
@@ -80,13 +90,30 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     @ViewBuilder
     private func segmentView(_ segment: TimelineSegmentModel) -> some View {
         let isSelected = selectedSegmentId == segment.id
+        let isReviewDimmed = !reviewFocusedSegmentIds.isEmpty && !reviewFocusedSegmentIds.contains(segment.id)
+        let isPromptFocused = promptFocusSegmentIds.contains(segment.id)
         switch model.kind {
         case .video:
-            TimelineVideoSegmentView(segment: segment, isSelected: isSelected)
+            TimelineVideoSegmentView(
+                segment: segment,
+                isSelected: isSelected,
+                isReviewDimmed: isReviewDimmed,
+                isPromptFocused: isPromptFocused
+            )
         case .audio:
-            TimelineAudioSegmentView(segment: segment, isSelected: isSelected)
+            TimelineAudioSegmentView(
+                segment: segment,
+                isSelected: isSelected,
+                isReviewDimmed: isReviewDimmed,
+                isPromptFocused: isPromptFocused
+            )
         case .caption:
-            TimelineCaptionSegmentView(segment: segment, isSelected: isSelected)
+            TimelineCaptionSegmentView(
+                segment: segment,
+                isSelected: isSelected,
+                isReviewDimmed: isReviewDimmed,
+                isPromptFocused: isPromptFocused
+            )
         }
     }
 
@@ -110,6 +137,8 @@ private struct LaidOutTimelineSegment: Identifiable {
 private struct TimelineVideoSegmentView: View {
     let segment: TimelineSegmentModel
     let isSelected: Bool
+    let isReviewDimmed: Bool
+    let isPromptFocused: Bool
 
     @State private var thumbnailStrip: UIImage?
 
@@ -146,8 +175,11 @@ private struct TimelineVideoSegmentView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
         .overlay(baseStroke)
+        .overlay(promptFocusStroke)
         .overlay(selectionStroke)
+        .opacity(isReviewDimmed ? 0.32 : 1)
         .animation(.easeInOut(duration: 0.18), value: isSelected)
+        .animation(.easeInOut(duration: 0.18), value: isReviewDimmed)
         .task(id: segment.thumbnailStripPath) {
             thumbnailStrip = loadImage(storedPath: segment.thumbnailStripPath)
         }
@@ -163,11 +195,19 @@ private struct TimelineVideoSegmentView: View {
             .stroke(Color.ds.accentFg, lineWidth: 2)
             .opacity(isSelected ? 1 : 0)
     }
+
+    private var promptFocusStroke: some View {
+        RoundedRectangle(cornerRadius: .spacing(.sp1))
+            .stroke(Color.ds.accentFg.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            .opacity(isPromptFocused ? 1 : 0)
+    }
 }
 
 private struct TimelineAudioSegmentView: View {
     let segment: TimelineSegmentModel
     let isSelected: Bool
+    let isReviewDimmed: Bool
+    let isPromptFocused: Bool
 
     @State private var waveformImage: UIImage?
 
@@ -195,10 +235,17 @@ private struct TimelineAudioSegmentView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: .spacing(.sp1))
+                .stroke(Color.ds.accentFg.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                .opacity(isPromptFocused ? 1 : 0)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: .spacing(.sp1))
                 .stroke(Color.ds.accentFg, lineWidth: 2)
                 .opacity(isSelected ? 1 : 0)
         )
+        .opacity(isReviewDimmed ? 0.32 : 1)
         .animation(.easeInOut(duration: 0.18), value: isSelected)
+        .animation(.easeInOut(duration: 0.18), value: isReviewDimmed)
         .task(id: segment.waveformPath) {
             waveformImage = loadImage(storedPath: segment.waveformPath)
         }
@@ -208,6 +255,8 @@ private struct TimelineAudioSegmentView: View {
 private struct TimelineCaptionSegmentView: View {
     let segment: TimelineSegmentModel
     let isSelected: Bool
+    let isReviewDimmed: Bool
+    let isPromptFocused: Bool
 
     var body: some View {
         RoundedRectangle(cornerRadius: .spacing(.sp1))
@@ -226,10 +275,17 @@ private struct TimelineCaptionSegmentView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: .spacing(.sp1))
+                    .stroke(Color.ds.accentFg.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .opacity(isPromptFocused ? 1 : 0)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: .spacing(.sp1))
                     .stroke(Color.ds.accentFg, lineWidth: 2)
                     .opacity(isSelected ? 1 : 0)
             )
+            .opacity(isReviewDimmed ? 0.32 : 1)
             .animation(.easeInOut(duration: 0.18), value: isSelected)
+            .animation(.easeInOut(duration: 0.18), value: isReviewDimmed)
     }
 }
 
