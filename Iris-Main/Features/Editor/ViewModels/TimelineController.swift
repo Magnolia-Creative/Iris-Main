@@ -40,11 +40,7 @@ final class TimelineController: ObservableObject {
 
     /// Preview geometry and focus for the current pending prompt action, if any.
     var promptActionPreview: TimelinePromptActionPreview? {
-        guard let session = promptActionReview,
-              let action = session.currentAction,
-              action.isPromptSequenceReviewable
-        else { return nil }
-        return TimelinePromptActionPreviewBuilder.makePreview(state: state, action: action)
+        reviewCoordinator.promptActionPreview(state: state)
     }
 
     init(
@@ -174,7 +170,7 @@ final class TimelineController: ObservableObject {
     }
 
     func finishCutReview() {
-        cutReview = nil
+        reviewCoordinator.finishCutReview()
         state.selectedClipId = nil
     }
 
@@ -194,22 +190,15 @@ final class TimelineController: ObservableObject {
     }
 
     func showCutReviewRepromptComposer() {
-        guard var cutReview else { return }
-        cutReview.isRepromptComposerPresented = true
-        self.cutReview = cutReview
+        reviewCoordinator.showCutReviewRepromptComposer()
     }
 
     func hideCutReviewRepromptComposer() {
-        guard var cutReview else { return }
-        cutReview.isRepromptComposerPresented = false
-        cutReview.repromptDraft = ""
-        self.cutReview = cutReview
+        reviewCoordinator.hideCutReviewRepromptComposer()
     }
 
     func updateCutReviewRepromptDraft(_ draft: String) {
-        guard var cutReview else { return }
-        cutReview.repromptDraft = draft
-        self.cutReview = cutReview
+        reviewCoordinator.updateCutReviewRepromptDraft(draft)
     }
 
     func cancelCurrentCutReview() {
@@ -284,13 +273,11 @@ final class TimelineController: ObservableObject {
     /// - Returns: `false` if review could not start (nothing reviewable or invalid timeline id).
     @discardableResult
     func startPromptActionReview(actions: [Action], prompt: String) -> Bool {
-        guard actions.contains(where: \.isPromptSequenceReviewable)
-            || actions.contains(where: \.isPromptColorReviewable) else { return false }
-        guard actions.allSatisfy({ $0.timelineId == state.timelineId }) else { return false }
-
-        promptActionReviewMessage = nil
-        let session = TimelinePromptActionReviewSession(originalPrompt: prompt, actions: actions, currentIndex: 0)
-        promptActionReview = session
+        guard reviewCoordinator.startPromptActionReview(
+            actions: actions,
+            prompt: prompt,
+            timelineId: state.timelineId
+        ) else { return false }
         flushNonReviewableApplyingAll()
         guard promptActionReview != nil else { return false }
         syncPromptReviewPresentation()
@@ -299,16 +286,13 @@ final class TimelineController: ObservableObject {
 
     func finishPromptActionReview() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            promptActionReview = nil
-            promptActionReviewMessage = nil
+            reviewCoordinator.finishPromptActionReview()
         }
     }
 
     /// Clears review and returns the original user prompt for reprompting.
     func discardPromptActionReviewReturningPrompt() -> String? {
-        let prompt = promptActionReview?.originalPrompt
-        finishPromptActionReview()
-        return prompt
+        reviewCoordinator.discardPromptActionReviewReturningPrompt()
     }
 
     func approveCurrentPromptAction() {
