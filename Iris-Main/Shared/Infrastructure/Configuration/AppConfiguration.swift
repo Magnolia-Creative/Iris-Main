@@ -97,36 +97,12 @@ enum AppConfiguration {
         agentRunsEndpoint.appending(path: runID)
     }
 
-    static func projectClipProcessingEndpoint(projectID: String) -> URL {
-        projectSourcesEndpoint(projectID: projectID)
-    }
-
-    static func sessionStatusEndpoint(sessionID: String) -> URL {
-        agentRunStatusEndpoint(runID: sessionID)
-    }
-
-    static func projectClipStatusEndpoint(projectID: String) -> URL {
-        projectSourcesEndpoint(projectID: projectID)
-    }
-
-    static func projectAgentSessionsEndpoint(projectID _: String) -> URL {
-        agentRunsEndpoint
-    }
-
     static func projectClipCancelEndpoint(projectID: String, localKey: String) -> URL {
         backendBaseURL
             .appending(path: "projects")
             .appending(path: projectID)
             .appending(path: "sources")
             .appending(path: localKey)
-    }
-
-    static func projectSemanticSearchEndpoint(projectID: String) -> URL {
-        projectSourceSearchEndpoint(projectID: projectID)
-    }
-
-    static func projectTranscriptSearchEndpoint(projectID: String) -> URL {
-        projectSourceSearchEndpoint(projectID: projectID)
     }
 
     static func agentWebSocketEndpoint(sessionID: String, basedOn baseURL: URL = backendBaseURL) -> URL? {
