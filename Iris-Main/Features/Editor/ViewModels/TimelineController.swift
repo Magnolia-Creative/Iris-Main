@@ -12,10 +12,8 @@ final class TimelineController: ObservableObject {
     )
 
     @Published private(set) var state: TimelineState
-    @Published private(set) var cutReview: TimelineCutReviewSession?
     /// Prompt-bar intent actions awaiting per-step approve/reject (split, trim, remove ranges).
-    @Published private(set) var promptActionReview: TimelinePromptActionReviewSession?
-    @Published private(set) var promptActionReviewMessage: String?
+    private let reviewCoordinator = TimelineReviewCoordinator()
     private let db: DatabaseManager
     private let persistence: TimelinePersistence
     private let persistenceCoordinator: TimelinePersistenceCoordinator
@@ -23,9 +21,22 @@ final class TimelineController: ObservableObject {
     private let importService: MediaImportService
     private var hasAppliedInitialImportSeed = false
     private var importedMediaBySeedLocalKey: [String: Media] = [:]
+    private var cancellables: Set<AnyCancellable> = []
 
     var canUndo: Bool { state.canUndo }
     var canRedo: Bool { state.canRedo }
+    private(set) var cutReview: TimelineCutReviewSession? {
+        get { reviewCoordinator.cutReview }
+        set { reviewCoordinator.cutReview = newValue }
+    }
+    private(set) var promptActionReview: TimelinePromptActionReviewSession? {
+        get { reviewCoordinator.promptActionReview }
+        set { reviewCoordinator.promptActionReview = newValue }
+    }
+    private(set) var promptActionReviewMessage: String? {
+        get { reviewCoordinator.promptActionReviewMessage }
+        set { reviewCoordinator.promptActionReviewMessage = newValue }
+    }
 
     /// Preview geometry and focus for the current pending prompt action, if any.
     var promptActionPreview: TimelinePromptActionPreview? {
@@ -47,6 +58,11 @@ final class TimelineController: ObservableObject {
         self.persistence = persistence
         self.persistenceCoordinator = TimelinePersistenceCoordinator(persistence: persistence)
         self.importService = importService
+        reviewCoordinator.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     func binding<Value>(_ keyPath: WritableKeyPath<TimelineState, Value>) -> Binding<Value> {
