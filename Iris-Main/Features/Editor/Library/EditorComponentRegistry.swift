@@ -11,6 +11,22 @@ struct EditorComponentRegistryEntry: Identifiable, Equatable {
     var idString: String { id.rawValue }
 }
 
+enum BackendEditorWidget: Equatable {
+    case playbackViewer
+    case playbackBeforeAfterViewer
+    case timelineFull
+    case timelinePrimaryTrack
+    case timelineFocusedClipStrip
+    case toolbarParameterControls
+    case toolbarReviewActions
+    case toolbarClipTools
+    case toolbarPromptBar
+    case audioLevelsMeter
+    case importBrowserPanel
+    case exportSettingsPanel
+    case unsupported(rawId: String)
+}
+
 enum EditorComponentRegistry {
     static let version = "1"
 
@@ -169,6 +185,52 @@ enum EditorComponentRegistry {
             return .expanded
         default:
             return .standard
+        }
+    }
+
+    static func backendWidget(for rawId: String) -> BackendEditorWidget {
+        switch rawId {
+        case "playback.viewer":
+            return .playbackViewer
+        case "playback.beforeAfterViewer":
+            return .playbackBeforeAfterViewer
+        case "timeline.full":
+            return .timelineFull
+        case "timeline.primaryTrack":
+            return .timelinePrimaryTrack
+        case "timeline.focusedClipStrip":
+            return .timelineFocusedClipStrip
+        case "toolbar.parameterControls":
+            return .toolbarParameterControls
+        case "toolbar.reviewActions":
+            return .toolbarReviewActions
+        case "toolbar.clipTools":
+            return .toolbarClipTools
+        case "toolbar.promptBar":
+            return .toolbarPromptBar
+        case "audio.levelsMeter":
+            return .audioLevelsMeter
+        case "panel.importBrowser":
+            return .importBrowserPanel
+        case "panel.exportSettings":
+            return .exportSettingsPanel
+        default:
+            return .unsupported(rawId: rawId)
+        }
+    }
+
+    static func componentID(for backendWidget: BackendEditorWidget) -> EditorComponentID? {
+        switch backendWidget {
+        case .playbackViewer, .playbackBeforeAfterViewer:
+            return "playback.section"
+        case .timelineFull:
+            return "timeline.full"
+        case .timelinePrimaryTrack, .timelineFocusedClipStrip:
+            return "timeline.track"
+        case .toolbarParameterControls:
+            return "tool.slider"
+        default:
+            return nil
         }
     }
 }

@@ -225,6 +225,54 @@ struct EditorJITUIPlanAdapterTests {
         #expect(result.renderState.chromePlan.parameterGroups.isEmpty)
     }
 
+    @Test func warnsAndIgnoresUnsupportedBackendWidgets() throws {
+        let result = try adaptPlan(
+            """
+            {
+              "catalogVersion": "1",
+              "workspaceId": "unknown_widget",
+              "intentSummary": "Unknown",
+              "intentSlices": [],
+              "currentSliceId": "unknown_widget",
+              "currentSliceIndex": 0,
+              "layout": {
+                "type": "vstack",
+                "children": [
+                  {
+                    "type": "widget",
+                    "children": [],
+                    "widget": {
+                      "widgetId": "legacy.magicWidget",
+                      "variant": "standard",
+                      "intentSliceId": "unknown_widget",
+                      "controls": [],
+                      "props": {}
+                    }
+                  }
+                ]
+              },
+              "toolbar": { "widgets": [], "showNavigation": false, "showPromptBar": false },
+              "transitions": [],
+              "hiddenBecauseIrrelevant": [],
+              "warnings": [],
+              "isDefaultWorkspace": false,
+              "restoreDefaultOnComplete": true
+            }
+            """
+        )
+
+        #expect(result.validationResult.warnings.contains("Unsupported backend widget 'legacy.magicWidget' was ignored."))
+    }
+
+    @Test func registryMapsBackendWidgetsToCanonicalComponents() {
+        #expect(EditorComponentRegistry.backendWidget(for: "playback.viewer") == .playbackViewer)
+        #expect(EditorComponentRegistry.backendWidget(for: "timeline.focusedClipStrip") == .timelineFocusedClipStrip)
+        #expect(EditorComponentRegistry.componentID(for: .playbackBeforeAfterViewer)?.rawValue == "playback.section")
+        #expect(EditorComponentRegistry.componentID(for: .timelineFull)?.rawValue == "timeline.full")
+        #expect(EditorComponentRegistry.componentID(for: .timelinePrimaryTrack)?.rawValue == "timeline.track")
+        #expect(EditorComponentRegistry.componentID(for: .unsupported(rawId: "x")) == nil)
+    }
+
     private func adaptPlan(_ json: String) throws -> EditorJITUIPlanAdapterResult {
         let plan = try JSONDecoder().decode(RemoteIntentUIPlan.self, from: Data(json.utf8))
         return EditorJITUIPlanAdapter().adapt(uiPlan: plan, prompt: "backend prompt")

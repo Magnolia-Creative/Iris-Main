@@ -19,38 +19,44 @@ struct EditorJITUIPlanAdapter {
         var sawTimelineWidget = false
 
         for widget in widgets {
-            switch widget.widgetId {
-            case "playback.viewer", "playback.beforeAfterViewer":
-                playback = .visible("playback.section", size: playbackSize(for: widget))
+            switch widget.kind {
+            case .playbackViewer, .playbackBeforeAfterViewer:
+                if let componentId = EditorComponentRegistry.componentID(for: widget.kind) {
+                    playback = .visible(componentId, size: playbackSize(for: widget))
+                }
 
-            case "timeline.full":
+            case .timelineFull:
                 sawTimelineWidget = true
-                timeline = .visible("timeline.full", size: timelineSize(for: widget))
+                if let componentId = EditorComponentRegistry.componentID(for: widget.kind) {
+                    timeline = .visible(componentId, size: timelineSize(for: widget))
+                }
 
-            case "timeline.primaryTrack", "timeline.focusedClipStrip":
+            case .timelinePrimaryTrack, .timelineFocusedClipStrip:
                 sawTimelineWidget = true
-                timeline = .visible("timeline.track", size: timelineSize(for: widget))
+                if let componentId = EditorComponentRegistry.componentID(for: widget.kind) {
+                    timeline = .visible(componentId, size: timelineSize(for: widget))
+                }
 
-            case "toolbar.parameterControls":
+            case .toolbarParameterControls:
                 if let group = parameterGroup(from: widget, currentSliceId: uiPlan.currentSliceId) {
                     chromePlan.parameterGroups = [group]
                     chromePlan.activeParameterGroupId = group.id
                 }
 
-            case "toolbar.reviewActions":
+            case .toolbarReviewActions:
                 chromePlan.isDismissable = true
 
-            case "toolbar.clipTools":
+            case .toolbarClipTools:
                 chromePlan.actions = EditorChromePreviewFixtures.defaultActions
 
-            case "toolbar.promptBar":
+            case .toolbarPromptBar:
                 chromePlan.showsDock = true
 
-            case "audio.levelsMeter", "panel.importBrowser", "panel.exportSettings":
+            case .audioLevelsMeter, .importBrowserPanel, .exportSettingsPanel:
                 break
 
-            default:
-                warnings.append("Unsupported backend widget '\(widget.widgetId)' was ignored.")
+            case .unsupported(let rawId):
+                warnings.append("Unsupported backend widget '\(rawId)' was ignored.")
             }
         }
 
@@ -105,7 +111,7 @@ struct EditorJITUIPlanAdapter {
     }
 
     private func playbackSize(for widget: BackendWidget) -> EditorComponentSize {
-        if widget.widgetId == "playback.beforeAfterViewer" {
+        if widget.kind == .playbackBeforeAfterViewer {
             return .expanded
         }
         return EditorComponentRegistry.parseSize(widget.variant)
@@ -167,14 +173,16 @@ struct EditorJITUIPlanAdapter {
 }
 
 private struct BackendWidget: Equatable {
-    let widgetId: String
+    let rawWidgetId: String
+    let kind: BackendEditorWidget
     let variant: String?
     let intentSliceId: String?
     let controls: [[String: JSONValue]]
 
     init?(raw: [String: JSONValue]) {
         guard let widgetId = raw["widgetId"]?.stringValue else { return nil }
-        self.widgetId = widgetId
+        self.rawWidgetId = widgetId
+        self.kind = EditorComponentRegistry.backendWidget(for: widgetId)
         self.variant = raw["variant"]?.stringValue
         self.intentSliceId = raw["intentSliceId"]?.stringValue
         self.controls = (raw["controls"]?.arrayValue ?? []).compactMap(\.objectValue)
