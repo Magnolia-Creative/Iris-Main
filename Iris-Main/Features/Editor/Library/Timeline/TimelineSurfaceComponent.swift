@@ -18,6 +18,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     var reviewFocusedSegmentIds: Set<String>
     var isReviewInteractionDisabled: Bool
     var promptFocusSegmentIds: Set<String>
+    var promptActionPreview: TimelinePromptActionPreview?
     var captionHighlightRangeUs: ClosedRange<Int64>?
     var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
@@ -57,6 +58,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         reviewFocusedSegmentIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
         promptFocusSegmentIds: Set<String> = [],
+        promptActionPreview: TimelinePromptActionPreview? = nil,
         captionHighlightRangeUs: ClosedRange<Int64>? = nil,
         onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
@@ -75,6 +77,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
         self.reviewFocusedSegmentIds = reviewFocusedSegmentIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
         self.promptFocusSegmentIds = promptFocusSegmentIds
+        self.promptActionPreview = promptActionPreview
         self.captionHighlightRangeUs = captionHighlightRangeUs
         self.onSelectSegment = onSelectSegment
         self.onDropImportedSegmentAtTime = onDropImportedSegmentAtTime
@@ -175,6 +178,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                             reviewFocusedSegmentIds: reviewFocusedSegmentIds,
                                             isReviewInteractionDisabled: isReviewInteractionDisabled,
                                             promptFocusSegmentIds: promptFocusSegmentIds,
+                                            promptActionPreview: promptActionPreview,
                                             isUserScrolling: isUserScrolling,
                                             onSelectSegment: onSelectSegment,
                                             onMoveSegment: onMoveSegment,
@@ -869,6 +873,7 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
             reviewFocusedSegmentIds: context.reviewFocusedClipIds,
             isReviewInteractionDisabled: context.isReviewInteractionDisabled,
             promptFocusSegmentIds: promptActionFocusSegmentIds,
+            promptActionPreview: context.promptActionPreview,
             captionHighlightRangeUs: context.captionHighlightRangeUs,
             onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,

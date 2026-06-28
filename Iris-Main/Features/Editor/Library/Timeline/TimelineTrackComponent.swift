@@ -15,6 +15,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     var reviewFocusedSegmentIds: Set<String>
     var isReviewInteractionDisabled: Bool
     var promptFocusSegmentIds: Set<String>
+    var promptActionPreview: TimelinePromptActionPreview?
     var isUserScrolling: Bool
     var onSelectSegment: ((String) -> Void)?
     var onMoveSegment: ((String, Int64, [String]) -> Void)?
@@ -35,6 +36,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
         reviewFocusedSegmentIds: Set<String> = [],
         isReviewInteractionDisabled: Bool = false,
         promptFocusSegmentIds: Set<String> = [],
+        promptActionPreview: TimelinePromptActionPreview? = nil,
         isUserScrolling: Bool = false,
         onSelectSegment: ((String) -> Void)? = nil,
         onMoveSegment: ((String, Int64, [String]) -> Void)? = nil,
@@ -50,6 +52,7 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
         self.reviewFocusedSegmentIds = reviewFocusedSegmentIds
         self.isReviewInteractionDisabled = isReviewInteractionDisabled
         self.promptFocusSegmentIds = promptFocusSegmentIds
+        self.promptActionPreview = promptActionPreview
         self.isUserScrolling = isUserScrolling
         self.onSelectSegment = onSelectSegment
         self.onMoveSegment = onMoveSegment
@@ -108,6 +111,9 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
                 segmentView(segment)
                     .frame(width: width, height: trackHeight)
                     .contentShape(RoundedRectangle(cornerRadius: .spacing(.sp1)))
+                    .overlay {
+                        promptPreviewOverlay(for: segment, segmentWidth: width)
+                    }
                     .overlay(alignment: .leading) {
                         if isSelectedClipSegment(segment) {
                             TimelineSegmentTrimHandleView()
@@ -460,6 +466,37 @@ struct TimelineTrackComponent: View, EditorLibraryComponentSpec {
     private func clamp(_ value: Int64, _ minValue: Int64, _ maxValue: Int64) -> Int64 {
         guard maxValue >= minValue else { return minValue }
         return min(maxValue, max(minValue, value))
+    }
+
+    @ViewBuilder
+    private func promptPreviewOverlay(for segment: TimelineSegmentModel, segmentWidth: CGFloat) -> some View {
+        if let preview = promptActionPreview,
+           preview.focusClipIds.contains(segment.id) {
+            ZStack(alignment: .leading) {
+                let ranges = preview.overlayRanges.filter { $0.clipId == segment.id && $0.trackId == model.id }
+                ForEach(Array(ranges.enumerated()), id: \.offset) { _, range in
+                    let x = timeToPixels(range.timelineRange.start - segment.rangeUs.start)
+                    let width = timeToPixels(range.timelineRange.duration)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.black.opacity(0.52))
+                        .frame(width: max(0, width), height: trackHeight)
+                        .offset(x: x)
+                }
+
+                if preview.kind == .split,
+                   let splitUs = preview.splitMarkerTimeUs,
+                   splitUs > segment.rangeUs.start,
+                   splitUs < segment.rangeUs.end {
+                    let x = timeToPixels(splitUs - segment.rangeUs.start)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: 2, height: trackHeight)
+                        .offset(x: x - 1)
+                }
+            }
+            .frame(width: segmentWidth, height: trackHeight, alignment: .leading)
+            .allowsHitTesting(false)
+        }
     }
 }
 
