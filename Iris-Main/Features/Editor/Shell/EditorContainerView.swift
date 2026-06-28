@@ -204,20 +204,10 @@ struct EditorContainerView: View {
     }
 
     private var jitIntelligenceDock: some View {
-        IntelligenceComponent(
-            navigationItems: IntelligenceComponent.defaultShowcaseItems,
+        EditorPromptDockAdapter(
+            viewModel: editorPromptBarViewModel,
             activeNavigationItemId: intelligenceActiveNavigationItemId,
-            promptPhase: intelligencePromptPhase,
-            promptDraft: $editorPromptBarViewModel.promptDraft,
-            liveTranscript: editorPromptBarViewModel.liveTranscript,
-            voiceLevel: editorPromptBarViewModel.voiceLevel,
-            onIntelligenceTap: {
-                editorPromptBarViewModel.openTextPrompt()
-            },
-            onVoiceHoldStart: {
-                Task { await editorPromptBarViewModel.beginVoicePrompt() }
-            },
-            onVoiceHoldEnd: {
+            onVoicePromptSubmit: {
                 Task {
                     await editorPromptBarViewModel.endVoicePrompt(
                         editorContext: remoteIntentEditorContext,
@@ -226,7 +216,7 @@ struct EditorContainerView: View {
                     )
                 }
             },
-            onSubmitText: {
+            onTextPromptSubmit: {
                 Task {
                     await editorPromptBarViewModel.submitTextPrompt(
                         editorContext: remoteIntentEditorContext,
@@ -234,12 +224,6 @@ struct EditorContainerView: View {
                         localIntentHandler: handleLocalEditorIntent
                     )
                 }
-            },
-            onCancelText: {
-                editorPromptBarViewModel.cancelTextPrompt()
-            },
-            onCancelProcessing: {
-                editorPromptBarViewModel.cancelProcessing()
             }
         )
         .frame(width: IntelligenceComponent.containerWidth())
@@ -268,22 +252,6 @@ struct EditorContainerView: View {
                 guard let nextSpace = EditorSpace(rawValue: itemId) else { return }
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                     activeSpace = nextSpace
-                }
-            }
-        )
-    }
-
-    private var intelligencePromptPhase: Binding<IntelligencePromptPhase> {
-        Binding(
-            get: { editorPromptBarViewModel.phase.intelligencePhase },
-            set: { phase in
-                switch phase {
-                case .typing:
-                    editorPromptBarViewModel.openTextPrompt()
-                case .idle:
-                    editorPromptBarViewModel.cancelTextPrompt()
-                case .recording, .submitting, .clarification, .error:
-                    break
                 }
             }
         )
