@@ -143,6 +143,7 @@ struct TimelineSegmentModel: Identifiable, Equatable {
     var captionText: String?
     var mediaKind: MediaKind?
     var assetRefId: String?
+    var mediaDurationSeconds: Double?
     var thumbnailStripPath: String?
     var waveformPath: String?
 
@@ -158,6 +159,7 @@ struct TimelineSegmentModel: Identifiable, Equatable {
         captionText: String? = nil,
         mediaKind: MediaKind? = nil,
         assetRefId: String? = nil,
+        mediaDurationSeconds: Double? = nil,
         thumbnailStripPath: String? = nil,
         waveformPath: String? = nil
     ) {
@@ -168,6 +170,7 @@ struct TimelineSegmentModel: Identifiable, Equatable {
         self.captionText = captionText
         self.mediaKind = mediaKind
         self.assetRefId = assetRefId
+        self.mediaDurationSeconds = mediaDurationSeconds
         self.thumbnailStripPath = thumbnailStripPath
         self.waveformPath = waveformPath
     }
@@ -242,6 +245,7 @@ extension TimelineSegmentModel {
             title: fallbackTitle,
             mediaKind: media?.kind,
             assetRefId: media?.assetRefId,
+            mediaDurationSeconds: media?.spec.duration,
             thumbnailStripPath: media?.spec.thumbnailStripPath,
             waveformPath: media?.spec.waveformPath
         )

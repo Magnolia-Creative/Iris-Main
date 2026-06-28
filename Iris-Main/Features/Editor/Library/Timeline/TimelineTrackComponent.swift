@@ -148,10 +148,15 @@ private struct TimelineVideoSegmentView: View {
     let isPromptFocused: Bool
 
     @State private var thumbnailStrip: UIImage?
+    @State private var waveformImage: UIImage?
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if let thumbnailStrip {
+        let clipRange = clipSourceUnits
+
+        ZStack(alignment: .bottom) {
+            if let thumbnailStrip, let clipRange {
+                TimelineSegmentStripImageView(stripImage: thumbnailStrip, startUnit: clipRange.start, endUnit: clipRange.end)
+            } else if let thumbnailStrip {
                 Image(uiImage: thumbnailStrip)
                     .resizable()
                     .scaledToFill()
@@ -168,6 +173,24 @@ private struct TimelineVideoSegmentView: View {
                     .padding(.spacing(.sp2))
             }
 
+            if let waveformImage, let clipRange {
+                TimelineSegmentWaveformImageView(waveformImage: waveformImage, startUnit: clipRange.start, endUnit: clipRange.end)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .background(Color.black.opacity(0.4))
+                    .frame(height: .spacing(.sp3) + 4)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            Image(systemName: segment.mediaKind == .photo ? "photo.fill" : "video.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: .spacing(.sp1)).fill(Color.black.opacity(0.6)))
+                .padding(.top, .spacing(.sp1))
+                .padding(.leading, .spacing(.sp1))
+        }
+        .overlay(alignment: .topLeading) {
             if let title = segment.title, !title.isEmpty {
                 Text(title)
                     .typography(.bodySmall)
@@ -187,8 +210,9 @@ private struct TimelineVideoSegmentView: View {
         .opacity(isReviewDimmed ? 0.32 : 1)
         .animation(.easeInOut(duration: 0.18), value: isSelected)
         .animation(.easeInOut(duration: 0.18), value: isReviewDimmed)
-        .task(id: segment.thumbnailStripPath) {
+        .task(id: imageTaskId) {
             thumbnailStrip = loadImage(storedPath: segment.thumbnailStripPath)
+            waveformImage = loadImage(storedPath: segment.waveformPath)
         }
     }
 
@@ -207,6 +231,75 @@ private struct TimelineVideoSegmentView: View {
         RoundedRectangle(cornerRadius: .spacing(.sp1))
             .stroke(Color.ds.accentFg.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
             .opacity(isPromptFocused ? 1 : 0)
+    }
+
+    private var imageTaskId: String {
+        [
+            segment.thumbnailStripPath ?? "nostrip",
+            segment.waveformPath ?? "nowaveform",
+            segment.sourceRangeUs.map { "\($0.start)-\($0.end)" } ?? "nosource"
+        ].joined(separator: "::")
+    }
+
+    private var clipSourceUnits: (start: CGFloat, end: CGFloat)? {
+        guard
+            let duration = segment.mediaDurationSeconds,
+            duration > 0,
+            let sourceRangeUs = segment.sourceRangeUs
+        else {
+            return nil
+        }
+
+        let startSeconds = Double(sourceRangeUs.start) / 1_000_000.0
+        let endSeconds = Double(sourceRangeUs.end) / 1_000_000.0
+        let startUnit = max(0, min(1, startSeconds / duration))
+        let endUnit = max(startUnit, min(1, endSeconds / duration))
+        return (start: CGFloat(startUnit), end: CGFloat(endUnit))
+    }
+}
+
+private struct TimelineSegmentStripImageView: View {
+    let stripImage: UIImage
+    let startUnit: CGFloat
+    let endUnit: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            let clampedStart = max(0, min(1, startUnit))
+            let clampedEnd = max(clampedStart + 0.0001, min(1, endUnit))
+            let range = clampedEnd - clampedStart
+            let scaledWidth = geometry.size.width / range
+
+            Image(uiImage: stripImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: scaledWidth, height: geometry.size.height)
+                .offset(x: -clampedStart * scaledWidth)
+                .clipped()
+        }
+    }
+}
+
+private struct TimelineSegmentWaveformImageView: View {
+    let waveformImage: UIImage
+    let startUnit: CGFloat
+    let endUnit: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            let clampedStart = max(0, min(1, startUnit))
+            let clampedEnd = max(clampedStart + 0.0001, min(1, endUnit))
+            let range = clampedEnd - clampedStart
+            let scaledWidth = geometry.size.width / range
+
+            Image(uiImage: waveformImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: scaledWidth, height: geometry.size.height)
+                .offset(x: -clampedStart * scaledWidth)
+                .clipped()
+                .opacity(0.85)
+        }
     }
 }
 

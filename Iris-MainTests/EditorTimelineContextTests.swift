@@ -29,7 +29,7 @@ final class EditorTimelineContextTests: XCTestCase {
                 thumbnailStripPath: "thumbs/v.jpg",
                 thumbnailStripHeight: nil,
                 thumbnailStripFrameCount: nil,
-                waveformPath: nil,
+                waveformPath: "waves/v.png",
                 waveformHeight: nil,
                 transcriptID: nil,
                 transcriptFullText: nil,
@@ -103,7 +103,9 @@ final class EditorTimelineContextTests: XCTestCase {
         XCTAssertEqual(videoSegments[0].sourceRangeUs, earlierClip.sourceRange)
         XCTAssertEqual(videoSegments[0].mediaKind, .video)
         XCTAssertEqual(videoSegments[0].assetRefId, "asset-v")
+        XCTAssertEqual(videoSegments[0].mediaDurationSeconds, 8)
         XCTAssertEqual(videoSegments[0].thumbnailStripPath, "thumbs/v.jpg")
+        XCTAssertEqual(videoSegments[0].waveformPath, "waves/v.png")
 
         let captionSegments = model.tracks[1].segments
         XCTAssertEqual(captionSegments.map(\.id), ["cue-a", "cue-b"])
