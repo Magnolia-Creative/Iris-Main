@@ -210,17 +210,20 @@ struct TimelineRulerModel: Equatable {
 struct TimelineOrganizerModel: Equatable {
     var tracks: [TimelineTrackModel]
     var durationUs: Int64
+    var scrollableDurationUs: Int64
     var currentTimeUs: Int64
     var pixelsPerSecond: CGFloat
 
     init(
         tracks: [TimelineTrackModel] = [],
         durationUs: Int64 = 0,
+        scrollableDurationUs: Int64? = nil,
         currentTimeUs: Int64 = 0,
         pixelsPerSecond: CGFloat = TimelineComponentLayout.defaultPixelsPerSecond
     ) {
         self.tracks = tracks
         self.durationUs = durationUs
+        self.scrollableDurationUs = scrollableDurationUs ?? durationUs
         self.currentTimeUs = currentTimeUs
         self.pixelsPerSecond = pixelsPerSecond
     }
@@ -303,6 +306,7 @@ extension TimelineOrganizerModel {
         self.init(
             tracks: trackModels,
             durationUs: context.timelineDurationUs,
+            scrollableDurationUs: context.scrollableDurationUs,
             currentTimeUs: context.currentTimeAtCenter,
             pixelsPerSecond: context.pixelsPerSecond
         )

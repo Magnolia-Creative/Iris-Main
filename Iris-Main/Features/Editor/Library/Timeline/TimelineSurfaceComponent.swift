@@ -6,27 +6,36 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     static let supportedSizes: Set<EditorComponentSize> = [.compressed, .standard, .expanded]
 
     let model: TimelineOrganizerModel
+    @Binding var currentTimeUs: Int64
     @Binding var pixelsPerSecond: CGFloat
     @Binding var selectedSegmentId: String?
     var onSelectSegment: ((String) -> Void)?
     var onAddSelection: ((TrackKind, ImportSource) -> Void)?
+    var onPreviewScrub: ((Int64, Double) -> Void)?
     @Binding var isAddMenuOpen: Bool
 
     @State private var gestureStartPixelsPerSecond: CGFloat?
     @State private var localPixelsPerSecond: CGFloat
+    @State private var lastScrollOffsetX: CGFloat = 0
+    @State private var lastScrollTime: Date = Date()
+    @State private var lastScrollUpdate: Date = Date()
     private let usesExternalPixelsPerSecond: Bool
 
     init(
         model: TimelineOrganizerModel,
+        currentTimeUs: Binding<Int64>? = nil,
         pixelsPerSecond: Binding<CGFloat>? = nil,
         selectedSegmentId: Binding<String?> = .constant(nil),
         onSelectSegment: ((String) -> Void)? = nil,
         onAddSelection: ((TrackKind, ImportSource) -> Void)? = nil,
+        onPreviewScrub: ((Int64, Double) -> Void)? = nil,
         isAddMenuOpen: Binding<Bool> = .constant(false)
     ) {
         self.model = model
+        self._currentTimeUs = currentTimeUs ?? .constant(model.currentTimeUs)
         self._selectedSegmentId = selectedSegmentId
         self.onSelectSegment = onSelectSegment
+        self.onPreviewScrub = onPreviewScrub
         if let pixelsPerSecond {
             self._pixelsPerSecond = pixelsPerSecond
             self.usesExternalPixelsPerSecond = true
@@ -58,7 +67,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
 
     private var contentWidth: CGFloat {
         let modelEnd = model.tracks.flatMap(\.segments).map(\.rangeUs.end).max() ?? model.durationUs
-        let duration = max(model.durationUs, modelEnd)
+        let duration = max(model.scrollableDurationUs, model.durationUs, modelEnd)
         return max(1, CGFloat(duration) / 1_000_000 * resolvedPixelsPerSecond)
     }
 
@@ -82,7 +91,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
             let scrollContentWidth = max(geometry.size.width, contentWidth + playheadCenterX * 2)
             let rulerTicksWidth = max(1, contentWidth)
             let rulerModel = TimelineRulerModel(
-                currentTimeUs: model.currentTimeUs,
+                currentTimeUs: currentTimeUs,
                 durationUs: rulerDurationUs,
                 pixelsPerSecond: resolvedPixelsPerSecond
             )
@@ -111,7 +120,7 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                                 .padding(.leading, playheadCenterX)
                             }
                             TimelineOrganizerScrollMarker(
-                                targetTimeUs: model.currentTimeUs,
+                                targetTimeUs: currentTimeUs,
                                 pixelsPerSecond: resolvedPixelsPerSecond,
                                 centerX: playheadCenterX
                             )
@@ -121,10 +130,15 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
                     .background(Color.ds.bg)
                     .scrollDisabled(isAddMenuOpen)
                     .simultaneousGesture(zoomGesture)
+                    .onScrollGeometryChange(for: CGFloat.self) { geo in
+                        geo.contentOffset.x
+                    } action: { _, x in
+                        updateCurrentTimeFromScrollOffset(x)
+                    }
                     .onAppear {
                         scrollToPlayhead(with: proxy)
                     }
-                    .onChange(of: model.currentTimeUs) { _, _ in
+                    .onChange(of: currentTimeUs) { _, _ in
                         scrollToPlayhead(with: proxy)
                     }
                     .onChange(of: resolvedPixelsPerSecond) { _, _ in
@@ -206,6 +220,29 @@ struct TimelineOrganizerComponent: View, EditorLibraryComponentSpec {
     private func scrollToPlayhead(with proxy: ScrollViewProxy) {
         DispatchQueue.main.async {
             proxy.scrollTo(TimelineOrganizerScrollMarker.markerId, anchor: .center)
+        }
+    }
+
+    private func updateCurrentTimeFromScrollOffset(_ offsetX: CGFloat) {
+        let now = Date()
+        let deltaX = offsetX - lastScrollOffsetX
+        let deltaT = now.timeIntervalSince(lastScrollTime)
+        let velocity = deltaT > 0 ? abs(deltaX) / deltaT : 0
+        let minInterval: TimeInterval = 1.0 / 120.0
+
+        if now.timeIntervalSince(lastScrollUpdate) >= minInterval {
+            let timeUs = Int64((offsetX / resolvedPixelsPerSecond) * 1_000_000)
+            let clampedTimeUs = min(max(0, timeUs), model.scrollableDurationUs)
+            currentTimeUs = clampedTimeUs
+            lastScrollUpdate = now
+            DispatchQueue.main.async {
+                onPreviewScrub?(clampedTimeUs, velocity)
+            }
+        }
+
+        if deltaT > 0 {
+            lastScrollOffsetX = offsetX
+            lastScrollTime = now
         }
     }
 }
@@ -453,10 +490,12 @@ struct TimelineSurfaceComponent: View, EditorLibraryComponentSpec {
     var body: some View {
         TimelineOrganizerComponent(
             model: TimelineOrganizerModel(context: context),
+            currentTimeUs: context.$currentTimeAtCenter,
             pixelsPerSecond: pixelsPerSecond,
             selectedSegmentId: selectedSegmentId,
             onSelectSegment: handleSegmentSelection,
             onAddSelection: context.showAddButton ? actions.onAddSelection : nil,
+            onPreviewScrub: actions.onPreviewScrub,
             isAddMenuOpen: context.$isAddMenuOpen
         )
         .onChange(of: context.pixelsPerSecond) { _, newValue in
