@@ -173,6 +173,15 @@ final class EditorTimelineContextTests: XCTestCase {
         XCTAssertTrue(isAddMenuOpen)
     }
 
+    func testTimelineAddMediaOptionsUseCanonicalEditorSelections() {
+        XCTAssertEqual(TimelineAddMediaOption.captions.label, "Add Captions")
+        XCTAssertSelection(TimelineAddMediaOption.captions.selection, kind: .overlay, source: .caption)
+        XCTAssertSelection(TimelineAddMediaOption.videoPhotos.selection, kind: .video, source: .photos)
+        XCTAssertSelection(TimelineAddMediaOption.videoFiles.selection, kind: .video, source: .files)
+        XCTAssertSelection(TimelineAddMediaOption.audioPhotos.selection, kind: .audio, source: .photos)
+        XCTAssertSelection(TimelineAddMediaOption.audioFiles.selection, kind: .audio, source: .files)
+    }
+
     private func makeContext(
         tracks: [Track] = [Track(trackId: "track-v", timelineId: "timeline-1", kind: .video)],
         clipsByTrackId: [String: [Clip]] = [:],
@@ -218,5 +227,16 @@ final class EditorTimelineContextTests: XCTestCase {
             selectedCaptionCueId: selectedCaptionCueId ?? Binding(get: { localSelectedCaptionCueId }, set: { localSelectedCaptionCueId = $0 }),
             isAddMenuOpen: isAddMenuOpen ?? Binding(get: { localIsAddMenuOpen }, set: { localIsAddMenuOpen = $0 })
         )
+    }
+
+    private func XCTAssertSelection(
+        _ selection: (TrackKind, ImportSource),
+        kind: TrackKind,
+        source: ImportSource,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(selection.0, kind, file: file, line: line)
+        XCTAssertEqual(selection.1, source, file: file, line: line)
     }
 }

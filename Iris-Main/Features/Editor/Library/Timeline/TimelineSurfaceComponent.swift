@@ -950,11 +950,11 @@ enum TimelineAddMediaOption: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .captions: "Captions"
-        case .videoPhotos: "Video Photos"
-        case .videoFiles: "Video Files"
-        case .audioPhotos: "Audio Photos"
-        case .audioFiles: "Audio Files"
+        case .captions: "Add Captions"
+        case .videoPhotos: "Video from Photos"
+        case .videoFiles: "Video from Files"
+        case .audioPhotos: "Audio from Photos"
+        case .audioFiles: "Audio from Files"
         }
     }
 
@@ -968,7 +968,7 @@ enum TimelineAddMediaOption: String, CaseIterable, Identifiable {
 
     var selection: (TrackKind, ImportSource) {
         switch self {
-        case .captions: (.captions, .caption)
+        case .captions: (.overlay, .caption)
         case .videoPhotos: (.video, .photos)
         case .videoFiles: (.video, .files)
         case .audioPhotos: (.audio, .photos)
