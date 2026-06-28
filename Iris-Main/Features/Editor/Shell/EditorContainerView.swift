@@ -621,8 +621,8 @@ struct EditorContainerView: View {
     private func applyImportedMedia(_ media: [Media], for destination: EditorImportRequest.Destination) {
         guard !media.isEmpty else { return }
 
-        switch destination {
-        case .library:
+        switch destination.applicationMode {
+        case .libraryOnly:
             for item in media {
                 controller.updateMedia(item)
             }
@@ -644,43 +644,6 @@ struct EditorContainerView: View {
         agentSessionViewModel.updateFeedbackDraft(prompt)
         Task {
             await agentSessionViewModel.submitFeedback()
-        }
-    }
-}
-
-private struct EditorImportRequest: Identifiable {
-    enum Destination {
-        case library
-        case timeline(kind: TrackKind)
-    }
-
-    let id = UUID()
-    let destination: Destination
-}
-
-private struct EditorClipImportSheet: View {
-    let timelineId: String
-    let onAdd: @MainActor ([Media]) -> Void
-    @StateObject private var viewModel: ImportBrowserViewModel
-
-    init(timelineId: String, onAdd: @escaping @MainActor ([Media]) -> Void) {
-        self.timelineId = timelineId
-        self.onAdd = onAdd
-        _viewModel = StateObject(wrappedValue: ImportBrowserViewModel(timelineId: timelineId))
-    }
-
-    var body: some View {
-        ClipImportSheetView(
-            viewModel: viewModel,
-            onAdd: {
-                let media = await viewModel.finalizeSelectedMediaImports()
-                await MainActor.run {
-                    onAdd(media)
-                }
-            }
-        )
-        .task {
-            viewModel.updateProcessingMode(.embeddingsAndAgentPreprocessing)
         }
     }
 }
