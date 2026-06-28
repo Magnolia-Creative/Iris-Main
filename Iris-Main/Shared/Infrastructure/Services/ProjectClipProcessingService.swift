@@ -64,7 +64,7 @@ struct ProjectClipProcessingService {
         backendProjectID: String
     ) async throws -> IngestResponse {
         let boundary = "Boundary-\(UUID().uuidString)"
-        let endpoint = AppConfiguration.projectClipProcessingEndpoint(projectID: backendProjectID)
+        let endpoint = AppConfiguration.projectSourcesEndpoint(projectID: backendProjectID)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -83,7 +83,7 @@ struct ProjectClipProcessingService {
     }
 
     func fetchProjectClipStatus(projectID: String) async throws -> IngestResponse {
-        let endpoint = AppConfiguration.projectClipStatusEndpoint(projectID: projectID)
+        let endpoint = AppConfiguration.projectSourcesEndpoint(projectID: projectID)
         let request = try await authClient.authenticatedRequest(URLRequest(url: endpoint))
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
