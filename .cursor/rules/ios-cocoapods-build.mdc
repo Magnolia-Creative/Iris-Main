@@ -5,12 +5,13 @@ alwaysApply: true
 
 # Build Iris-Main With CocoaPods
 
-`VideoLab` is integrated through CocoaPods, so CLI builds must use the generated workspace, not the Xcode project.
+`VideoLab` is integrated through CocoaPods, so CLI builds for `Iris-Main` must use the generated workspace, not the Xcode project.
 
-Use this command for a compile-only simulator build:
+This applies to the main checkout and every `Iris-Main` git worktree. Stay in the current checkout/worktree root; do not `cd` from a worktree back to `/Users/abdur-rahmanrana/Documents/Magnolia Creative/Dev/Iris-Main`.
+
+Use this command from the current `Iris-Main` checkout or worktree root for a compile-only simulator build:
 
 ```bash
-cd "/Users/abdur-rahmanrana/Documents/Magnolia Creative/Dev/Iris-Main"
 xcodebuild build \
   -workspace "Iris-Main.xcworkspace" \
   -scheme "Iris-Main" \
