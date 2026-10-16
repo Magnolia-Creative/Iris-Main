@@ -80,7 +80,9 @@ final class VideoLabRenderEngine: NSObject {
         if let oldLayer = playerLayer, oldLayer !== avLayer {
             playerLayerVideoRectObservation?.invalidate()
             playerLayerVideoRectObservation = nil
-            oldLayer.removeFromSuperlayer()
+            // UIKit owns a UIView's backing layer. Removing it from its
+            // superlayer leaves UIKit with a detached layer during layout.
+            oldLayer.player = nil
         }
 
         playerHostView = view
@@ -108,7 +110,7 @@ final class VideoLabRenderEngine: NSObject {
 
     func layoutPlayerHost() {
         guard let view = playerHostView else { return }
-        playerLayer?.frame = view.bounds
+        // UIKit sizes the view's backing AVPlayerLayer with the host view.
         layoutCaptionSyncLayer()
         if waitingForNonzeroHostBounds, hasNonzeroHostBounds {
             waitingForNonzeroHostBounds = false

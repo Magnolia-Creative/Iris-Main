@@ -2,9 +2,9 @@ import Foundation
 
 enum AppConfiguration {
     /// Clerk publishable key (test instance: ethical-adder-19).
-    static let clerkPublishableKey = "pk_test_ZXRoaWNhbC1hZGRlci0xOS5jbGVyay5hY2NvdW50cy5kZXYk"
+    static let clerkPublishableKey = "pk_live_Y2xlcmsuaXJpc3ZpZGVvLmFwcCQ"
 
-    static let backendBaseURL = URL(string: "http://127.0.0.1:8000")!
+    static let backendBaseURL = URL(string: "https://api.irisvideo.app")!
     static let ingestEndpoint = backendBaseURL.appending(path: "sessions/upload")
     static let captionsEndpoint = backendBaseURL.appending(path: "captions")
     static let transcriptSentencesEndpoint = backendBaseURL.appending(path: "transcriptions/sentences")
