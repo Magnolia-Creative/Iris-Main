@@ -16,7 +16,7 @@ struct SemanticUploadFrameSamplingTests {
         #expect(windows.count >= 2)
         #expect(windows[0].start == 0)
         if windows.count > 1 {
-            #expect(abs(windows[1].start - SemanticSearchConstants.chunkStrideSeconds) < 0.001)
+            #expect(abs(windows[1].start - 3.5) < 0.001)
         }
     }
 

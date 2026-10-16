@@ -1,8 +1,27 @@
+import AVFoundation
 import CoreGraphics
 import Testing
+import UIKit
 @testable import Iris_Main
 
 struct VideoLabRenderEngineLayoutTests {
+    @MainActor
+    @Test func rebindingPreviewPreservesUIKitBackingLayer() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 180))
+        let first = PlayerHostView(frame: container.bounds)
+        let second = PlayerHostView(frame: container.bounds)
+        container.addSubview(first)
+
+        let engine = VideoLabRenderEngine()
+        engine.bindPlayerHost(first)
+        container.addSubview(second)
+        engine.bindPlayerHost(second)
+
+        #expect(first.layer.superlayer === container.layer)
+        #expect(first.playerLayer.player == nil)
+        #expect(second.playerLayer.player != nil)
+    }
+
     @MainActor
     @Test func captionLayerLayoutScalesToVisibleVideoRect() {
         let layout = VideoLabRenderEngine.captionLayerLayout(
