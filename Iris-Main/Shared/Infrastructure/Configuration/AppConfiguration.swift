@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfiguration {
-    /// Clerk publishable key (test instance: ethical-adder-19).
+    /// Clerk publishable key for the production Iris instance.
     static let clerkPublishableKey = "pk_live_Y2xlcmsuaXJpc3ZpZGVvLmFwcCQ"
 
     static let backendBaseURL = URL(string: "https://api.irisvideo.app")!
