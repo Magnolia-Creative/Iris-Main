@@ -802,7 +802,7 @@
 		};
 		9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "file:///Users/abdur-rahmanrana/irismainpkg/swift-mobileclip";
+			repositoryURL = "https://github.com/sfomuseum/swift-mobileclip.git";
 			requirement = {
 				branch = main;
 				kind = branch;

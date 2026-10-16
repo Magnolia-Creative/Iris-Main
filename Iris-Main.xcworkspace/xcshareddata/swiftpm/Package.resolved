@@ -183,11 +183,11 @@
     },
     {
       "identity" : "swift-mobileclip",
-      "kind" : "localSourceControl",
-      "location" : "/Users/abdur-rahmanrana/irismainpkg/swift-mobileclip",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sfomuseum/swift-mobileclip.git",
       "state" : {
         "branch" : "main",
-        "revision" : "97359eb44faf169d067cb65eea8b5b2c60460e69"
+        "revision" : "00d08f9f8e0ea07c1ea03684cec1813de8795d91"
       }
     },
     {
