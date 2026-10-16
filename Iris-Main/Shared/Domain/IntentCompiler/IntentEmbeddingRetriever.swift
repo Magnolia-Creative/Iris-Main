@@ -23,7 +23,7 @@ struct IntentEmbeddingRetriever {
         for (type, examples) in examplesByType {
             for example in examples {
                 let exampleEmbedding = try await embeddingProvider.embed(example)
-                let score = cosineSimilarity(promptEmbedding, exampleEmbedding)
+                let score = IntentVectorMath.cosineSimilarity(promptEmbedding, exampleEmbedding)
                 guard score.isFinite, score >= Self.acceptableCandidateThreshold else { continue }
 
                 candidates.append(
@@ -220,18 +220,6 @@ private extension IntentEmbeddingRetriever {
             warnings: [],
             needsClarification: false
         )
-    }
-}
-
-struct MobileCLIPTextEmbeddingProvider: EmbeddingProvider {
-    let service: any MobileCLIPEmbeddingProviding
-
-    init(service: any MobileCLIPEmbeddingProviding = MobileCLIPEmbeddingPool.shared) {
-        self.service = service
-    }
-
-    func embed(_ text: String) async throws -> [Float] {
-        try await service.textEmbedding(for: text)
     }
 }
 

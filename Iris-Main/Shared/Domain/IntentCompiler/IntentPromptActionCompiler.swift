@@ -6,13 +6,9 @@ final class IntentPromptActionCompiler {
     private let validator: IntentActionValidator
 
     init(
-        deterministicCompiler: IntentDeterministicCompiler = IntentDeterministicCompiler(),
-        embeddingProvider: EmbeddingProvider = MobileCLIPTextEmbeddingProvider(),
         llmProvider: IntentLLMProvider = IntentLLMBackend.appleFoundation.makeProvider(),
         validator: IntentActionValidator = IntentActionValidator()
     ) {
-        _ = deterministicCompiler
-        _ = embeddingProvider
         self.llmCompiler = IntentLLMCompiler(provider: llmProvider)
         self.effectCapabilityRetriever = IntentEffectCapabilityRetriever()
         self.validator = validator

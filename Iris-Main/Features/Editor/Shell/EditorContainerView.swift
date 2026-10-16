@@ -266,11 +266,6 @@ struct EditorContainerView: View {
             Text(captionsFlow.captionsAlert ?? "")
         }
         .task {
-            await MainActor.run {
-                SemanticSearchViewModel.shared.prewarmEmbeddingServicesIfNeeded()
-            }
-        }
-        .task {
             await controller.loadTimelineData()
             if let initialImportSeed {
                 await controller.applyInitialImportSeedIfNeeded(initialImportSeed)
@@ -601,8 +596,5 @@ private struct EditorClipImportSheet: View {
                 }
             }
         )
-        .task {
-            viewModel.updateProcessingMode(.embeddingsAndAgentPreprocessing)
-        }
     }
 }

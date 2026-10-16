@@ -2,24 +2,23 @@ import CoreGraphics
 import Foundation
 import UIKit
 
-/// Builds per-chunk JPEG stills for backend multimodal indexing, using the same 4s / 0.5s overlap
-/// windows as `SemanticSearchPipeline` / `SemanticSearchConstants`.
+/// Builds per-chunk JPEG stills for backend multimodal indexing, using the same 4s / 0.5s overlap windows used by the backend indexing API.
 enum SemanticUploadFrameSampling {
-    /// ~360p max side for upload (plan: reduce payload vs local semantic indexing).
+    /// Maximum image dimension for uploaded frames.
     static let uploadFrameMaximumDimension: CGFloat = 640
 
-    /// Mirrors `SemanticSearchPipeline.chunkPoints` time windows (without video metadata).
+    /// Produces overlapping time windows for backend indexing uploads.
     static func chunkTimeWindows(durationSeconds: Double) -> [(start: Double, end: Double, center: Double)] {
         guard durationSeconds > 0 else { return [] }
 
-        let chunkDuration = min(SemanticSearchConstants.chunkDurationSeconds, durationSeconds)
+        let chunkDuration = min(4.0, durationSeconds)
         guard chunkDuration > 0 else { return [] }
 
         if durationSeconds <= chunkDuration {
             return [(0, durationSeconds, durationSeconds / 2)]
         }
 
-        let stride = SemanticSearchConstants.chunkStrideSeconds
+        let stride = 3.5
         var starts: [Double] = []
         var currentStart = 0.0
 

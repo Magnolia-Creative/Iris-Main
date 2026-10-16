@@ -68,7 +68,7 @@ struct ImportPanelContent: View {
                 "queue semantic sync videoCount=\(searchableVideos(from: state).count)"
             )
             semanticVM.setImportSearchTimelineId(state.timelineId)
-            semanticVM.queueImportedMediaSync(searchableVideos(from: state), autoBuildIndex: false)
+            semanticVM.queueImportedMediaSync(searchableVideos(from: state))
         }
         .onChange(of: isSemanticSearchActive) { _, isActive in
             EditorDebugTrace.log(
@@ -289,7 +289,7 @@ struct ImportPanelContent: View {
     private func semanticSearchContent(state: TimelineState) -> some View {
         if semanticVM.model.trimmedQuery.isEmpty {
             semanticLibraryGrid(state: state)
-        } else if semanticVM.model.isBuildingIndex || semanticVM.model.isSearching, semanticVM.model.results.isEmpty {
+        } else if semanticVM.model.isSearching, semanticVM.model.results.isEmpty {
             semanticLoadingGrid()
         } else if let searchError = semanticVM.model.searchErrorMessage {
             semanticCenteredState(

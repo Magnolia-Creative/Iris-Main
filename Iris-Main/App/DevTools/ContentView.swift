@@ -40,12 +40,6 @@ struct ContentView: View {
                         }
 
                         NavigationLink {
-                            SemanticView()
-                        } label: {
-                            Label("Semantic", systemImage: "sparkle.magnifyingglass")
-                        }
-
-                        NavigationLink {
                             RenderingDemoView()
                         } label: {
                             Label("Rendering", systemImage: "film.stack")
@@ -78,13 +72,6 @@ struct ContentView: View {
                 ImportView()
             } label: {
                 Label("Open Import", systemImage: "square.and.arrow.down.on.square")
-            }
-            .buttonStyle(.secondary)
-
-            NavigationLink {
-                SemanticView()
-            } label: {
-                Label("Open Semantic Search", systemImage: "sparkle.magnifyingglass")
             }
             .buttonStyle(.secondary)
 

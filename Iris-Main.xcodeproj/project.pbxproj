@@ -12,7 +12,6 @@
 		1FBF36972F80DBC200086810 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 1FBF36962F80DBC200086810 /* GRDB */; };
 		1FCBE5392FB3BF30006A178E /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = 1FCBE5382FB3BF30006A178E /* Inject */; };
 		4FD6FA6C9C07709570241299 /* Pods_Iris_Main.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F7129C98E42C8E0F06CF8A6 /* Pods_Iris_Main.framework */; };
-		9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */ = {isa = PBXBuildFile; productRef = 9A1B2C3D4E5F60718293A002 /* MobileCLIP */; };
 		E9DA127A51B1C2556EA0885F /* Pods_Iris_MainTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED3E2B1B7051463B139B8555 /* Pods_Iris_MainTests.framework */; };
 /* End PBXBuildFile section */
 
@@ -82,7 +81,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				1FBF36972F80DBC200086810 /* GRDB in Frameworks */,
-				9A1B2C3D4E5F60718293A001 /* MobileCLIP in Frameworks */,
 				1FCBE5392FB3BF30006A178E /* Inject in Frameworks */,
 				1F4172482FB67DCE00B40996 /* ClerkKit in Frameworks */,
 				4FD6FA6C9C07709570241299 /* Pods_Iris_Main.framework in Frameworks */,
@@ -161,7 +159,6 @@
 				1F77B7952F64B22C00C813F6 /* Sources */,
 				1F77B7962F64B22C00C813F6 /* Frameworks */,
 				1F77B7972F64B22C00C813F6 /* Resources */,
-				9A1B2C3D4E5F60718293A010 /* Copy MobileCLIP Models */,
 				B067A662F4A6D6E06A71EDD1 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
@@ -174,7 +171,6 @@
 			name = "Iris-Main";
 			packageProductDependencies = (
 				1FBF36962F80DBC200086810 /* GRDB */,
-				9A1B2C3D4E5F60718293A002 /* MobileCLIP */,
 				1FCBE5382FB3BF30006A178E /* Inject */,
 				1F4172472FB67DCE00B40996 /* ClerkKit */,
 				1F4172492FB67DCE00B40996 /* ClerkKitUI */,
@@ -259,7 +255,6 @@
 			mainGroup = 1F77B7902F64B22C00C813F6;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */,
 				1FBF36952F80DBC200086810 /* XCRemoteSwiftPackageReference "GRDB" */,
 				1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */,
 				1F4172462FB67DCE00B40996 /* XCRemoteSwiftPackageReference "clerk-ios" */,
@@ -322,28 +317,6 @@
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
-		};
-		9A1B2C3D4E5F60718293A010 /* Copy MobileCLIP Models */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/scripts/copy_mobileclip_models.sh",
-			);
-			name = "Copy MobileCLIP Models";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MobileCLIP/mobileclip_s2_image.mlmodelc",
-				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MobileCLIP/mobileclip_s2_text.mlmodelc",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "export MOBILECLIP_MODELS_DIR=\"/Users/abdur-rahmanrana/Documents/Magnolia Creative/Dev/Models/mobileclip\"\n/bin/sh \"$SRCROOT/scripts/copy_mobileclip_models.sh\"\n";
 		};
 		B067A662F4A6D6E06A71EDD1 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -800,14 +773,6 @@
 				minimumVersion = 1.5.2;
 			};
 		};
-		9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sfomuseum/swift-mobileclip.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -830,11 +795,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 1FBF40E92F8B18A700086810 /* XCRemoteSwiftPackageReference "Inject" */;
 			productName = Inject;
-		};
-		9A1B2C3D4E5F60718293A002 /* MobileCLIP */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 9A1B2C3D4E5F60718293A003 /* XCRemoteSwiftPackageReference "swift-mobileclip" */;
-			productName = MobileCLIP;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

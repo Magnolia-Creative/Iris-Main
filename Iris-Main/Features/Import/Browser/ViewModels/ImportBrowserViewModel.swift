@@ -19,17 +19,13 @@ final class ImportBrowserViewModel: ObservableObject {
     let timelineId: String?
     let mediaImportService: MediaImportService
     let audioExtractionService: AudioExtractionService
-    let clipTranscriptService: ClipTranscriptService
     let projectClipProcessingService: ProjectClipProcessingService
     let db: DatabaseManager
-    let semanticSearchViewModel: SemanticSearchViewModel
 
     var didLoadLibrary = false
     var assetLookup: [String: PHAsset] = [:]
     var commitmentTasks: [String: Task<Void, Never>] = [:]
     var localMediaTasks: [String: Task<String, Error>] = [:]
-    var embeddingTasks: [String: Task<Void, Never>] = [:]
-    var transcriptionTasks: [String: Task<Void, Never>] = [:]
     var sessionStatusPollTask: Task<Void, Never>?
     var pendingUploadKeys: Set<String> = []
     var uploadFlushTask: Task<Void, Never>?
@@ -40,26 +36,20 @@ final class ImportBrowserViewModel: ObservableObject {
         timelineId: String?,
         mediaImportService: MediaImportService = .shared,
         audioExtractionService: AudioExtractionService? = nil,
-        clipTranscriptService: ClipTranscriptService? = nil,
         projectClipProcessingService: ProjectClipProcessingService? = nil,
-        db: DatabaseManager? = nil,
-        semanticSearchViewModel: SemanticSearchViewModel = .shared
+        db: DatabaseManager? = nil
     ) {
         self.timelineId = timelineId
         self.mediaImportService = mediaImportService
         self.audioExtractionService = audioExtractionService ?? AudioExtractionService()
-        self.clipTranscriptService = clipTranscriptService ?? ClipTranscriptService()
         self.projectClipProcessingService = projectClipProcessingService ?? ProjectClipProcessingService()
         self.db = db ?? .shared
-        self.semanticSearchViewModel = semanticSearchViewModel
     }
 
     deinit {
         uploadFlushTask?.cancel()
         commitmentTasks.values.forEach { $0.cancel() }
         localMediaTasks.values.forEach { $0.cancel() }
-        embeddingTasks.values.forEach { $0.cancel() }
-        transcriptionTasks.values.forEach { $0.cancel() }
         sessionStatusPollTask?.cancel()
         filenameTasks.values.forEach { $0.cancel() }
     }
@@ -104,41 +94,6 @@ final class ImportBrowserViewModel: ObservableObject {
         updatePromptMessage(suggestion)
     }
 
-    func updateProcessingMode(_ mode: ImportProcessingMode) {
-        guard model.processingMode != mode else { return }
-        model.processingMode = mode
-        for index in model.clips.indices {
-            if !mode.runsEmbeddings, model.clips[index].embeddingState.isRunning {
-                embeddingTasks[model.clips[index].localKey]?.cancel()
-            }
-            if !mode.usesLocalTranscriptionEndpoint {
-                transcriptionTasks[model.clips[index].localKey]?.cancel()
-            }
-            if !mode.runsEmbeddings, model.clips[index].embeddingState == .idle {
-                model.clips[index].embeddingState = .succeeded("Embeddings skipped")
-            }
-            if !mode.runsEmbeddings, model.clips[index].transcriptState == .idle {
-                model.clips[index].transcriptState = .succeeded("Transcript skipped")
-            }
-            if !mode.runsAgentPreprocessing, model.clips[index].uploadState == .idle {
-                model.clips[index].uploadState = .succeeded("Agent prep skipped")
-            }
-            if mode.runsEmbeddings, model.clips[index].isCommitted, model.clips[index].embeddingState.isSucceeded == false {
-                startEmbeddingIfNeeded(for: model.clips[index].localKey)
-            }
-            if mode.usesLocalTranscriptionEndpoint, model.clips[index].isCommitted, model.clips[index].transcriptState.isSucceeded == false {
-                startTranscriptionIfNeeded(for: model.clips[index].localKey)
-            }
-            if mode.runsAgentPreprocessing, !mode.usesLocalTranscriptionEndpoint, model.clips[index].transcriptState.isSucceeded == false {
-                model.clips[index].transcriptState = .succeeded("Transcript on server")
-            }
-            if mode.runsAgentPreprocessing, model.clips[index].isCommitted, model.clips[index].remoteClipID == nil {
-                enqueueClipForUpload(localKey: model.clips[index].localKey)
-            }
-        }
-        updateStatusAndReadiness()
-    }
-
     func toggleSelection(for assetID: String) {
         if let existingIndex = model.clips.firstIndex(where: { $0.assetLocalIdentifier == assetID && $0.isSelected }) {
             let localKey = model.clips[existingIndex].localKey
@@ -160,17 +115,8 @@ final class ImportBrowserViewModel: ObservableObject {
             remoteClipID: nil,
             isSelected: true,
             isCommitted: false,
-            embeddingState: model.processingMode.runsEmbeddings ? .queued("Waiting for commit") : .succeeded("Embeddings skipped"),
-            transcriptState: {
-                if model.processingMode.usesLocalTranscriptionEndpoint {
-                    return .queued("Waiting for local transcript")
-                }
-                if model.processingMode.runsAgentPreprocessing {
-                    return .succeeded("Transcript on server")
-                }
-                return .succeeded("Transcript skipped")
-            }(),
-            uploadState: model.processingMode.runsAgentPreprocessing ? .queued("Waiting for commit") : .succeeded("Agent prep skipped"),
+            transcriptState: .succeeded("Transcript on server"),
+            uploadState: .queued("Waiting for commit"),
             commitmentStatus: "Hold selection to begin processing"
         )
         model.clips.append(clip)
@@ -214,9 +160,7 @@ final class ImportBrowserViewModel: ObservableObject {
             do {
                 _ = try await ensureLocalMediaAvailable(for: localKey)
             } catch {
-                updateClip(localKey: localKey) { clip in
-                    clip.embeddingState = .failed(error.localizedDescription)
-                }
+                print("[ImportBrowser] local media import failed localKey=\(localKey): \(error)")
             }
         }
 
@@ -225,12 +169,10 @@ final class ImportBrowserViewModel: ObservableObject {
         // Agent upload is debounced by `scheduleUploadFlushIfNeeded` (~1s). Dismissing the import sheet
         // deinitializes this view model and cancels `uploadFlushTask`, so uploads would never run unless
         // we flush here before returning (e.g. editor `ClipImportSheetView` dismisses immediately after Add).
-        if model.processingMode.runsAgentPreprocessing {
-            uploadFlushTask?.cancel()
-            uploadFlushTask = nil
-            if !pendingUploadKeys.isEmpty {
-                await flushPendingUploads()
-            }
+        uploadFlushTask?.cancel()
+        uploadFlushTask = nil
+        if !pendingUploadKeys.isEmpty {
+            await flushPendingUploads()
         }
 
         return selectedKeys.compactMap { localKey in
@@ -244,10 +186,6 @@ final class ImportBrowserViewModel: ObservableObject {
         commitmentTasks[localKey] = nil
         localMediaTasks[localKey]?.cancel()
         localMediaTasks[localKey] = nil
-        embeddingTasks[localKey]?.cancel()
-        embeddingTasks[localKey] = nil
-        transcriptionTasks[localKey]?.cancel()
-        transcriptionTasks[localKey] = nil
         pendingUploadKeys.remove(localKey)
 
         guard let index = model.clips.firstIndex(where: { $0.localKey == localKey }) else { return }
@@ -255,7 +193,6 @@ final class ImportBrowserViewModel: ObservableObject {
 
         if let localMediaID = clip.localMediaID {
             try? db.delete(Media.self, id: localMediaID, keyColumn: "media_id")
-            _ = await resyncSemanticIndexIfNeeded(autoBuildIndex: true)
         }
 
         if let backendProject = model.remoteBackendProject,
@@ -274,7 +211,6 @@ final class ImportBrowserViewModel: ObservableObject {
             model.clips.removeAll { $0.localKey == localKey }
         } else {
             model.clips[index].isSelected = false
-            model.clips[index].embeddingState = .cancelled
             model.clips[index].transcriptState = .cancelled
             model.clips[index].uploadState = .cancelled
         }

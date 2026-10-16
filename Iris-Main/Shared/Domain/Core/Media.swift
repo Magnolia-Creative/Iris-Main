@@ -56,31 +56,6 @@ struct Media: Codable, Identifiable, FetchableRecord, PersistableRecord {
         "\(kind.rawValue)::\(assetRefId)"
     }
 
-    var semanticSearchVisualSignature: String {
-        [
-            mediaId,
-            kind.rawValue,
-            assetRefId,
-            spec.duration.map { String(format: "%.3f", $0) } ?? ""
-        ].joined(separator: "::")
-    }
-
-    var semanticSearchTranscriptSignature: String {
-        [
-            spec.transcriptID ?? "",
-            String(spec.transcriptSentences?.count ?? 0),
-            spec.transcriptFullText ?? "",
-            spec.clipUploadLocalKey ?? ""
-        ].joined(separator: "::")
-    }
-
-    var semanticSearchContentSignature: String {
-        [
-            semanticSearchVisualSignature,
-            semanticSearchTranscriptSignature
-        ].joined(separator: "::")
-    }
-
     static func deduplicatedForImportPresentation(_ media: [Media]) -> [Media] {
         var seenKeys: Set<String> = []
 

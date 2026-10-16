@@ -107,7 +107,7 @@ extension ImportBrowserViewModel {
             return
         }
 
-        print("[ImportBrowser] commitClip: exporting localKey=\(localKey) processingMode=\(model.processingMode)")
+        print("[ImportBrowser] commitClip: exporting localKey=\(localKey)")
         model.clips[index].commitmentStatus = "Exporting clip"
 
         do {
@@ -125,20 +125,9 @@ extension ImportBrowserViewModel {
             print("[ImportBrowser] commitClip: committed localKey=\(localKey) url=\(localURL.lastPathComponent)")
             refreshVisibleAssetSelectionState()
 
-            if model.processingMode.runsEmbeddings {
-                startEmbeddingIfNeeded(for: localKey)
-            }
-            if model.processingMode.usesLocalTranscriptionEndpoint {
-                startTranscriptionIfNeeded(for: localKey)
-            }
-            if model.processingMode.runsAgentPreprocessing {
-                enqueueClipForUpload(localKey: localKey)
-            } else {
-                print("[ImportBrowser] commitClip: skipping upload – processingMode=\(model.processingMode)")
-            }
+            enqueueClipForUpload(localKey: localKey)
         } catch {
             print("[ImportBrowser] commitClip: export FAILED – \(error)")
-            model.clips[index].embeddingState = .failed(error.localizedDescription)
             model.clips[index].transcriptState = .failed(error.localizedDescription)
             model.clips[index].uploadState = .failed(error.localizedDescription)
             model.clips[index].commitmentStatus = "Export failed"
@@ -147,133 +136,7 @@ extension ImportBrowserViewModel {
         updateStatusAndReadiness()
     }
 
-    func startEmbeddingIfNeeded(for localKey: String) {
-        guard model.processingMode.runsEmbeddings else { return }
-        guard let clipIndex = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else { return }
-        guard model.clips[clipIndex].embeddingState.isSucceeded == false else { return }
-        guard model.clips[clipIndex].originalURL != nil else { return }
-
-        model.clips[clipIndex].embeddingState = .running("Preparing local embeddings")
-
-        embeddingTasks[localKey]?.cancel()
-        embeddingTasks[localKey] = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let mediaID = try await self.ensureLocalMediaAvailable(for: localKey)
-                let indexedVideoIDs = await self.resyncSemanticIndexIfNeeded(autoBuildIndex: true)
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.embeddingState = indexedVideoIDs.contains(mediaID)
-                            ? .succeeded("Embeddings ready")
-                            : .failed("The clip was imported locally but did not finish indexing.")
-                    }
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.embeddingState = .cancelled
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.embeddingState = .failed(error.localizedDescription)
-                    }
-                }
-            }
-            await MainActor.run {
-                self.embeddingTasks[localKey] = nil
-                self.updateStatusAndReadiness()
-            }
-        }
-    }
-
-    func startTranscriptionIfNeeded(for localKey: String) {
-        guard model.processingMode.usesLocalTranscriptionEndpoint else { return }
-        guard let clipIndex = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected }) else { return }
-        guard model.clips[clipIndex].originalURL != nil else { return }
-        guard model.clips[clipIndex].transcriptState.isSucceeded == false else { return }
-        model.clips[clipIndex].transcriptState = .running("Preparing local transcript")
-        print("[ImportBrowser] transcript task scheduling localKey=\(localKey)")
-        transcriptionTasks[localKey]?.cancel()
-        transcriptionTasks[localKey] = Task(priority: .utility) { [weak self] in
-            guard let self else { return }
-            defer {
-                Task { @MainActor [weak self] in
-                    self?.transcriptionTasks[localKey] = nil
-                }
-            }
-
-            do {
-                _ = try await self.ensureLocalMediaAvailable(for: localKey)
-                guard let request = try self.makeTranscriptRequest(for: localKey) else {
-                    print("[ImportBrowser] transcript task skipped localKey=\(localKey)")
-                    await MainActor.run {
-                        self.updateClip(localKey: localKey) { clip in
-                            clip.transcriptState = .succeeded("Transcript ready")
-                        }
-                    }
-                    return
-                }
-                let audioExtractionService = self.audioExtractionService
-                let clipTranscriptService = self.clipTranscriptService
-                print(
-                    "[ImportBrowser] transcript task started localKey=\(localKey) mediaID=\(request.mediaID) " +
-                    "file=\(request.video.displayName)"
-                )
-                let (processedAsset, transcript) = try await Task.detached(priority: .utility) {
-                    let processedAsset = try await audioExtractionService.extractCompressedAudio(from: request.video)
-                    print(
-                        "[ImportBrowser] transcript audio extracted localKey=\(localKey) audioURL=\(processedAsset.audioURL.lastPathComponent)"
-                    )
-                    let transcript = try await clipTranscriptService.transcribe(processedAsset)
-                    return (processedAsset, transcript)
-                }.value
-                defer {
-                    self.cleanupProcessedAssets([processedAsset])
-                }
-                print(
-                    "[ImportBrowser] transcript response ready localKey=\(localKey) transcriptID=\(transcript.transcriptID) " +
-                    "sentences=\(transcript.sentences.count)"
-                )
-                if transcript.transcriptID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Self.transcriptPersistenceLog.warning(
-                        "transcript response had empty transcript_id localKey=\(localKey, privacy: .public) mediaID=\(request.mediaID, privacy: .public)"
-                    )
-                }
-                try self.persistTranscript(transcript, forMediaID: request.mediaID)
-                print("[ImportBrowser] transcript persisted localKey=\(localKey) mediaID=\(request.mediaID)")
-                _ = await self.resyncSemanticIndexIfNeeded(autoBuildIndex: false)
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.transcriptState = .succeeded("Transcript ready")
-                    }
-                }
-                print("[ImportBrowser] transcript resync queued localKey=\(localKey)")
-            } catch is CancellationError {
-                print("[ImportBrowser] transcript task cancelled localKey=\(localKey)")
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.transcriptState = .cancelled
-                    }
-                }
-                return
-            } catch {
-                print("[ImportBrowser] transcript request failed localKey=\(localKey): \(error)")
-                await MainActor.run {
-                    self.updateClip(localKey: localKey) { clip in
-                        clip.transcriptState = .failed(error.localizedDescription)
-                    }
-                }
-            }
-        }
-    }
-
     func enqueueClipForUpload(localKey: String) {
-        guard model.processingMode.runsAgentPreprocessing else {
-            print("[ImportBrowser] enqueueClipForUpload skipped: processingMode does not run agent preprocessing")
-            return
-        }
         guard let index = model.clips.firstIndex(where: { $0.localKey == localKey && $0.isSelected && $0.isCommitted }) else {
             print("[ImportBrowser] enqueueClipForUpload skipped: no matching selected+committed clip for localKey=\(localKey)")
             return
@@ -511,7 +374,6 @@ extension ImportBrowserViewModel {
     }
 
     func startRemoteStatusPollingIfNeeded() {
-        guard model.processingMode.runsAgentPreprocessing else { return }
         guard let backendProject = model.remoteBackendProject else { return }
         guard let ingestResponse = model.ingestResponse else { return }
         guard ingestResponse.pendingClipCount ?? 0 > 0 || ingestResponse.readyForWebSocket != true else {
@@ -713,16 +575,14 @@ extension ImportBrowserViewModel {
         let committedCount = model.committedClipCount
         let hasFailures = model.clips.contains(where: \.hasFailure)
         let hasRunningWork = model.clips.contains {
-            ($0.isSelected && $0.isCommitted && model.processingMode.runsEmbeddings && $0.embeddingState.isRunning)
-                || ($0.isSelected && $0.isCommitted && model.processingMode.runsAgentPreprocessing && $0.uploadState.isRunning)
+            ($0.isSelected && $0.isCommitted && $0.uploadState.isRunning)
         } || !pendingUploadKeys.isEmpty || uploadFlushTask != nil
 
         if hasFailures {
             model.statusMessage = "Fix or remove the failed clips before starting the live session."
         } else if hasRunningWork {
             model.statusMessage = "Preparing \(committedCount) clip\(committedCount == 1 ? "" : "s") for Iris."
-        } else if model.processingMode.runsAgentPreprocessing,
-                  committedCount > 0,
+        } else if committedCount > 0,
                   model.ingestResponse?.readyForWebSocket != true {
             model.statusMessage = "Waiting for server transcripts before starting Iris."
         } else if committedCount > 0 {
@@ -733,25 +593,15 @@ extension ImportBrowserViewModel {
             model.statusMessage = "Select clips to start preparing them for Iris."
         }
 
-        let remoteReady = model.processingMode.runsAgentPreprocessing
-            ? (model.ingestResponse?.readyForWebSocket ?? false)
-            : false
-        let embeddingReady = model.clips
-            .filter { $0.isSelected && $0.isCommitted }
-            .allSatisfy { clip in
-                !model.processingMode.runsEmbeddings || clip.embeddingState.isSucceeded
-            }
+        let remoteReady = model.ingestResponse?.readyForWebSocket ?? false
         let uploadReady = model.clips
             .filter { $0.isSelected && $0.isCommitted }
-            .allSatisfy { clip in
-                !model.processingMode.runsAgentPreprocessing || clip.uploadState.isSucceeded
-            }
+            .allSatisfy(\.uploadState.isSucceeded)
         let canTransitionToAgent = model.isAwaitingAgentStart
             && model.prompt.isReady
             && !hasFailures
             && !hasRunningWork
             && committedCount > 0
-            && embeddingReady
             && uploadReady
             && remoteReady
 
@@ -778,104 +628,6 @@ extension ImportBrowserViewModel {
         guard let timelineId else { return nil }
         guard let timeline = try db.get(Timeline.self, id: timelineId, keyColumn: "timeline_id") else { return nil }
         return try db.getMediaLibrary(forProjectId: timeline.projectId)?.id
-    }
-
-    func resyncSemanticIndexIfNeeded(autoBuildIndex: Bool) async -> Set<String> {
-        guard let mediaLibraryID = try? resolveMediaLibraryID() else { return [] }
-        let media = (try? db.getAllMedia(forLibraryId: mediaLibraryID)) ?? []
-        let transcriptVideoCount = media
-            .filter { $0.kind == .video && !($0.spec.transcriptSentences?.isEmpty ?? true) }
-            .count
-        print(
-            "[ImportBrowser] semantic resync localLibraryID=\(mediaLibraryID) mediaCount=\(media.count) " +
-            "videoTranscriptCount=\(transcriptVideoCount)"
-        )
-        return await semanticSearchViewModel.syncImportedMediaAndWait(media, autoBuildIndex: autoBuildIndex)
-    }
-
-    func makeTranscriptRequest(for localKey: String) throws -> (video: SelectedVideoAsset, mediaID: String)? {
-        guard let clip = clip(for: localKey),
-              clip.isSelected,
-              let originalURL = clip.originalURL,
-              let mediaID = clip.localMediaID else {
-            print(
-                "[ImportBrowser] transcript request unavailable localKey=\(localKey) " +
-                "isSelected=\(clip(for: localKey)?.isSelected ?? false) mediaID=\(clip(for: localKey)?.localMediaID ?? "nil")"
-            )
-            return nil
-        }
-
-        if let media = try db.getMedia(mediaId: mediaID),
-           let transcriptSentences = media.spec.transcriptSentences,
-           !transcriptSentences.isEmpty {
-            print(
-                "[ImportBrowser] transcript request skipped existing transcript localKey=\(localKey) " +
-                "mediaID=\(mediaID) sentences=\(transcriptSentences.count)"
-            )
-            Self.transcriptPersistenceLog.info(
-                "makeTranscriptRequest skipped: already have sentences localKey=\(localKey, privacy: .public) mediaID=\(mediaID, privacy: .public) transcriptID=\(media.spec.transcriptID ?? "nil", privacy: .public) sentenceCount=\(transcriptSentences.count, privacy: .public)"
-            )
-            return nil
-        }
-
-        let video = SelectedVideoAsset(
-            localKey: clip.localKey,
-            assetLocalIdentifier: clip.assetLocalIdentifier,
-            localMediaID: clip.localMediaID,
-            originalURL: originalURL,
-            displayName: clip.displayName,
-            fileSize: clip.fileSize,
-            remoteClipID: clip.remoteClipID
-        )
-        print(
-            "[ImportBrowser] transcript request prepared localKey=\(localKey) mediaID=\(mediaID) " +
-            "file=\(video.displayName) originalURL=\(video.originalURL.lastPathComponent)"
-        )
-        return (video, mediaID)
-    }
-
-    func persistTranscript(_ transcript: ClipTranscriptResponse, forMediaID mediaID: String) throws {
-        guard var media = try db.getMedia(mediaId: mediaID) else {
-            print("[ImportBrowser] transcript persist skipped missing media mediaID=\(mediaID)")
-            Self.transcriptPersistenceLog.error(
-                "persistTranscript aborted: no media row for mediaID=\(mediaID, privacy: .public)"
-            )
-            return
-        }
-        let priorTranscriptID = media.spec.transcriptID
-        let priorSentenceCount = media.spec.transcriptSentences?.count ?? 0
-        Self.transcriptPersistenceLog.info(
-            "persistTranscript applying mediaID=\(mediaID, privacy: .public) priorTranscriptID=\(priorTranscriptID ?? "nil", privacy: .public) incomingTranscriptID=\(transcript.transcriptID, privacy: .public) priorSentences=\(priorSentenceCount, privacy: .public) incomingSentences=\(transcript.sentences.count, privacy: .public)"
-        )
-        media.spec.transcriptID = transcript.transcriptID
-        media.spec.transcriptFullText = transcript.fullText
-        media.spec.transcriptSentences = transcript.sentences.map {
-            MediaTranscriptSentence(
-                text: $0.text,
-                startTimeSeconds: $0.start,
-                endTimeSeconds: $0.end,
-                confidence: $0.confidence,
-                speaker: $0.speaker,
-                channel: $0.channel
-            )
-        }
-        if media.spec.duration == nil, let audioDuration = transcript.audioDuration {
-            media.spec.duration = audioDuration
-        }
-        media.updatedAt = Date()
-        try db.update(media)
-        NotificationCenter.default.post(
-            name: .irisMediaTranscriptDidPersist,
-            object: nil,
-            userInfo: ["mediaId": mediaID]
-        )
-        Self.transcriptPersistenceLog.info(
-            "persistTranscript saved mediaID=\(mediaID, privacy: .public) storedTranscriptID=\(media.spec.transcriptID ?? "nil", privacy: .public) storedSentences=\(media.spec.transcriptSentences?.count ?? 0, privacy: .public) fullTextChars=\(media.spec.transcriptFullText?.count ?? 0, privacy: .public)"
-        )
-        print(
-            "[ImportBrowser] transcript saved mediaID=\(mediaID) transcriptID=\(transcript.transcriptID) " +
-            "sentences=\(media.spec.transcriptSentences?.count ?? 0) fullTextChars=\(transcript.fullText.count)"
-        )
     }
 
     func localProjectName() -> String? {

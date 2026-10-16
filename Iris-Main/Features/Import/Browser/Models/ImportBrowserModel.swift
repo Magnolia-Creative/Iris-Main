@@ -1,48 +1,6 @@
 import Foundation
 import Photos
 
-enum ImportProcessingMode: String, CaseIterable, Identifiable {
-    case none
-    case embeddingsOnly
-    case agentPreprocessingOnly
-    case embeddingsAndAgentPreprocessing
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .none:
-            "Browse only"
-        case .embeddingsOnly:
-            "Embeddings"
-        case .agentPreprocessingOnly:
-            "Agent prep"
-        case .embeddingsAndAgentPreprocessing:
-            "Embeddings + Agent"
-        }
-    }
-
-    /// MobileCLIP / on-device semantic indexing during import is disabled; server clip processing covers prep.
-    var runsEmbeddings: Bool {
-        false
-    }
-
-    var runsAgentPreprocessing: Bool {
-        switch self {
-        case .agentPreprocessingOnly, .embeddingsAndAgentPreprocessing:
-            true
-        case .none, .embeddingsOnly:
-            false
-        }
-    }
-
-    /// Local `/transcriptions/sentences` is used when `runsEmbeddings` is true and agent clip upload is off.
-    /// With on-device import embeddings disabled (`runsEmbeddings` is false), this stays false and transcripts come from server clip processing when agent prep runs.
-    var usesLocalTranscriptionEndpoint: Bool {
-        runsEmbeddings && !runsAgentPreprocessing
-    }
-}
-
 enum ImportClipWorkState: Equatable {
     case idle
     case queued(String)
@@ -114,7 +72,6 @@ struct ImportClipProcessingItem: Identifiable, Equatable {
     var remoteClipID: String?
     var isSelected = true
     var isCommitted = false
-    var embeddingState: ImportClipWorkState = .idle
     var transcriptState: ImportClipWorkState = .idle
     var uploadState: ImportClipWorkState = .idle
     var commitmentStatus = "Waiting to confirm selection"
@@ -122,7 +79,7 @@ struct ImportClipProcessingItem: Identifiable, Equatable {
     var id: String { localKey }
 
     var hasFailure: Bool {
-        embeddingState.isFailed || uploadState.isFailed
+        uploadState.isFailed
     }
 }
 
@@ -134,7 +91,6 @@ struct ImportBrowserModel {
     var selectedAlbumID = ImportBrowserAlbum.allVideosID
     var visibleAssets: [ImportBrowserAsset] = []
     var clips: [ImportClipProcessingItem] = []
-    var processingMode: ImportProcessingMode = .embeddingsAndAgentPreprocessing
     var prompt = PromptMessageState()
     var statusMessage = "Select clips to start preparing them for Iris."
     var remoteBackendProject: RemoteBackendProject?
@@ -167,6 +123,6 @@ struct ImportBrowserModel {
     }
 
     var canRequestAgentStart: Bool {
-        processingMode.runsAgentPreprocessing && committedClipCount > 0 && prompt.isReady
+        committedClipCount > 0 && prompt.isReady
     }
 }

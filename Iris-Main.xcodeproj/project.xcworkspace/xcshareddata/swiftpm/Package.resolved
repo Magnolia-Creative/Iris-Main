@@ -182,15 +182,6 @@
       }
     },
     {
-      "identity" : "swift-mobileclip",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sfomuseum/swift-mobileclip.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "00d08f9f8e0ea07c1ea03684cec1813de8795d91"
-      }
-    },
-    {
       "identity" : "swift-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",

@@ -793,11 +793,7 @@ final class TimelineController: ObservableObject {
     func syncSemanticIndexForImportedMedia() {
         let media = Array(state.mediaById.values)
         SemanticSearchViewModel.shared.setImportSearchTimelineId(state.timelineId)
-        guard AppConfiguration.enablesLocalSemanticIndexing else {
-            SemanticSearchViewModel.shared.queueImportedMediaSync(media, autoBuildIndex: false)
-            return
-        }
-        SemanticSearchViewModel.shared.queueImportedMediaSync(media, autoBuildIndex: true)
+        SemanticSearchViewModel.shared.queueImportedMediaSync(media)
     }
 
     func insertClipSegment(mediaId: String, sourceRange: TimeRange, at timeUs: Int64, kind: TrackKind = .video) {

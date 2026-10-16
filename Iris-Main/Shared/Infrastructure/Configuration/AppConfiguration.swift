@@ -16,51 +16,6 @@ enum AppConfiguration {
     static let visualFramesFieldName = "visual_frames"
     static let visualFrameManifestFieldName = "visual_frame_manifest"
     static let simulateImportProcessing = false
-    /// When false, skips MobileCLIP prewarm and local chunk index rebuilds; import-panel search uses cloud project APIs instead.
-    static let enablesLocalSemanticIndexing = false
-
-    nonisolated static var semanticMobileCLIPEncoderURI: String {
-        guard let modelsDirectoryURL = semanticMobileCLIPModelsDirectoryURL else {
-            return ""
-        }
-
-        var components = URLComponents()
-        components.scheme = "s2"
-        components.path = modelsDirectoryURL.path
-        return components.string ?? ""
-    }
-
-    nonisolated private static var semanticMobileCLIPModelsDirectoryURL: URL? {
-        guard let resourceURL = Bundle.main.resourceURL else {
-            return nil
-        }
-
-        let fileManager = FileManager.default
-        let candidateDirectories = [
-            resourceURL.appending(path: "MobileCLIP", directoryHint: .isDirectory),
-            resourceURL.appending(path: "Resources/MobileCLIP", directoryHint: .isDirectory),
-            resourceURL
-        ]
-
-        return candidateDirectories.first {
-            containsBundledMobileCLIPModels(at: $0, fileManager: fileManager)
-        }
-    }
-
-    private static func containsBundledMobileCLIPModels(at directoryURL: URL, fileManager: FileManager) -> Bool {
-        let imageModelURL = directoryURL.appending(path: "mobileclip_s2_image.mlmodelc", directoryHint: .isDirectory)
-        let textModelURL = directoryURL.appending(path: "mobileclip_s2_text.mlmodelc", directoryHint: .isDirectory)
-
-        return directoryExists(at: imageModelURL, fileManager: fileManager)
-            && directoryExists(at: textModelURL, fileManager: fileManager)
-    }
-
-    private static func directoryExists(at url: URL, fileManager: FileManager) -> Bool {
-        var isDirectory: ObjCBool = false
-        let exists = fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory)
-        return exists && isDirectory.boolValue
-    }
-
     static func projectClipProcessingEndpoint(projectID: String) -> URL {
         backendBaseURL
             .appending(path: "projects")
