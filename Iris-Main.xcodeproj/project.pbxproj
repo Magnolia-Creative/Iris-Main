@@ -531,7 +531,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Iris-Main/Iris-Main.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 6;
-				DEVELOPMENT_TEAM = 74UJF5HM7S;
+				DEVELOPMENT_TEAM = U3V7KFTT9Q;
 				EMIT_FRONTEND_COMMAND_LINES = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -557,7 +557,7 @@
 					"-Xlinker",
 					"-interposable",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.arrana.acportal;
+				PRODUCT_BUNDLE_IDENTIFIER = "Magnolia-Creative.Iris";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -583,7 +583,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Iris-Main/Iris-Main.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 6;
-				DEVELOPMENT_TEAM = 74UJF5HM7S;
+				DEVELOPMENT_TEAM = U3V7KFTT9Q;
 				EMIT_FRONTEND_COMMAND_LINES = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -604,7 +604,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.arrana.acportal;
+				PRODUCT_BUNDLE_IDENTIFIER = "Magnolia-Creative.Iris";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
